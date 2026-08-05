@@ -1,11 +1,22 @@
-const CACHE_NAME = 'cat-trainer-v1';
+const CACHE_NAME = 'cat-trainer-raster-v2';
 const APP_FILES = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './app-core.js',
+  './app-ui.js',
   './manifest.webmanifest',
-  './icon.svg'
+  './icon.svg',
+  './sprite-1.js',
+  './sprite-2.js',
+  './sprite-3.js',
+  './sprite-4.js',
+  './sprite-5.js',
+  './family-1.js',
+  './family-2.js',
+  './family-3.js',
+  './family-4.js'
 ];
 
 self.addEventListener('install', event => {

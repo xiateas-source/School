@@ -3,99 +3,116 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#171a2f">
-  <meta name="description" content="Cat Trainer — a cozy real-life quest game for Sirus.">
+  <meta name="theme-color" content="#fffaf2">
+  <meta name="description" content="Cat Trainer — Sirus's illustrated real-life quest game.">
   <title>Cat Trainer</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="sky-glow" aria-hidden="true"></div>
+  <div class="paper-confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   <div class="app-shell">
     <header class="topbar">
-      <div>
-        <p class="eyebrow">SIRUS'S ADVENTURE</p>
-        <h1>Cat Trainer</h1>
+      <div class="brand-lockup">
+        <p class="eyebrow">SIRUS'S REAL-LIFE ADVENTURE</p>
+        <h1><span>Cat</span> <span>Trainer</span></h1>
       </div>
-      <button class="icon-button" id="open-parent" aria-label="Open grown-up controls" title="Grown-up controls">
-        <span aria-hidden="true">⚙</span>
+      <button class="parent-avatar-button" id="open-parent" aria-label="Open Mom's controls" title="Mom's controls">
+        <img id="mom-menu-art" alt="Mom">
+        <span>Mom</span>
       </button>
     </header>
 
     <main>
-      <section class="screen active" id="screen-home" data-screen="home">
-        <article class="hero-card">
-          <div class="hero-copy">
-            <p class="hero-kicker">TODAY'S GAME TIME</p>
-            <div class="minutes-row">
-              <span id="points-total">0</span>
-              <span class="minutes-label">minutes</span>
-            </div>
-            <p class="hero-rule">1 point = 1 minute</p>
-          </div>
+      <section class="screen active" data-screen="home">
+        <article class="hero-scene">
+          <div class="scene-sun" aria-hidden="true"></div>
+          <div class="scene-flower flower-one" aria-hidden="true">✿</div>
+          <div class="scene-flower flower-two" aria-hidden="true">✦</div>
+          <img id="trainer-art" class="trainer-art" alt="Sirus">
           <div class="active-cat-stage" id="active-cat-stage" aria-label="Active cat"></div>
-          <div class="hero-orbit orbit-one" aria-hidden="true"></div>
-          <div class="hero-orbit orbit-two" aria-hidden="true"></div>
+          <div class="game-time-badge">
+            <span class="badge-star" aria-hidden="true">★</span>
+            <small>GAME TIME</small>
+            <strong id="points-total">0</strong>
+            <span>minutes</span>
+          </div>
+          <div class="scene-caption">
+            <strong>1 point = 1 minute</strong>
+            <span>Every good practice helps your cat grow.</span>
+          </div>
         </article>
 
-        <section class="section-block">
+        <section class="paper-card training-card">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">ACTIVE TRAINING</p>
+              <p class="eyebrow purple">ACTIVE PET</p>
               <h2 id="active-cat-name">Nova</h2>
             </div>
-            <button class="text-button" data-go="cats">Switch cat</button>
+            <button class="text-button" data-go="cats">Choose pet</button>
           </div>
-          <div class="power-panel">
-            <div class="power-row">
-              <span class="power-icon">★</span>
-              <div class="power-copy"><strong>Brain</strong><span id="brain-value">0 / 12</span></div>
+          <div class="power-grid">
+            <div class="power-tile brain-tile">
+              <div class="power-label"><span>★</span><strong>Brain</strong><b id="brain-value">0 / 12</b></div>
               <div class="meter"><span id="brain-meter"></span></div>
             </div>
-            <div class="power-row">
-              <span class="power-icon bolt">ϟ</span>
-              <div class="power-copy"><strong>Energy</strong><span id="energy-value">0 / 12</span></div>
-              <div class="meter energy"><span id="energy-meter"></span></div>
+            <div class="power-tile energy-tile">
+              <div class="power-label"><span>⚡</span><strong>Energy</strong><b id="energy-value">0 / 12</b></div>
+              <div class="meter"><span id="energy-meter"></span></div>
             </div>
-            <div class="power-row compact">
-              <span class="power-icon heart">♥</span>
-              <div class="power-copy"><strong>Bond</strong><span id="bond-value">0</span></div>
-              <div class="meter bond"><span id="bond-meter"></span></div>
+            <div class="power-tile bond-tile">
+              <div class="power-label"><span>♥</span><strong>Bond</strong><b id="bond-value">0 / 20</b></div>
+              <div class="meter"><span id="bond-meter"></span></div>
             </div>
           </div>
         </section>
 
-        <section class="section-block">
+        <section class="paper-card">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">NEXT UP</p>
-              <h2>Quest Board</h2>
+              <p class="eyebrow green">TODAY'S QUEST CARDS</p>
+              <h2>What is waiting?</h2>
             </div>
             <button class="text-button" data-go="quests">See all</button>
           </div>
           <div id="next-quests" class="quest-preview"></div>
         </section>
 
-        <section class="cafe-peek" data-go="cafe" role="button" tabindex="0" aria-label="Visit the Cat Café">
-          <div>
-            <p class="eyebrow">YOUR COZY PLACE</p>
+        <section class="cafe-peek paper-card" data-go="cafe" role="button" tabindex="0" aria-label="Visit the Cat Café">
+          <div class="cafe-peek-copy">
+            <p class="eyebrow pink">DECORATE AND PLAY</p>
             <h2>Cat Café</h2>
-            <p><span id="coin-total-home">0</span> coins · decorate and watch your cats explore</p>
+            <p><span id="coin-total-home">0</span> coins ready for beds, pillows, and cozy things.</p>
+            <span class="visit-label">Visit the café →</span>
           </div>
-          <div class="cafe-window" aria-hidden="true">
-            <span class="tiny-cat">◕ᴥ◕</span>
+          <div class="cafe-peek-art">
+            <img id="peek-bed-art" alt="Blue star pet bed">
+            <div id="peek-cat-art"></div>
+          </div>
+        </section>
+
+        <section class="family-strip paper-card">
+          <div>
+            <p class="eyebrow blue">YOUR HOME TEAM</p>
+            <h2>Mom, Abba, and Arlo</h2>
+            <p>They can add quests, cheer for resets, and help care for the cats.</p>
+          </div>
+          <div class="family-portraits" aria-label="Family portraits">
+            <img id="family-mom-art" alt="Mom">
+            <img id="family-abba-art" alt="Abba">
+            <img id="family-arlo-art" alt="Arlo">
           </div>
         </section>
       </section>
 
-      <section class="screen" id="screen-quests" data-screen="quests">
+      <section class="screen" data-screen="quests">
         <div class="page-title">
-          <p class="eyebrow">REAL-LIFE POWER</p>
+          <p class="eyebrow green">REAL-LIFE POWER</p>
           <h2>Today's Quests</h2>
-          <p>Complete a quest once. Your trainer progress saves automatically.</p>
+          <p>Each card can be completed once today. Progress saves on this device.</p>
         </div>
-        <div class="quest-summary">
+        <div class="quest-summary paper-card">
           <div><strong id="quest-done-count">0</strong><span>done</span></div>
           <div><strong id="quest-left-count">0</strong><span>waiting</span></div>
           <div><strong id="coin-total-quests">0</strong><span>coins</span></div>
@@ -103,58 +120,58 @@
         <div id="quest-sections"></div>
       </section>
 
-      <section class="screen" id="screen-cats" data-screen="cats">
+      <section class="screen" data-screen="cats">
         <div class="page-title">
-          <p class="eyebrow">TRAINER COLLECTION</p>
-          <h2>Your Cats</h2>
-          <p>Every cat needs both Brain and Energy before it can evolve.</p>
+          <p class="eyebrow purple">CHOOSE YOUR PET</p>
+          <h2>Your Cat Team</h2>
+          <p>Train one cat at a time. Both Brain and Energy must fill before Hero Form unlocks.</p>
         </div>
         <div id="cat-collection" class="cat-grid"></div>
       </section>
 
-      <section class="screen" id="screen-cafe" data-screen="cafe">
+      <section class="screen" data-screen="cafe">
         <div class="page-title cafe-title-row">
           <div>
-            <p class="eyebrow">A HOME FOR YOUR TEAM</p>
+            <p class="eyebrow pink">A HOME FOR YOUR TEAM</p>
             <h2>Cat Café</h2>
           </div>
           <div class="coin-pill">● <span id="coin-total-cafe">0</span></div>
         </div>
         <div class="cafe-room" id="cafe-room">
-          <div class="room-wall">
-            <div class="window"><span class="moon"></span><i></i><i></i><i></i></div>
-            <div class="wall-sign">CAT CAFÉ</div>
-            <div class="shelf"><span></span><span></span><span></span></div>
-          </div>
-          <div class="room-floor"></div>
-          <div id="cafe-cat" class="cafe-cat"></div>
+          <div class="room-wall-pattern" aria-hidden="true"></div>
+          <div class="room-window" aria-hidden="true"><span></span></div>
+          <div class="room-banner" aria-hidden="true">CAT CAFÉ</div>
+          <div class="room-floor" aria-hidden="true"></div>
           <div id="placed-decor"></div>
+          <div id="cafe-cat" class="cafe-cat"></div>
         </div>
-        <h3 class="shop-heading">Decoration Shop</h3>
+        <h3 class="shop-heading">Choose something cozy</h3>
         <div id="decor-shop" class="shop-grid"></div>
       </section>
 
-      <section class="screen parent-screen" id="screen-parent" data-screen="parent">
-        <div class="page-title parent-title-row">
+      <section class="screen parent-screen" data-screen="parent">
+        <div class="parent-intro paper-card">
+          <img id="parent-mom-art" alt="Mom">
           <div>
-            <p class="eyebrow">GROWN-UP CONTROLS</p>
-            <h2>Parent Dashboard</h2>
+            <p class="eyebrow green">GROWN-UP CONTROLS</p>
+            <h2>Mom's Dashboard</h2>
+            <p>Fast enough to replace the paper tally marks.</p>
           </div>
           <button class="soft-button" id="lock-parent">Lock</button>
         </div>
 
-        <section class="parent-card quick-card">
+        <section class="parent-card paper-card quick-card">
           <div class="parent-card-heading">
             <h3>Quick point controls</h3>
             <span class="live-balance"><b id="parent-points">0</b> minutes</span>
           </div>
           <div class="quick-actions">
-            <button class="adjust positive" data-points="1" data-reason="Positive choice">+1<br><small>Good choice</small></button>
-            <button class="adjust positive" data-points="1" data-reason="Said Yes, ma'am/sir">+1<br><small>Yes, ma'am/sir</small></button>
-            <button class="adjust negative" data-points="-2" data-reason="Rebuttal after direction">−2<br><small>Rebuttal</small></button>
-            <button class="adjust negative" data-points="-2" data-reason="Refused deep breaths">−2<br><small>Refused breaths</small></button>
-            <button class="adjust negative" data-points="-2" data-reason="Used body instead of words">−2<br><small>Body, not words</small></button>
-            <button class="adjust reset" data-points="1" data-reason="Completed a Hero's Reset">+1<br><small>Hero's Reset</small></button>
+            <button class="adjust positive" data-points="1" data-reason="Positive choice">+1<small>Good choice</small></button>
+            <button class="adjust positive" data-points="1" data-reason="Said Yes, ma'am/sir">+1<small>Yes, ma'am/sir</small></button>
+            <button class="adjust negative" data-points="-2" data-reason="Rebuttal after direction">−2<small>Rebuttal</small></button>
+            <button class="adjust negative" data-points="-2" data-reason="Refused deep breaths">−2<small>Refused breaths</small></button>
+            <button class="adjust negative" data-points="-2" data-reason="Used body instead of words">−2<small>Body, not words</small></button>
+            <button class="adjust reset" data-points="1" data-reason="Completed a Hero's Reset">+1<small>Hero's Reset</small></button>
           </div>
           <form id="custom-adjust-form" class="inline-form">
             <input id="custom-points" type="number" inputmode="numeric" value="1" aria-label="Custom point amount">
@@ -164,10 +181,8 @@
           <button class="wide-button" id="undo-action">↶ Undo last action</button>
         </section>
 
-        <section class="parent-card">
-          <div class="parent-card-heading">
-            <h3>Add a quest</h3>
-          </div>
+        <section class="parent-card paper-card">
+          <div class="parent-card-heading"><h3>Add a recurring quest</h3></div>
           <form id="add-quest-form" class="quest-form">
             <label>Quest name<input id="quest-title-input" required maxlength="50" placeholder="Read for 15 minutes"></label>
             <label>Section<select id="quest-section-input"><option>Morning</option><option>Brain</option><option>Move</option><option>Tidy</option><option>Night</option></select></label>
@@ -177,20 +192,20 @@
               <label>Energy<input id="quest-energy-input" type="number" min="0" value="1"></label>
               <label>Coins<input id="quest-coins-input" type="number" min="0" value="1"></label>
             </div>
-            <button class="primary-button" type="submit">Add recurring quest</button>
+            <button class="primary-button" type="submit">Add quest</button>
           </form>
           <div id="parent-quest-list" class="parent-quest-list"></div>
         </section>
 
-        <section class="parent-card">
+        <section class="parent-card paper-card">
           <div class="parent-card-heading">
-            <h3>Today’s history</h3>
+            <h3>Today's history</h3>
             <button class="text-button" id="export-data">Export backup</button>
           </div>
           <div id="history-list" class="history-list"></div>
         </section>
 
-        <section class="parent-card settings-card">
+        <section class="parent-card paper-card settings-card">
           <h3>Settings</h3>
           <label class="toggle-row"><span>Allow points below zero</span><input id="allow-negative" type="checkbox"></label>
           <button class="wide-button danger-outline" id="new-day">Start a fresh day</button>
@@ -202,7 +217,7 @@
     <nav class="bottom-nav" aria-label="Main navigation">
       <button class="nav-item active" data-go="home"><span>⌂</span><small>Home</small></button>
       <button class="nav-item" data-go="quests"><span>✓</span><small>Quests</small></button>
-      <button class="nav-item" data-go="cats"><span>♢</span><small>Cats</small></button>
+      <button class="nav-item" data-go="cats"><span>♥</span><small>Cats</small></button>
       <button class="nav-item" data-go="cafe"><span>▣</span><small>Café</small></button>
     </nav>
   </div>
@@ -210,7 +225,7 @@
   <dialog id="pin-dialog" class="modal">
     <form method="dialog" id="pin-form" class="modal-card">
       <button class="modal-close" value="cancel" aria-label="Close">×</button>
-      <div class="modal-icon">🐾</div>
+      <img id="pin-mom-art" class="modal-parent-art" alt="Mom">
       <h2 id="pin-title">Grown-up gate</h2>
       <p id="pin-copy">Enter your 4-digit PIN.</p>
       <input id="pin-input" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" aria-label="Four digit PIN">
@@ -221,15 +236,24 @@
 
   <dialog id="evolution-dialog" class="modal evolution-modal">
     <div class="modal-card evolution-card">
-      <p class="eyebrow">BALANCED POWER!</p>
-      <h2 id="evolution-title">A cat evolved!</h2>
+      <p class="eyebrow purple">BRAIN + ENERGY!</p>
+      <h2 id="evolution-title">Hero Form unlocked!</h2>
       <div id="evolution-art" class="evolution-art"></div>
       <p id="evolution-copy"></p>
-      <button class="primary-button" id="close-evolution">Meet your evolved cat</button>
+      <button class="primary-button" id="close-evolution">Meet your hero cat</button>
     </div>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="sprite-1.js"></script>
+  <script src="sprite-2.js"></script>
+  <script src="sprite-3.js"></script>
+  <script src="sprite-4.js"></script>
+  <script src="sprite-5.js"></script>
+  <script src="family-1.js"></script>
+  <script src="family-2.js"></script>
+  <script src="family-3.js"></script>
+  <script src="family-4.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
