@@ -1,57 +1,24 @@
 'use strict';
 
-(function loadCatTrainerApplication() {
-  const spriteStyles = document.createElement('style');
-  spriteStyles.textContent = `
-    .raster-sprite {
-      display:inline-block;
-      background-image:var(--sprite);
-      background-size:var(--ss);
-      background-position:var(--sx) var(--sy);
-      background-repeat:no-repeat;
-      aspect-ratio:1 / 1;
-      flex:0 0 auto;
+(async function loadCatTrainerEmbeddedArt(){
+  try {
+    const packs=Array.from({length:21},(_,index)=>`v4-pack-${String(index+1).padStart(2,'0')}.js`);
+    const sources=await Promise.all(packs.map(async file=>{
+      const response=await fetch(file,{cache:'no-store'});
+      if(!response.ok) throw new Error(`${file} returned ${response.status}`);
+      return response.text();
+    }));
+    sources.forEach(source=>(0,eval)(source));
+
+    const loaderResponse=await fetch('v4-loader.js',{cache:'no-store'});
+    if(!loaderResponse.ok) throw new Error(`v4-loader.js returned ${loaderResponse.status}`);
+    (0,eval)(await loaderResponse.text());
+  } catch(error){
+    console.error('Cat Trainer bootstrap failed.',error);
+    const toast=document.querySelector('#toast');
+    if(toast){
+      toast.textContent='The Cat Trainer artwork could not load. Please try again once online.';
+      toast.classList.add('show');
     }
-
-    .cat-figure > .raster-sprite,
-    .active-cat-stage .raster-sprite,
-    .cat-art .raster-sprite,
-    .cafe-cat .raster-sprite,
-    #peek-cat-art .raster-sprite,
-    .evolution-art .raster-sprite {
-      width:100%;
-      height:100%;
-    }
-
-    .shop-art {
-      width:100%;
-      min-height:100px;
-    }
-
-    .shop-art .raster-sprite {
-      width:100%;
-      height:100px;
-    }
-  `;
-  document.head.appendChild(spriteStyles);
-
-  const files = ['app-core.js', 'app-ui.js'];
-
-  function loadNext(index) {
-    if (index >= files.length) return;
-    const script = document.createElement('script');
-    script.src = files[index];
-    script.onload = () => loadNext(index + 1);
-    script.onerror = () => {
-      console.error(`Could not load ${files[index]}.`);
-      const toast = document.querySelector('#toast');
-      if (toast) {
-        toast.textContent = 'Cat Trainer could not finish loading. Refresh once while online.';
-        toast.classList.add('show');
-      }
-    };
-    document.body.appendChild(script);
   }
-
-  loadNext(0);
 })();
