@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Combined Results Record — Lantern Cat</title>
+<style>
+:root{--night:#161E38;--panel:#222D50;--panel2:#2B3862;--gold:#F2B544;--gold-soft:#F7D68A;
+--moss:#7BC5A4;--rose:#E08B8B;--sky:#8FB8E8;--parch:#F5EFE0;--muted:#A6B0CE;--shadow:0 8px 28px rgba(0,0,0,.35)}
+*{box-sizing:border-box}html,body{margin:0;padding:0}
+body{background:radial-gradient(1200px 600px at 50% -10%, #2A3560 0%, var(--night) 60%);color:var(--parch);
+font-family:"Verdana","Trebuchet MS",system-ui,sans-serif;min-height:100vh;padding:16px;font-size:16px;line-height:1.55}
+.wrap{max-width:800px;margin:0 auto}
+h1,h2,h3{font-family:"Georgia","Iowan Old Style",serif;font-weight:700;line-height:1.25;margin:0 0 8px}
+h1{font-size:1.8rem} h2{font-size:1.2rem;color:var(--gold-soft)}
+.card{background:var(--panel);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px;box-shadow:var(--shadow);margin-bottom:16px;break-inside:avoid}
+.muted{color:var(--muted);font-size:.9rem}
+.kicker{color:var(--muted);font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+label{display:block;font-weight:700;font-size:.9rem;margin:14px 0 5px;color:var(--gold-soft)}
+label .hint{display:block;font-weight:400;color:var(--muted);font-size:.82rem;margin-top:2px}
+input,textarea{width:100%;font-family:inherit;font-size:1rem;color:var(--parch);background:var(--panel2);
+border:1px solid rgba(255,255,255,.28);border-radius:9px;padding:9px 11px}
+input:focus,textarea:focus{outline:3px solid var(--sky);outline-offset:1px;border-color:var(--gold)}
+textarea{resize:vertical;min-height:62px;line-height:1.5}
+.row{display:flex;gap:14px;flex-wrap:wrap}
+.row>div{flex:1;min-width:200px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+@media(max-width:560px){.grid2{grid-template-columns:1fr}}
+.note{background:var(--panel2);border-left:4px solid var(--gold);border-radius:10px;padding:14px 16px;margin:16px 0}
+.btn{display:inline-block;background:var(--gold);color:#20180A;border:none;border-radius:14px;padding:13px 20px;font-size:1rem;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none;box-shadow:0 4px 0 #C98F28}
+.btn.ghost{background:transparent;color:var(--parch);border:2px solid rgba(255,255,255,.25);box-shadow:none}
+.btn.sm{padding:9px 14px;font-size:.9rem}
+.btn:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+.navrow{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center}
+.cat{width:40px;height:30px;vertical-align:middle;margin-right:8px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media print{
+  @page{margin:14mm}
+  body{background:#fff;color:#000;font-size:12pt;padding:0}
+  .wrap{max-width:none}
+  .card{background:#fff;border:1px solid #999;box-shadow:none;border-radius:0;padding:12px 4px;margin-bottom:10px}
+  h1,h2,h3,label,label .hint,.muted,.kicker{color:#000}
+  label .hint,.muted,.kicker{color:#333}
+  input,textarea{background:#fff;color:#000;border:1px solid #000;border-radius:0}
+  textarea{min-height:58px}
+  .note{background:#fff;border:1px solid #000;border-left:3px solid #000}
+  .noprint{display:none!important}
+  .cat{display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="card">
+  <div class="kicker">For the grown-up</div>
+  <h1><svg class="cat" viewBox="0 0 80 60" aria-hidden="true"><ellipse cx="31" cy="40" rx="18" ry="11" fill="#E88A3C"/><rect x="21" y="46" width="5" height="10" rx="2.5" fill="#C96A24"/><rect x="37" y="46" width="5" height="10" rx="2.5" fill="#C96A24"/><path d="M27 33 L19 19" stroke="#8A6A3A" stroke-width="2.5" stroke-linecap="round"/><rect x="13" y="17" width="8.5" height="9.5" rx="2" fill="#F2B544" stroke="#C98F28" stroke-width="1.2"/><circle cx="51" cy="30" r="12.5" fill="#E88A3C"/><path d="M41 22 L42 11 L51 19 Z" fill="#E88A3C"/><path d="M57 18 L63 10 L64 22 Z" fill="#E88A3C"/><ellipse cx="56" cy="29" rx="3" ry="3.6" fill="#7BC5A4"/></svg>Combined Results Record</h1>
+  <p class="muted">One page to gather all four quest reports into a single learner profile. Type into it and save as a PDF, or print it blank and fill it in by hand. It prints cleanly in black and white.</p>
+  <div class="navrow noprint" style="justify-content:flex-start;margin-top:14px">
+    <button class="btn" onclick="window.print()">Print or save as PDF</button>
+    <a class="btn ghost sm" href="assessment-guide.html">Back to the guide</a>
+  </div>
+  <p class="muted noprint" style="margin-top:12px">Nothing you type here is saved or uploaded — it lives only in this page until you print or save it, then closes with the tab. Save your PDF before you leave.</p>
+</header>
+
+<section class="card">
+  <h2>The learner</h2>
+  <div class="grid2">
+    <div><label for="name">Learner name<textarea id="name" rows="1" style="min-height:auto"></textarea></label></div>
+    <div><label for="level">Grade / curriculum level being considered<span class="hint">e.g. entering Grade 3</span><textarea id="level" rows="1" style="min-height:auto"></textarea></label></div>
+  </div>
+  <label>Assessment dates <span class="hint">Fill in each quest as you complete it — you don't need all four before this record is useful.</span></label>
+  <div class="grid2">
+    <div><label for="d-read" style="margin-top:4px">Reading Quest<input id="d-read" type="text"></label></div>
+    <div><label for="d-math" style="margin-top:4px">Math Quest<input id="d-math" type="text"></label></div>
+    <div><label for="d-word" style="margin-top:4px">Word / Language Arts Quest<input id="d-word" type="text"></label></div>
+    <div><label for="d-sci" style="margin-top:4px">Science Quest<input id="d-sci" type="text"></label></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Result summary, by subject</h2>
+  <p class="muted">A line or two from each report — the overall plan (A / B / C) and anything that stood out.</p>
+  <label for="s-math">Math result summary<textarea id="s-math"></textarea></label>
+  <label for="s-read">Reading result summary<textarea id="s-read"></textarea></label>
+  <label for="s-word">Language arts result summary<textarea id="s-word"></textarea></label>
+  <label for="s-sci">Science result summary<textarea id="s-sci"></textarea></label>
+</section>
+
+<section class="card">
+  <h2>Skills across all four subjects</h2>
+  <label for="sk-secure">Secure skills <span class="hint">Owned — move quickly or skip.</span><textarea id="sk-secure"></textarea></label>
+  <label for="sk-review">Skills needing a brief review <span class="hint">Mostly there; a light touch.</span><textarea id="sk-review"></textarea></label>
+  <label for="sk-teach">Skills needing direct instruction <span class="hint">Parent-supported practice.</span><textarea id="sk-teach"></textarea></label>
+</section>
+
+<section class="card">
+  <h2>Observations</h2>
+  <label for="o-preview">Grade 3 preview observations <span class="hint">How familiar was the not-yet-taught material? A low score here is normal.</span><textarea id="o-preview"></textarea></label>
+  <label for="o-writing">Writing or handwriting observations <span class="hint">Did writing effort seem to hide knowledge he could show out loud?</span><textarea id="o-writing"></textarea></label>
+  <label for="o-speech">Speech or decoding observations<textarea id="o-speech"></textarea></label>
+  <label for="o-atten">Attention, fatigue, or regulation observations<textarea id="o-atten"></textarea></label>
+</section>
+
+<section class="card">
+  <h2>Curriculum planning</h2>
+  <p class="muted">These link the results to your own curriculum. They're intentionally blank — fill in the specific lessons or units yourself; this record doesn't assume any particular lesson numbers.</p>
+  <label for="c-fast">Lessons or units that may be moved through quickly<textarea id="c-fast"></textarea></label>
+  <label for="c-support">Lessons or units that need parent-supported instruction<textarea id="c-support"></textarea></label>
+  <label for="c-accom">Accommodations that helped <span class="hint">e.g. reading questions aloud, dictating instead of writing, shorter sessions.</span><textarea id="c-accom"></textarea></label>
+</section>
+
+<section class="card">
+  <h2>The next step</h2>
+  <div class="note">
+    <p style="margin:0"><strong>Choose one priority at a time.</strong> Don't turn every missed item into a separate remediation program. Pick the single most useful thing, work it until it's steady, then choose the next.</p>
+  </div>
+  <label for="n-priority">First instructional priority <span class="hint">Just one.</span><textarea id="n-priority"></textarea></label>
+  <label for="n-date">Date to review progress again <span class="hint">Often about two ordinary weeks out.</span><input id="n-date" type="text"></label>
+</section>
+
+<nav class="card navrow noprint" aria-label="Site navigation">
+  <a class="btn ghost sm" href="index.html">← Quest Home</a>
+  <a class="btn ghost sm" href="assessment-guide.html">Assessment Guide</a>
+  <button class="btn sm" onclick="window.print()">Print or save as PDF</button>
+</nav>
+
+</div>
+</body>
+</html>

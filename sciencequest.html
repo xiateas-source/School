@@ -237,7 +237,8 @@ function results(){
   render(`<div class="card noprint">${scene('camp',1,4)}
   <h2 style="text-align:center;margin-top:14px">Journey complete</h2>
   <p class="muted" style="text-align:center">Tell him he reached the camp. The rest is for you.</p>
-  <div style="text-align:center"><button class="btn" onclick="window.print()">Print or save these results</button></div></div>
+  <div style="text-align:center"><button class="btn" onclick="window.print()">Print or save these results</button></div>
+  <p class="muted" style="text-align:center;margin-top:8px">Answers stay only in this browser tab — nothing is saved or uploaded. Save or print this page before you close it.</p></div>
   <div class="card"><h2>Science results</h2><p class="muted">Date: ${new Date().toLocaleDateString()}</p>
   <h3 style="margin-top:16px">Grade 2 content</h3>
   <table><tr><th>Area</th><th>Score</th><th></th><th>Misunderstanding</th></tr>${rows}</table>
@@ -256,7 +257,7 @@ function results(){
     <p class="muted">Grade 3 science is topic-based rather than a skill ladder, so there is no repair loop and no risk of a gap compounding the way it can in maths or reading. If a week is disrupted, science is the safest subject to drop — it can be picked up later without cost, and much of it can be done by talking, watching, and going outside rather than sitting down.</p></div>
   <div class="rec" style="border-left-color:var(--gold)"><h3>Recheck</h3>
     <p>No formal recheck needed. If a Grade 2 idea comes up naturally in a Grade 3 topic and he has it, that is your answer.</p></div></div>
-  <div class="card noprint" style="text-align:center"><button class="btn ghost" onclick="location.reload()">Start over</button></div>`);
+  <div class="card noprint" style="text-align:center"><p class="muted" style="margin-bottom:10px">For the grown-up</p><a class="btn ghost sm" style="text-decoration:none" href="index.html">Quest Home</a> <a class="btn ghost sm" style="text-decoration:none" href="assessment-guide.html">Parent Assessment Guide</a> <a class="btn ghost sm" style="text-decoration:none" href="results-record.html">Combined Results Record</a><div style="margin-top:12px"><button class="btn ghost" onclick="location.reload()">Start over</button></div></div>`);
 }
 
 function bind(){

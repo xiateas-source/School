@@ -12,6 +12,7 @@ body{background:radial-gradient(1200px 600px at 50% -10%, #2A3560 0%, var(--nigh
 font-family:"Verdana","Trebuchet MS",system-ui,sans-serif;min-height:100vh;padding:16px;font-size:17px;line-height:1.55}
 .wrap{max-width:760px;margin:0 auto}
 h1{font-family:"Georgia","Iowan Old Style",serif;font-weight:700;line-height:1.2;margin:0 0 10px;font-size:2rem;text-align:center}
+h2{font-family:"Georgia","Iowan Old Style",serif;font-weight:700;font-size:1.15rem;margin:0 0 8px}
 .card{background:var(--panel);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px;box-shadow:var(--shadow);margin-bottom:16px}
 .muted{color:var(--muted);font-size:.95rem;text-align:center}
 .scene{position:relative;height:120px;margin:-6px -6px 14px;border-radius:14px;overflow:hidden;background:linear-gradient(180deg,#1B2444 0%,#243055 100%)}
@@ -26,18 +27,25 @@ h1{font-family:"Georgia","Iowan Old Style",serif;font-weight:700;line-height:1.2
 a.quest{display:block;text-decoration:none;color:var(--parch);background:var(--panel2);
 border:2px solid rgba(255,255,255,.12);border-radius:16px;padding:20px 18px;transition:transform .08s,border-color .12s}
 a.quest:hover{border-color:var(--gold);transform:translateY(-2px)}
-a.quest:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+a.quest:focus-visible,a.plink:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
 .emoji{font-size:2rem;display:block;margin-bottom:8px}
 .qname{font-family:"Georgia",serif;font-size:1.25rem;font-weight:700;color:var(--gold-soft);margin-bottom:2px}
 .qsub{color:var(--muted);font-size:.88rem}
+.parent{background:transparent;border:1px dashed rgba(255,255,255,.2);border-radius:14px;padding:16px 18px}
+.parent .kicker{color:var(--muted);font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.plink-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+a.plink{flex:1;min-width:180px;text-decoration:none;color:var(--parch);background:var(--panel2);
+border:2px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 14px;font-size:.95rem;text-align:center;transition:border-color .12s}
+a.plink:hover{border-color:var(--gold-soft)}
+a.plink .pl-title{font-weight:700;color:var(--gold-soft)}
 @media(max-width:520px){.grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
 <div class="wrap">
-<div class="card">
-  <div class="scene">
+<main class="card">
+  <div class="scene" aria-hidden="true">
     <svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none"><rect width="400" height="120" fill="#1B2444"/>
     <circle cx="340" cy="24" r="12" fill="#F7D68A" opacity=".5"/>
     <g fill="#141B36"><path d="M0 105 L55 40 L110 105z"/><path d="M90 105 L150 28 L210 105z"/><path d="M190 105 L250 45 L310 105z"/><path d="M290 105 L345 55 L400 105z"/></g>
@@ -62,30 +70,46 @@ a.quest:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
     </svg></div></div>
   </div>
   <h1>Choose a Quest</h1>
-  <p class="muted">Walk with the lantern cat. Pick a journey to begin — you can stop after any part.</p>
-  <div class="grid">
-    <a class="quest" href="mathquest.html">
-      <span class="emoji">⛰️</span>
-      <div class="qname">Math Quest</div>
-      <div class="qsub">Number peaks, shapes &amp; the market bridge</div>
-    </a>
+  <p class="muted">Walk with the lantern cat. Pick a journey to begin — you can do just one, take breaks between its parts, and come back to the others another day.</p>
+  <nav class="grid" aria-label="Quests">
     <a class="quest" href="readingquest.html">
-      <span class="emoji">📖</span>
+      <span class="emoji" aria-hidden="true">📖</span>
       <div class="qname">Reading Quest</div>
       <div class="qsub">Word caves, story trail &amp; spelling bridge</div>
     </a>
+    <a class="quest" href="mathquest.html">
+      <span class="emoji" aria-hidden="true">⛰️</span>
+      <div class="qname">Math Quest</div>
+      <div class="qsub">Number peaks, shapes &amp; the market bridge</div>
+    </a>
     <a class="quest" href="wordquest.html">
-      <span class="emoji">🔤</span>
+      <span class="emoji" aria-hidden="true">🔤</span>
       <div class="qname">Word Quest</div>
       <div class="qsub">Word workshop, sentence river &amp; story tower</div>
     </a>
     <a class="quest" href="sciencequest.html">
-      <span class="emoji">🌱</span>
+      <span class="emoji" aria-hidden="true">🌱</span>
       <div class="qname">Science Quest</div>
       <div class="qsub">Living meadow, habitat trail &amp; discovery camp</div>
     </a>
+  </nav>
+</main>
+
+<aside class="card parent" aria-label="For the grown-up">
+  <div class="kicker">For the grown-up</div>
+  <h2>Planning &amp; results</h2>
+  <p class="muted" style="text-align:left">Read this before you begin, and use the record to gather all four results into one picture. These are planning tools for you — the child doesn't need them.</p>
+  <div class="plink-row">
+    <a class="plink" href="assessment-guide.html">
+      <div class="pl-title">Grown-up Assessment Guide</div>
+      <div class="qsub">How to run each quest &amp; read the reports</div>
+    </a>
+    <a class="plink" href="results-record.html">
+      <div class="pl-title">Combined Results Record</div>
+      <div class="qsub">Printable worksheet for all four results</div>
+    </a>
   </div>
-</div>
+</aside>
 </div>
 </body>
 </html>

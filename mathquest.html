@@ -307,6 +307,7 @@ function results(){
     <h2 style="text-align:center;margin-top:14px">Journey complete</h2>
     <p class="muted" style="text-align:center">Tell him he made it across. The rest of this page is for you.</p>
     <div style="text-align:center"><button class="btn" onclick="window.print()">Print or save these results</button></div>
+    <p class="muted" style="text-align:center;margin-top:8px">Answers stay only in this browser tab — nothing is saved or uploaded. Save or print this page before you close it.</p>
   </div>
   <div class="card"><h2>Math results</h2><p class="muted">Date: ${new Date().toLocaleDateString()}</p>
     <table><tr><th>Strand</th><th>Score</th><th></th><th>Mistake pattern</th></tr>${rows}</table>
@@ -332,7 +333,7 @@ function results(){
     <div class="rec" style="border-left-color:var(--gold)"><h3>Recheck</h3>
       <p>Work the plan for two ordinary weeks, then ask: too easy, productive challenge, or too hard? That's better evidence than re-testing. Full recheck at 6 weeks only if you chose Plan C.</p></div>
   </div>
-  <div class="card noprint" style="text-align:center"><button class="btn ghost" onclick="location.reload()">Start over</button></div>`);
+  <div class="card noprint" style="text-align:center"><p class="muted" style="margin-bottom:10px">For the grown-up</p><a class="btn ghost sm" style="text-decoration:none" href="index.html">Quest Home</a> <a class="btn ghost sm" style="text-decoration:none" href="assessment-guide.html">Parent Assessment Guide</a> <a class="btn ghost sm" style="text-decoration:none" href="results-record.html">Combined Results Record</a><div style="margin-top:12px"><button class="btn ghost" onclick="location.reload()">Start over</button></div></div>`);
 }
 
 function bind(){
