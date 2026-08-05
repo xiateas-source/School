@@ -12,6 +12,26 @@
       aspect-ratio:1 / 1;
       flex:0 0 auto;
     }
+
+    .cat-figure > .raster-sprite,
+    .active-cat-stage .raster-sprite,
+    .cat-art .raster-sprite,
+    .cafe-cat .raster-sprite,
+    #peek-cat-art .raster-sprite,
+    .evolution-art .raster-sprite {
+      width:100%;
+      height:100%;
+    }
+
+    .shop-art {
+      width:100%;
+      min-height:100px;
+    }
+
+    .shop-art .raster-sprite {
+      width:100%;
+      height:100px;
+    }
   `;
   document.head.appendChild(spriteStyles);
 
