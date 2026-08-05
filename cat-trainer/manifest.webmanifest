@@ -1,0 +1,19 @@
+{
+  "name": "Cat Trainer",
+  "short_name": "Cat Trainer",
+  "description": "Sirus's collectible-cat real-life quest game.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#111426",
+  "theme_color": "#171a2f",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
