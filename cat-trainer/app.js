@@ -1,6 +1,20 @@
 'use strict';
 
 (function loadCatTrainerApplication() {
+  const spriteStyles = document.createElement('style');
+  spriteStyles.textContent = `
+    .raster-sprite {
+      display:inline-block;
+      background-image:var(--sprite);
+      background-size:var(--ss);
+      background-position:var(--sx) var(--sy);
+      background-repeat:no-repeat;
+      aspect-ratio:1 / 1;
+      flex:0 0 auto;
+    }
+  `;
+  document.head.appendChild(spriteStyles);
+
   const files = ['app-core.js', 'app-ui.js'];
 
   function loadNext(index) {
