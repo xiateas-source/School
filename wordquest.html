@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Word Quest — Lantern Cat</title>
+<style>
+:root{--night:#161E38;--panel:#222D50;--panel2:#2B3862;--gold:#F2B544;--gold-soft:#F7D68A;
+--moss:#7BC5A4;--rose:#E08B8B;--sky:#8FB8E8;--parch:#F5EFE0;--muted:#A6B0CE;--shadow:0 8px 28px rgba(0,0,0,.35)}
+*{box-sizing:border-box}html,body{margin:0;padding:0}
+body{background:radial-gradient(1200px 600px at 50% -10%, #2A3560 0%, var(--night) 60%);color:var(--parch);
+font-family:"Verdana","Trebuchet MS",system-ui,sans-serif;min-height:100vh;padding:16px;font-size:17px;line-height:1.55}
+.wrap{max-width:760px;margin:0 auto}
+h1,h2,h3{font-family:"Georgia","Iowan Old Style",serif;font-weight:700;line-height:1.2;margin:0 0 10px}
+h1{font-size:2rem}h2{font-size:1.4rem}h3{font-size:1.1rem}
+.card{background:var(--panel);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px;box-shadow:var(--shadow);margin-bottom:16px}
+.muted{color:var(--muted);font-size:.92rem}
+.scene{position:relative;height:120px;margin:-6px -6px 14px;border-radius:14px;overflow:hidden;background:linear-gradient(180deg,#1B2444 0%,#243055 100%)}
+.scene svg.terrain{position:absolute;inset:0;width:100%;height:100%}
+.traveler{position:absolute;bottom:20px;left:0;width:78px;height:58px;transition:transform 1.1s cubic-bezier(.4,0,.2,1)}
+.traveler svg{width:100%;height:100%;overflow:visible}
+.bob{animation:bob 1.6s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+.glow{animation:flicker 2.4s ease-in-out infinite}
+@keyframes flicker{0%,100%{opacity:.22}50%{opacity:.42}}
+.flag{position:absolute;bottom:24px;right:12px;font-size:1.5rem;opacity:.9}
+.steps{display:flex;gap:6px;justify-content:center;margin-top:10px}
+.step{flex:1;height:5px;border-radius:99px;background:rgba(255,255,255,.13)}
+.step.done{background:var(--moss)}.step.now{background:var(--gold)}
+.btn{display:inline-block;background:var(--gold);color:#20180A;border:none;border-radius:14px;padding:14px 22px;font-size:1.05rem;font-weight:700;cursor:pointer;font-family:inherit;margin:6px 6px 6px 0;box-shadow:0 4px 0 #C98F28;transition:transform .08s}
+.btn:active{transform:translateY(2px);box-shadow:0 2px 0 #C98F28}
+.btn.ghost{background:transparent;color:var(--parch);border:2px solid rgba(255,255,255,.25);box-shadow:none}
+.btn.sm{padding:9px 14px;font-size:.9rem}
+.btn:focus-visible,.opt:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+.opt{display:block;width:100%;text-align:left;background:var(--panel2);color:var(--parch);border:2px solid rgba(255,255,255,.12);border-radius:14px;padding:15px 17px;margin:9px 0;font-size:1.02rem;cursor:pointer;font-family:inherit;line-height:1.45}
+.opt:hover{border-color:var(--gold)}
+.opts-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.opts-grid .opt{margin:0;text-align:center;padding:16px 10px}
+.qtext{font-size:1.12rem;margin:14px 0 4px}
+.sent{font-family:"Georgia",serif;font-size:1.45rem;color:var(--gold-soft);text-align:center;margin:16px 0;line-height:1.5}
+.pill{display:inline-block;padding:4px 11px;border-radius:99px;font-size:.78rem;font-weight:700}
+.p-sec{background:#2E4A44;color:var(--moss)}.p-em{background:#463B22;color:var(--gold)}.p-teach{background:#4A2E33;color:var(--rose)}
+.parentbar{background:#3B2E52;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:11px 15px;font-size:.88rem;margin-bottom:14px;color:var(--gold-soft)}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.93rem}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.12);vertical-align:top}
+th{color:var(--muted);font-weight:700;font-size:.82rem;text-transform:uppercase;letter-spacing:.05em}
+.rec{background:var(--panel2);border-radius:14px;padding:18px;margin:12px 0;border-left:4px solid var(--moss)}
+.rec h3{color:var(--moss);margin-bottom:6px}
+.stepnum{color:var(--muted);font-size:.82rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+ul{padding-left:20px}li{margin:5px 0}
+@media print{body{background:#fff;color:#000}.card,.rec{background:#fff;border:1px solid #999;box-shadow:none}.noprint,.scene,.steps{display:none}h1,h2,h3{color:#000}.muted,th{color:#444}.pill{border:1px solid #666;color:#000}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+const app=document.getElementById('app');
+const S={screen:'home',qi:0,ans:{},part:1,write:{}};
+
+const Q=[
+/* PART 1 — WORD WORKSHOP */
+{p:1,s:'partsofspeech',q:'Which word in this sentence is the <b>naming word</b> (noun)?<div class="sent">The curious puppy chased the ball.</div>',o:[['puppy',1],['chased','picked the action word'],['curious','picked the describing word'],['the','picked an article']]},
+{p:1,s:'partsofspeech',q:'Which word is the <b>action word</b> (verb)?<div class="sent">My aunt bakes bread every Sunday.</div>',o:[['bakes',1],['aunt','picked the naming word'],['bread','picked a naming word'],['Sunday','picked a naming word']]},
+{p:1,s:'partsofspeech',q:'Which one is a <b>proper noun</b>?',o:[['Texas',1],['river','common noun'],['dog','common noun'],['school','common noun']]},
+{p:1,s:'partsofspeech',q:'Which word is a <b>describing word</b> (adjective)?<div class="sent">A tiny beetle crawled slowly.</div>',o:[['tiny',1],['crawled','picked the verb'],['beetle','picked the noun'],['slowly','picked the adverb']]},
+{p:1,s:'contractions',q:'Which is the contraction for <b>do not</b>?',o:[["don't",1],["dont'","apostrophe misplaced"],["do'nt","apostrophe misplaced"],["dosn't","spelling error"]]},
+{p:1,s:'contractions',q:'Which is the contraction for <b>will not</b>?',o:[["won't",1],["willn't","regularised an irregular form"],["wo'nt","apostrophe misplaced"],["will'nt","apostrophe misplaced"]]},
+{p:1,s:'contractions',q:'<b>She is</b> going outside. Which contraction fits?',o:[["She's",1],["Shes","missing apostrophe"],["She're","wrong verb form"],["Shi's","spelling error"]]},
+{p:1,s:'interjection',q:'Which word is the <b>interjection</b> (the word that shows sudden feeling)?<div class="sent">Wow, that rainbow is huge!</div>',o:[['Wow',1],['rainbow','picked the noun'],['huge','picked the adjective'],['is','picked the verb']]},
+/* PART 2 — SENTENCE RIVER */
+{p:2,s:'senttype',q:'What kind of sentence is this?<div class="sent">Please close the window.</div>',o:[['Command',1],['Statement','confused telling with asking someone to act'],['Question','no question is being asked'],['Exclamation','no strong feeling shown']]},
+{p:2,s:'senttype',q:'What kind of sentence is this?<div class="sent">What a loud thunderstorm!</div>',o:[['Exclamation',1],['Question','began with "what" but asks nothing'],['Statement','missed the strong feeling'],['Command','no one is being told to act']]},
+{p:2,s:'senttype',q:'What kind of sentence is this?<div class="sent">The library closes at five.</div>',o:[['Statement',1],['Command','no one is being told to act'],['Question','no question asked'],['Exclamation','no strong feeling shown']]},
+{p:2,s:'senttype',q:'What kind of sentence is this?<div class="sent">Have you seen my shoes?</div>',o:[['Question',1],['Statement','missed the question'],['Command','no one is being told to act'],['Exclamation','no strong feeling shown']]},
+{p:2,s:'punct',q:'Which mark belongs at the end?<div class="sent">Have you fed the fish today ___</div>',o:[['?',1],['.','end mark does not match the sentence type'],['!','end mark does not match the sentence type'],[',','not an end mark']]},
+{p:2,s:'punct',q:'Which mark belongs at the end?<div class="sent">That is the biggest dog I have ever seen ___</div>',o:[['!',1],['?','end mark does not match the sentence type'],[',','not an end mark'],['no mark needed','end marks not secure']]},
+{p:2,s:'capital',q:'Which version is written correctly?',o:[['My brother Tomas plays soccer on Saturdays.',1],['my brother tomas plays soccer on saturdays.','no capitals used'],['My brother tomas plays soccer on saturdays.','proper nouns not capitalised'],['My Brother Tomas Plays Soccer on Saturdays.','over-capitalised']]},
+{p:2,s:'alpha',q:'Which list is in alphabetical order?',o:[['apple, garden, nest, whale',1],['apple, nest, garden, whale','partly ordered'],['whale, nest, garden, apple','reverse order'],['garden, apple, whale, nest','not ordered']]},
+/* PART 3 — STORY TOWER */
+{p:3,s:'para',q:'Put the story in order. Which sentence comes <b>first</b>?',o:[['First, Lena cracked two eggs into a bowl.',1],['Then she added flour and stirred it together.','picked a middle step'],['Finally, she baked the cookies until golden brown.','picked the last step']]},
+{p:3,s:'para',q:'Which sentence comes <b>last</b> in that same story?',o:[['Finally, she baked the cookies until golden brown.',1],['First, Lena cracked two eggs into a bowl.','picked the first step'],['Then she added flour and stirred it together.','picked a middle step']]},
+{p:3,s:'para',q:'Which one is the best <b>topic sentence</b> for a paragraph about gardens?',o:[['A garden needs sunlight, water, and good soil to grow well.',1],['A tomato is red.','a detail, not a topic sentence'],['My neighbour grows tomatoes.','too narrow to open a paragraph'],['I like dirt.','not about the topic']]},
+{p:3,s:'para',q:'Which sentence does <b>not</b> belong in a paragraph about how bees make honey?',o:[['My cousin is scared of bees.',1],['Bees collect nectar from flowers.','on topic'],['They store the nectar in the hive.','on topic'],['The nectar slowly turns into honey.','on topic']]},
+/* GRADE 3 PREVIEW */
+{p:3,s:'preview',q:'Read this, then answer.<div class="sent" style="font-size:1.05rem;font-family:Verdana">The old dog waited by the door every afternoon, ears perked at every distant sound. When the school bus finally rumbled down the street, his tail became a blur.</div>What is this mostly about?',o:[['A dog eagerly waiting for someone to come home',1],['How school buses drive down streets','picked a detail as the main idea'],['Why dogs have tails','not in the passage']]},
+{p:3,s:'preview',q:'Which phrase best shows how <b>excited</b> the dog was?',o:[['his tail became a blur',1],['every afternoon','shows time, not feeling'],['down the street','shows place, not feeling']]},
+{p:3,s:'preview',q:'Is that passage mostly a <b>story</b> or mostly <b>facts to teach you something</b>?',o:[['A story',1],['Facts to teach you something','text type not yet secure']]},
+{p:3,s:'preview',q:'A paragraph will explain <b>why cats sleep so much</b>. Which is the best opening sentence?',o:[['Cats sleep more than most animals, and there are good reasons why.',1],['My cat is named Pepper.','too narrow, not about the topic'],['Cats have whiskers.','a fact, but off topic'],['Sleeping is nice.','too vague to open a paragraph']]}
+];
+
+const STRANDS={partsofspeech:'Nouns, verbs & adjectives',contractions:'Contractions',interjection:'Interjections',
+senttype:'Sentence types',punct:'End punctuation',capital:'Capitalisation',alpha:'Alphabetical order',
+para:'Paragraph structure',preview:'Grade 3 preview'};
+const PARTS={1:{name:'Word Workshop',terrain:'workshop',flag:'🔤'},2:{name:'Sentence River',terrain:'river',flag:'🌊'},3:{name:'Story Tower',terrain:'tower',flag:'🏁'}};
+
+const CAT=`<svg viewBox="0 0 80 60" aria-hidden="true">
+  <path d="M13 41 C3 39 5 26 13 29" stroke="#D9782F" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M9 37 C6.5 36 6.5 33 8 31.5" stroke="#B65A1C" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+  <path d="M6.5 28.5 C6 27 7 25.5 9 25" stroke="#B65A1C" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  <rect x="21" y="46" width="5" height="10" rx="2.5" fill="#C96A24"/><rect x="37" y="46" width="5" height="10" rx="2.5" fill="#C96A24"/>
+  <ellipse cx="31" cy="40" rx="18" ry="11" fill="#E88A3C"/>
+  <path d="M24 31.5 L23 47" stroke="#C4661F" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <path d="M31 30.5 L30.5 48" stroke="#C4661F" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <path d="M38 31.5 L38.5 47.5" stroke="#C4661F" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <ellipse cx="33" cy="45" rx="12" ry="5" fill="#F7C48E" opacity=".55"/>
+  <path d="M27 33 L19 19" stroke="#8A6A3A" stroke-width="2.5" stroke-linecap="round"/>
+  <circle class="glow" cx="17" cy="21" r="11" fill="#F2B544" opacity=".28"/>
+  <rect x="13" y="17" width="8.5" height="9.5" rx="2" fill="#F2B544" stroke="#C98F28" stroke-width="1.2"/>
+  <circle cx="51" cy="30" r="12.5" fill="#E88A3C"/>
+  <path d="M41 22 L42 11 L51 19 Z" fill="#E88A3C"/><path d="M57 18 L63 10 L64 22 Z" fill="#E88A3C"/>
+  <path d="M44.5 20 L45 14.5 L49 19 Z" fill="#F2A9A0" opacity=".8"/><path d="M58.5 18 L61.5 13.5 L62 20 Z" fill="#F2A9A0" opacity=".8"/>
+  <path d="M46 21 L48 25.5 M51.5 20 L52 25 M57 21 L55.5 25.5" stroke="#C4661F" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+  <ellipse cx="58" cy="33.5" rx="7" ry="5.5" fill="#F7C48E" opacity=".6"/>
+  <ellipse cx="56" cy="29" rx="3" ry="3.6" fill="#7BC5A4"/><ellipse cx="56" cy="29" rx="1.1" ry="3.2" fill="#1E2A22"/>
+  <circle cx="57.2" cy="27.6" r=".9" fill="#F5EFE0" opacity=".9"/>
+  <path d="M61.5 33 l3.5 1.2 -3.5 1.2z" fill="#E08B8B"/>
+  <path d="M61 36 L71 35.5 M61 37.5 L70 39.5" stroke="#F5EFE0" stroke-width="1" opacity=".7" stroke-linecap="round"/>
+</svg>`;
+
+const TERRAIN={
+workshop:`<svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none"><rect width="400" height="120" fill="#1B2444"/>
+<circle cx="345" cy="24" r="11" fill="#F7D68A" opacity=".45"/>
+<g fill="#141B36"><rect x="20" y="46" width="90" height="58" rx="3"/><rect x="150" y="38" width="80" height="66" rx="3"/><rect x="270" y="52" width="86" height="52" rx="3"/></g>
+<g fill="#C4661F" opacity=".55"><rect x="26" y="52" width="10" height="22" rx="1"/><rect x="40" y="50" width="8" height="24" rx="1"/><rect x="52" y="54" width="11" height="20" rx="1"/></g>
+<g fill="#7BC5A4" opacity=".45"><rect x="156" y="44" width="9" height="24" rx="1"/><rect x="169" y="46" width="11" height="22" rx="1"/><rect x="184" y="42" width="8" height="26" rx="1"/></g>
+<g fill="#8FB8E8" opacity=".4"><rect x="276" y="58" width="10" height="20" rx="1"/><rect x="290" y="56" width="9" height="22" rx="1"/><rect x="303" y="60" width="11" height="18" rx="1"/></g>
+<g fill="#F2B544" opacity=".8"><circle cx="130" cy="42" r="3.5"/><circle cx="250" cy="46" r="3.5"/></g>
+<path d="M0 103 Q100 99 200 104 Q300 109 400 102 L400 120 L0 120 Z" fill="#2A3557"/></svg>`,
+river:`<svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none"><rect width="400" height="120" fill="#1B2444"/>
+<circle cx="60" cy="26" r="12" fill="#F7D68A" opacity=".45"/>
+<g fill="#141B36"><path d="M0 78 Q60 68 120 76 Q180 84 240 74 Q300 64 400 74 L400 120 L0 120z"/></g>
+<g stroke="#8FB8E8" stroke-width="2" fill="none" opacity=".45">
+<path d="M20 92 Q40 88 60 92 Q80 96 100 92"/><path d="M130 100 Q150 96 170 100 Q190 104 210 100"/>
+<path d="M240 90 Q260 86 280 90 Q300 94 320 90"/></g>
+<g fill="#2A3557"><ellipse cx="80" cy="86" rx="16" ry="5"/><ellipse cx="185" cy="94" rx="18" ry="5"/><ellipse cx="295" cy="84" rx="15" ry="5"/></g>
+<g fill="#F5EFE0" opacity=".4"><circle cx="150" cy="24" r="1.3"/><circle cx="230" cy="18" r="1.1"/><circle cx="300" cy="30" r="1.2"/></g></svg>`,
+tower:`<svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none"><rect width="400" height="120" fill="#1B2444"/>
+<circle cx="70" cy="26" r="11" fill="#F7D68A" opacity=".45"/>
+<g fill="#141B36"><rect x="290" y="18" width="60" height="86" rx="3"/><path d="M285 20 L320 2 L355 20z"/></g>
+<g fill="#F2B544" opacity=".7"><rect x="302" y="34" width="12" height="14" rx="2"/><rect x="326" y="34" width="12" height="14" rx="2"/><rect x="302" y="60" width="12" height="14" rx="2"/><rect x="326" y="60" width="12" height="14" rx="2"/></g>
+<g fill="#141B36"><rect x="30" y="70" width="52" height="34" rx="2"/><rect x="120" y="60" width="46" height="44" rx="2"/><rect x="200" y="76" width="50" height="28" rx="2"/></g>
+<g fill="#C4661F" opacity=".4"><rect x="36" y="76" width="8" height="18"/><rect x="48" y="76" width="9" height="18"/><rect x="126" y="66" width="8" height="20"/><rect x="138" y="66" width="10" height="20"/></g>
+<path d="M0 103 Q100 99 200 104 Q300 109 400 102 L400 120 L0 120 Z" fill="#2A3557"/></svg>`};
+
+function render(h){app.innerHTML=h;window.scrollTo(0,0)}
+function go(s){S.screen=s;draw()}
+function band(p){return p>=.85?['Secure','p-sec']:p>=.6?['Emerging','p-em']:['Needs teaching','p-teach']}
+function scene(kind,pct,part){
+  const x=4+pct*74;
+  const dots=[1,2,3].map(n=>`<div class="step ${part>n?'done':part===n?'now':''}"></div>`).join('');
+  return `<div class="scene">${TERRAIN[kind]}<div class="flag">${PARTS[Math.min(part,3)].flag}</div>
+  <div class="traveler" style="transform:translateX(${x}%)"><div class="bob">${CAT}</div></div></div><div class="steps">${dots}</div>`;
+}
+function partRange(p){const s=Q.findIndex(q=>q.p===p);let e=s;while(e<Q.length&&Q[e].p===p)e++;return[s,e]}
+
+function draw(){({home,intro,quiz,writeIntro,writeRate,results})[S.screen]();bind()}
+
+function home(){
+  render(`<div class="card">${scene('workshop',0,1)}
+  <h1 style="text-align:center;margin-top:14px">Word Quest</h1>
+  <p class="muted" style="text-align:center">Visit the word workshop, cross the sentence river, and climb the story tower with the lantern cat.</p>
+  <p style="margin:18px 0;text-align:center">There are <b>three parts</b> and one short writing task at the end. You can stop after any part.</p>
+  <div style="text-align:center"><button class="btn" data-go="1">Start the journey</button></div></div>
+  <div class="card"><div class="parentbar">For the grown-up, before you begin</div>
+  <ul class="muted">
+    <li><b>Paper and pencil needed only for the very last task</b> — one sentence and a short paragraph. Everything else is tapping.</li>
+    <li>No teaching first, no retries. Read a question aloud if he asks; that's not a hint.</li>
+    <li>Wrong answers are designed on purpose — each matches a specific misunderstanding, so results tell you <i>why</i>, not just <i>what</i>.</li>
+    <li>On the writing task, do not correct spelling or letter formation. It's measuring sentence control, not handwriting.</li>
+    <li>If he's fading, stop and finish another day. He never sees a score.</li>
+  </ul></div>`);
+}
+
+function intro(){
+  const p=S.part,P=PARTS[p],[s]=partRange(p);
+  const blurb={1:'The workshop is full of loose words waiting to be sorted.',
+    2:'Stepping stones cross the river. Each one is a sentence.',
+    3:'The tower is built out of paragraphs. Find what holds them together.'}[p];
+  render(`<div class="card">${scene(P.terrain,0,p)}
+  <h2 style="text-align:center;margin-top:14px">Part ${p} — ${P.name}</h2>
+  <p style="text-align:center">${blurb}</p>
+  <p class="muted" style="text-align:center">Take your time. There's no clock.</p>
+  <div style="text-align:center"><button class="btn" data-start="${s}">Keep going</button></div></div>`);
+}
+
+function quiz(){
+  const q=Q[S.qi],P=PARTS[q.p],[s,e]=partRange(q.p);
+  const pct=(S.qi-s)/(e-s);
+  const short=q.o.every(o=>String(o[0]).length<=14);
+  render(`<div class="card">${scene(P.terrain,pct,q.p)}
+  <div class="stepnum" style="margin-top:12px">${P.name}</div>
+  <div class="qtext">${q.q}</div>
+  ${short?`<div class="opts-grid">${q.o.map((o,i)=>`<button class="opt" data-opt="${i}">${o[0]}</button>`).join('')}</div>`
+    :q.o.map((o,i)=>`<button class="opt" data-opt="${i}">${o[0]}</button>`).join('')}
+  ${S.qi>s?'<div style="margin-top:12px"><button class="btn ghost sm" data-back="1">← Back</button></div>':''}</div>`);
+}
+
+function writeIntro(){
+  render(`<div class="card">${scene('tower',1,3)}
+  <h2 style="text-align:center;margin-top:14px">Last stop — The Writing Desk</h2>
+  <p style="text-align:center">Two short things to write on paper. That's the whole task.</p>
+  <p class="muted" style="text-align:center"><b>1.</b> Write one sentence that <i>asks something</i>.<br><b>2.</b> Write 3–4 sentences about an animal you know well.</p>
+  <div style="text-align:center"><button class="btn" data-go="wr">He's finished writing</button></div>
+  <div class="parentbar" style="margin-top:18px">Say the two tasks aloud; don't write them down for him to copy. Do not correct anything while he writes. If he stalls at the paragraph, let him say it out loud first, then write — note that you did.</div></div>`);
+}
+
+const WQ=[
+ {k:'q_sent',t:'His question sentence',o:[['Correct — a real question, with a question mark',2],['Nearly — a question, but the end mark is missing or wrong',1],['Not yet — not a question, or he could not produce one',0]]},
+ {k:'p_topic',t:'Did the paragraph start with a topic sentence?',o:[['Yes — a clear opening sentence about the animal',2],['Sort of — it starts with a detail instead',1],['No topic sentence',0]]},
+ {k:'p_detail',t:'Did it include at least two real details?',o:[['Yes — two or more details',2],['One detail only',1],['No details',0]]},
+ {k:'p_mech',t:'Capital letters and end marks (ignore spelling and handwriting)',o:[['Mostly correct throughout',2],['Some sentences correct, some not',1],['Rarely used',0]]},
+ {k:'stamina',t:'How did the writing itself go?',o:[['Wrote it himself without much friction',2],['Wrote it, but it was effortful or slow',1],['Needed to say it aloud first, or I scribed part of it',0]]}
+];
+
+function writeRate(){
+  const i=S.wi||0;
+  if(i>=WQ.length){go('results');return}
+  const w=WQ[i];
+  render(`<div class="card">${scene('tower',1,3)}
+  <div class="parentbar" style="margin-top:14px">For the grown-up · ${i+1} of ${WQ.length}</div>
+  <h3>${w.t}</h3>
+  ${w.o.map((o,j)=>`<button class="opt" data-w="${j}">${o[0]}</button>`).join('')}</div>`);
+}
+
+function score(){
+  const st={};
+  Q.forEach((q,i)=>{
+    st[q.s]=st[q.s]||{label:STRANDS[q.s],got:0,max:0,errs:[]};
+    st[q.s].max++;
+    const pick=S.ans[i];
+    if(pick!=null&&q.o[pick][1]===1)st[q.s].got++;
+    else if(pick!=null&&q.o[pick][1])st[q.s].errs.push(q.o[pick][1]);
+  });
+  Object.values(st).forEach(v=>v.pct=v.got/v.max);
+  return st;
+}
+
+function plan(st,w){
+  const core=Object.entries(st).filter(([k])=>k!=='preview').map(([,v])=>v);
+  const pct=core.reduce((a,v)=>a+v.got,0)/core.reduce((a,v)=>a+v.max,0);
+  const weak=core.filter(v=>v.pct<.7).length;
+  if(pct>=.85&&weak<=1)return{t:'Plan A — Start Grade 3 Language Arts',
+    b:'Grade 2 grammar and paragraph foundations are solid. Begin Grade 3 and treat any isolated miss as it arises, rather than pre-reviewing.'};
+  if(pct>=.65)return{t:'Plan B — Start Grade 3, with one short warm-up strand',
+    b:'Most of Grade 2 is secure. Begin Grade 3 on schedule and spend 5 minutes a few days a week on the single weakest strand below.'};
+  return{t:'Plan C — A short grammar repair period first',
+    b:'Sentence-level control is still developing, and Grade 3 writing leans on it heavily. Spend 2–3 weeks on the weakest strands below — kept short and separate from any writing volume — then begin Grade 3.'};
+}
+
+const FIX={
+partsofspeech:'Parts of speech stick faster through noticing than labelling. Pick one part of speech for the week and hunt for it out loud in books he already reads — no worksheet, no sorting page.',
+contractions:'Contractions are a spelling-pattern issue, not a grammar one. Handle them inside spelling practice: two at a time, showing which letters the apostrophe replaced.',
+interjection:'Interjections take about five minutes to teach once. Read a comic or dialogue-heavy page together and spot them — that is usually enough.',
+senttype:'Sentence types are best practised orally before they are practised in writing. Say a sentence, have him name the type, then swap roles — under two minutes, several times a week.',
+punct:'End punctuation errors usually follow sentence-type confusion, not carelessness. Fix sentence types first; the marks tend to follow.',
+capital:'Capitalisation is a proofreading habit rather than new knowledge. Have him check his own one sentence for capitals after writing — one pass, one thing to look for.',
+alpha:'Alphabetical order needs a real use to matter. Alphabetise something genuine — a shelf, a recipe list, names — rather than a worksheet list.',
+para:'Paragraph structure is easier said than written. Have him tell you a paragraph aloud, naming which sentence is the opener, before anything goes on paper.'
+};
+
+function results(){
+  const st=score(),P=plan(st);
+  const core=Object.entries(st).filter(([k])=>k!=='preview');
+  const rows=core.map(([k,v])=>{const[l,c]=band(v.pct);const e=[...new Set(v.errs)];
+    return `<tr><td>${v.label}</td><td>${v.got}/${v.max}</td><td><span class="pill ${c}">${l}</span></td><td class="muted">${e.length?e.join('; '):'—'}</td></tr>`}).join('');
+  const pv=st.preview;
+  const sorted=core.slice().sort((a,b)=>a[1].pct-b[1].pct);
+  const weakKey=sorted[0][0],weak=sorted[0][1];
+  const secure=core.filter(([,v])=>v.pct>=.85).map(([,v])=>v.label);
+  const w=S.write;
+  const wTotal=Object.values(w).reduce((a,b)=>a+b,0);
+  const stam=w.stamina;
+  const wRows=WQ.map(q=>{
+    const opt=q.o.find(o=>o[1]===w[q.k]);
+    return `<tr><td>${q.t}</td><td class="muted">${opt?opt[0]:'not recorded'}</td></tr>`;
+  }).join('');
+
+  const stamNote = stam===2
+    ? 'Writing itself was not the bottleneck here — what the grammar sections show is real, and written work can be used normally to demonstrate knowledge.'
+    : stam===1
+    ? 'Writing was effortful. That means any grammar strand above may be <i>stronger</i> than it looks on paper — check those skills orally before deciding he does not know them, and keep writing volume small while teaching them.'
+    : 'He needed to speak it first or have part scribed. Treat the grammar results above as a floor, not a ceiling — and for now, let him show what he knows by talking, pointing, or dictating, with handwriting practised briefly and separately.';
+
+  render(`<div class="card noprint">${scene('tower',1,4)}
+  <h2 style="text-align:center;margin-top:14px">Journey complete</h2>
+  <p class="muted" style="text-align:center">Tell him he reached the top of the tower. The rest is for you.</p>
+  <div style="text-align:center"><button class="btn" onclick="window.print()">Print or save these results</button></div></div>
+  <div class="card"><h2>Language Arts results</h2><p class="muted">Date: ${new Date().toLocaleDateString()}</p>
+  <table><tr><th>Strand</th><th>Score</th><th></th><th>Mistake pattern</th></tr>${rows}</table>
+  <p class="muted"><b>Grade 3 preview:</b> ${pv.got}/${pv.max}. On entry, 0–1 is normal, 2 shows emerging readiness, 3–4 shows strong familiarity with main idea, word choice, text type and topic sentences.</p>
+  <h3 style="margin-top:20px">Writing sample</h3>
+  <table>${wRows}</table>
+  <p class="muted">Writing sample total: ${wTotal}/10</p></div>
+  <div class="card"><h2>What to do about it</h2>
+  <div class="rec"><h3>${P.t}</h3><p>${P.b}</p></div>
+  <div class="rec" style="border-left-color:var(--gold)"><h3>Read the writing sample first</h3><p>${stamNote}</p></div>
+  <div class="rec"><h3>Start here — the single weakest strand</h3>
+    <p><b>${weak.pct<.85?weak.label:'Nothing needs repair'}</b>${weak.pct<.85?` came in at ${weak.got}/${weak.max}.`:' — every strand is secure.'}</p>
+    ${weak.pct<.85?`<p class="muted"><b>How:</b> ${FIX[weakKey]}</p>
+    <p class="muted"><b>When:</b> learn-together slot, early in the day. 5–10 minutes. Never as independent work while a skill is still shaky.</p>
+    <p class="muted"><b>When to stop:</b> when he gets three right cold, on two different days — then move to the next weakest, one at a time.</p>`:''}</div>
+  ${secure.length?`<div class="rec"><h3>Don't re-teach these</h3><p>Secure: <b>${secure.join(', ')}</b>. Moving quickly through this content in Grade 3 is reasonable.</p></div>`:''}
+  <div class="rec" style="border-left-color:var(--gold)"><h3>Keep handwriting out of the way</h3>
+    <p class="muted">Nothing above requires him to prove grammar knowledge in writing. Oral answers, pointing, dictating, or one written example instead of ten all count. Keep handwriting practice short, separate, and not attached to whether he understood the lesson.</p></div>
+  <div class="rec" style="border-left-color:var(--gold)"><h3>Recheck</h3>
+    <p>Work the plan for two ordinary weeks, then ask: too easy, productive challenge, or too hard? Full recheck at 6 weeks only if you chose Plan C.</p></div></div>
+  <div class="card noprint" style="text-align:center"><button class="btn ghost" onclick="location.reload()">Start over</button></div>`);
+}
+
+function bind(){
+  app.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{
+    const v=b.dataset.go;
+    if(v==='wr'){S.wi=0;go('writeRate')}else{S.part=+v;go('intro')}});
+  app.querySelectorAll('[data-start]').forEach(b=>b.onclick=()=>{S.qi=+b.dataset.start;go('quiz')});
+  app.querySelectorAll('[data-opt]').forEach(b=>b.onclick=()=>{
+    S.ans[S.qi]=+b.dataset.opt;
+    const cur=Q[S.qi].p;S.qi++;
+    if(S.qi>=Q.length){go('writeIntro');return}
+    if(Q[S.qi].p!==cur){S.part=Q[S.qi].p;go('intro');return}
+    draw();});
+  app.querySelectorAll('[data-w]').forEach(b=>b.onclick=()=>{
+    const i=S.wi||0,w=WQ[i];
+    S.write[w.k]=w.o[+b.dataset.w][1];
+    S.wi=i+1;
+    if(S.wi>=WQ.length)go('results');else draw();});
+  app.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>{if(S.qi>0)S.qi--;draw()});
+}
+draw();
+</script>
+</body>
+</html>

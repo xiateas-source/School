@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Science Quest — Lantern Cat</title>
+<style>
+:root{--night:#161E38;--panel:#222D50;--panel2:#2B3862;--gold:#F2B544;--gold-soft:#F7D68A;
+--moss:#7BC5A4;--rose:#E08B8B;--sky:#8FB8E8;--parch:#F5EFE0;--muted:#A6B0CE;--shadow:0 8px 28px rgba(0,0,0,.35)}
+*{box-sizing:border-box}html,body{margin:0;padding:0}
+body{background:radial-gradient(1200px 600px at 50% -10%, #2A3560 0%, var(--night) 60%);color:var(--parch);
+font-family:"Verdana","Trebuchet MS",system-ui,sans-serif;min-height:100vh;padding:16px;font-size:17px;line-height:1.55}
+.wrap{max-width:760px;margin:0 auto}
+h1,h2,h3{font-family:"Georgia","Iowan Old Style",serif;font-weight:700;line-height:1.2;margin:0 0 10px}
+h1{font-size:2rem}h2{font-size:1.4rem}h3{font-size:1.1rem}
+.card{background:var(--panel);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px;box-shadow:var(--shadow);margin-bottom:16px}
+.muted{color:var(--muted);font-size:.92rem}
+.scene{position:relative;height:120px;margin:-6px -6px 14px;border-radius:14px;overflow:hidden;background:linear-gradient(180deg,#1B2444 0%,#243055 100%)}
+.scene svg.terrain{position:absolute;inset:0;width:100%;height:100%}
+.traveler{position:absolute;bottom:20px;left:0;width:78px;height:58px;transition:transform 1.1s cubic-bezier(.4,0,.2,1)}
+.traveler svg{width:100%;height:100%;overflow:visible}
+.bob{animation:bob 1.6s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+.glow{animation:flicker 2.4s ease-in-out infinite}
+@keyframes flicker{0%,100%{opacity:.22}50%{opacity:.42}}
+.flag{position:absolute;bottom:24px;right:12px;font-size:1.5rem;opacity:.9}
+.steps{display:flex;gap:6px;justify-content:center;margin-top:10px}
+.step{flex:1;height:5px;border-radius:99px;background:rgba(255,255,255,.13)}
+.step.done{background:var(--moss)}.step.now{background:var(--gold)}
+.btn{display:inline-block;background:var(--gold);color:#20180A;border:none;border-radius:14px;padding:14px 22px;font-size:1.05rem;font-weight:700;cursor:pointer;font-family:inherit;margin:6px 6px 6px 0;box-shadow:0 4px 0 #C98F28;transition:transform .08s}
+.btn:active{transform:translateY(2px);box-shadow:0 2px 0 #C98F28}
+.btn.ghost{background:transparent;color:var(--parch);border:2px solid rgba(255,255,255,.25);box-shadow:none}
+.btn.sm{padding:9px 14px;font-size:.9rem}
+.btn:focus-visible,.opt:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+.opt{display:block;width:100%;text-align:left;background:var(--panel2);color:var(--parch);border:2px solid rgba(255,255,255,.12);border-radius:14px;padding:15px 17px;margin:9px 0;font-size:1.02rem;cursor:pointer;font-family:inherit;line-height:1.45}
+.opt:hover{border-color:var(--gold)}
+.opts-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.opts-grid .opt{margin:0;text-align:center;padding:16px 10px}
+.qtext{font-size:1.12rem;margin:14px 0 4px}
+.pill{display:inline-block;padding:4px 11px;border-radius:99px;font-size:.78rem;font-weight:700}
+.p-sec{background:#2E4A44;color:var(--moss)}.p-em{background:#463B22;color:var(--gold)}.p-teach{background:#4A2E33;color:var(--rose)}
+.parentbar{background:#3B2E52;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:11px 15px;font-size:.88rem;margin-bottom:14px;color:var(--gold-soft)}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.93rem}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.12);vertical-align:top}
+th{color:var(--muted);font-weight:700;font-size:.82rem;text-transform:uppercase;letter-spacing:.05em}
+.rec{background:var(--panel2);border-radius:14px;padding:18px;margin:12px 0;border-left:4px solid var(--moss)}
+.rec h3{color:var(--moss);margin-bottom:6px}
+.stepnum{color:var(--muted);font-size:.82rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+ul{padding-left:20px}li{margin:5px 0}
+@media print{body{background:#fff;color:#000}.card,.rec{background:#fff;border:1px solid #999;box-shadow:none}.noprint,.scene,.steps{display:none}h1,h2,h3{color:#000}.muted,th{color:#444}.pill{border:1px solid #666;color:#000}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+const app=document.getElementById('app');
+const S={screen:'home',qi:0,ans:{},part:1};
+
+const Q=[
+/* PART 1 — LIVING WORLD (Grade 2 life science) */
+{p:1,s:'living',q:'Which of these is a <b>living</b> thing?',o:[['A fern growing in a pot',1],['A river','moves but is not alive'],['A rock','not alive'],['A cloud','changes but is not alive']]},
+{p:1,s:'living',q:'What do plants need to grow?',o:[['Sunlight, water, and soil',1],['Only water','incomplete needs'],['Only sunlight','incomplete needs'],['Meat and bones','plant needs not secure']]},
+{p:1,s:'living',q:'A <b>vertebrate</b> is an animal that has…',o:[['a backbone',1],['fur','vertebrate meaning not secure'],['wings','vertebrate meaning not secure'],['more than four legs','vertebrate meaning not secure']]},
+{p:1,s:'living',q:'Which animal is <b>cold-blooded</b>?',o:[['A snake',1],['A dog','warm-blooded'],['An owl','warm-blooded'],['A rabbit','warm-blooded']]},
+{p:1,s:'living',q:'Which group do frogs belong to?',o:[['Amphibians',1],['Reptiles','common confusion with reptiles'],['Mammals','animal groups not secure'],['Fish','animal groups not secure']]},
+/* PART 2 — HABITAT TRAIL */
+{p:2,s:'food',q:'Which food chain is in the right order?',o:[['grass → mouse → hawk',1],['hawk → mouse → grass','reversed the energy flow'],['mouse → grass → hawk','order scrambled'],['grass → hawk → mouse','order scrambled']]},
+{p:2,s:'food',q:'A <b>predator</b> is an animal that…',o:[['hunts and eats other animals',1],['gets hunted and eaten','described prey instead'],['only eats plants','described a herbivore'],['makes its own food','described a plant']]},
+{p:2,s:'food',q:'What would most likely happen if all the grass disappeared from that food chain?',o:[['The mice would have nothing to eat, and hawks would have fewer mice',1],['Nothing would change','food chains not connected yet'],['The hawks would eat grass instead','food chain roles not secure'],['More mice would appear','reasoning reversed']]},
+{p:2,s:'habitat',q:'Which best describes a <b>desert</b> habitat?',o:[['Very dry, with little rain',1],['Wet and rainy all year','described a rainforest'],['Frozen most of the year','described tundra'],['Always underwater','described an ocean']]},
+{p:2,s:'habitat',q:'Camouflage helps an animal by…',o:[['making it hard to see',1],['making it run faster','adaptation purpose not secure'],['keeping it warm','adaptation purpose not secure'],['helping it find water','adaptation purpose not secure']]},
+{p:2,s:'habitat',q:'Some birds fly a long way south before winter. This is called…',o:[['migration',1],['hibernation','confused with sleeping through winter'],['camouflage','confused with hiding'],['adaptation','close, but not the specific word']]},
+{p:2,s:'habitat',q:'Why does protecting rainforests matter?',o:[['Many plants and animals live only there and would have nowhere else to go',1],['Rainforests are pretty to look at','partial reason only'],['It does not really matter','conservation idea not secure'],['So people can cut more trees','reasoning reversed']]},
+/* PART 3 — GRADE 3 PREVIEW: METHOD, SENSES, MATERIALS */
+{p:3,s:'preview_method',q:'A scientist wonders something. What comes <b>first</b>?',o:[['Ask a question',1],['Do a test','skips the question'],['Write the conclusion','starts at the end'],['Tell everyone the answer','starts at the end']]},
+{p:3,s:'preview_method',q:'After you ask a question and make a guess, what comes next?',o:[['Do a test to find out',1],['Decide you were right','skips testing'],['Ask a different question','abandons the investigation'],['Stop there','skips testing']]},
+{p:3,s:'preview_method',q:'You want to know if plants grow better with more sunlight. What is the fairest test?',o:[['Two same plants, same water, one in sun and one in shade',1],['One plant in the sun only','nothing to compare against'],['Two plants, one watered and one not','changed the wrong thing'],['Ask a friend what they think','not a test']]},
+{p:3,s:'preview_senses',q:'Which sense do you use to notice that bread is baking?',o:[['Smell',1],['Sight','possible but not the strongest here'],['Touch','not the sense used'],['Taste','not before eating it']]},
+{p:3,s:'preview_senses',q:'How many senses do people usually name?',o:[['Five',1],['Three','miscount'],['Seven','miscount'],['Ten','miscount']]},
+{p:3,s:'preview_matter',q:'Which material would be best for keeping a hot drink warm?',o:[['A thick foam cup',1],['A thin metal can','conducts heat away'],['A paper napkin','no insulating property'],['A glass plate','no insulating property']]},
+{p:3,s:'preview_matter',q:'Ice left on a warm table turns into water. This is a change of…',o:[['state — solid to liquid',1],['colour','property confusion'],['size only','partial idea'],['smell','property confusion']]}
+];
+
+const STRANDS={living:'Living things & animal groups',food:'Food chains & roles',habitat:'Habitats & adaptations',
+preview_method:'Grade 3 preview — investigation',preview_senses:'Grade 3 preview — senses',preview_matter:'Grade 3 preview — materials'};
+const PARTS={1:{name:'Living World',terrain:'meadow',flag:'🌱'},2:{name:'Habitat Trail',terrain:'habitat',flag:'🦉'},3:{name:'Discovery Camp',terrain:'camp',flag:'🏁'}};
+
+const CAT=`<svg viewBox="0 0 80 60" aria-hidden="true">
+  <path d="M13 41 C3 39 5 26 13 29" stroke="#D9782F" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M9 37 C6.5 36 6.5 33 8 31.5" stroke="#B65A1C" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+  <path d="M6.5 28.5 C6 27 7 25.5 9 25" stroke="#B65A1C" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  <rect x="21" y="46" width="5" height="10" rx="2.5" fill="#C96A24"/><rect x="37" y="46" width="5" height="10" rx="2.5" fill="#C96A24"/>
+  <ellipse cx="31" cy="40" rx="18" ry="11" fill="#E88A3C"/>
+  <path d="M24 31.5 L23 47" stroke="#C4661F" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <path d="M31 30.5 L30.5 48" stroke="#C4661F" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <path d="M38 31.5 L38.5 47.5" stroke="#C4661F" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <ellipse cx="33" cy="45" rx="12" ry="5" fill="#F7C48E" opacity=".55"/>
+  <path d="M27 33 L19 19" stroke="#8A6A3A" stroke-width="2.5" stroke-linecap="round"/>
+  <circle class="glow" cx="17" cy="21" r="11" fill="#F2B544" opacity=".28"/>
+  <rect x="13" y="17" width="8.5" height="9.5" rx="2" fill="#F2B544" stroke="#C98F28" stroke-width="1.2"/>
+  <circle cx="51" cy="30" r="12.5" fill="#E88A3C"/>
+  <path d="M41 22 L42 11 L51 19 Z" fill="#E88A3C"/><path d="M57 18 L63 10 L64 22 Z" fill="#E88A3C"/>
+  <path d="M44.5 20 L45 14.5 L49 19 Z" fill="#F2A9A0" opacity=".8"/><path d="M58.5 18 L61.5 13.5 L62 20 Z" fill="#F2A9A0" opacity=".8"/>
+  <path d="M46 21 L48 25.5 M51.5 20 L52 25 M57 21 L55.5 25.5" stroke="#C4661F" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+  <ellipse cx="58" cy="33.5" rx="7" ry="5.5" fill="#F7C48E" opacity=".6"/>
+  <ellipse cx="56" cy="29" rx="3" ry="3.6" fill="#7BC5A4"/><ellipse cx="56" cy="29" rx="1.1" ry="3.2" fill="#1E2A22"/>
+  <circle cx="57.2" cy="27.6" r=".9" fill="#F5EFE0" opacity=".9"/>
+  <path d="M61.5 33 l3.5 1.2 -3.5 1.2z" fill="#E08B8B"/>
+  <path d="M61 36 L71 35.5 M61 37.5 L70 39.5" stroke="#F5EFE0" stroke-width="1" opacity=".7" stroke-linecap="round"/>
+</svg>`;
+
+const TERRAIN={
+meadow:`<svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none"><rect width="400" height="120" fill="#1B2444"/>
+<circle cx="340" cy="24" r="12" fill="#F7D68A" opacity=".5"/>
+<g stroke="#7BC5A4" stroke-width="2" opacity=".55" fill="none">
+<path d="M30 104 Q28 90 34 82"/><path d="M46 104 Q48 88 42 80"/><path d="M120 104 Q118 92 124 84"/><path d="M136 104 Q138 90 132 82"/>
+<path d="M240 104 Q238 90 244 82"/><path d="M300 104 Q302 88 296 80"/></g>
+<g fill="#F2B544" opacity=".7"><circle cx="34" cy="80" r="3"/><circle cx="124" cy="82" r="3"/><circle cx="244" cy="80" r="3"/></g>
+<g fill="#E08B8B" opacity=".6"><circle cx="42" cy="78" r="2.6"/><circle cx="132" cy="80" r="2.6"/><circle cx="296" cy="78" r="2.6"/></g>
+<g fill="#141B36"><ellipse cx="80" cy="96" rx="20" ry="7"/><ellipse cx="190" cy="98" rx="24" ry="7"/><ellipse cx="330" cy="96" rx="18" ry="6"/></g>
+<path d="M0 104 Q100 100 200 105 Q300 110 400 103 L400 120 L0 120 Z" fill="#2A3557"/></svg>`,
+habitat:`<svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none"><rect width="400" height="120" fill="#1B2444"/>
+<circle cx="60" cy="24" r="11" fill="#F7D68A" opacity=".45"/>
+<g fill="#141B36"><path d="M20 104 L38 46 L56 104z"/><path d="M90 104 L110 34 L130 104z"/><path d="M300 104 L320 40 L340 104z"/></g>
+<g fill="#1F2947"><path d="M150 104 L166 56 L182 104z"/><path d="M240 104 L256 62 L272 104z"/></g>
+<circle cx="110" cy="52" r="4" fill="#F2B544" opacity=".8"/><circle cx="320" cy="58" r="3.5" fill="#F2B544" opacity=".7"/>
+<g stroke="#7BC5A4" stroke-width="1.6" opacity=".4" fill="none"><path d="M200 104 Q198 92 204 86"/><path d="M212 104 Q214 92 208 86"/></g>
+<path d="M0 104 Q100 100 200 105 Q300 110 400 103 L400 120 L0 120 Z" fill="#2A3557"/>
+<g fill="#F5EFE0" opacity=".4"><circle cx="180" cy="22" r="1.3"/><circle cx="250" cy="16" r="1.1"/></g></svg>`,
+camp:`<svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none"><rect width="400" height="120" fill="#1B2444"/>
+<g fill="#F5EFE0" opacity=".45"><circle cx="40" cy="20" r="1.3"/><circle cx="110" cy="30" r="1.1"/><circle cx="190" cy="16" r="1.4"/><circle cx="270" cy="26" r="1.2"/><circle cx="350" cy="18" r="1.3"/></g>
+<g fill="#141B36"><path d="M270 104 L305 48 L340 104z"/></g>
+<path d="M282 96 L305 60 L328 96z" fill="#2A3557"/>
+<g><path d="M60 104 L84 104 L78 88 L66 88z" fill="#C4661F" opacity=".5"/>
+<path d="M72 88 L72 76" stroke="#8A6A3A" stroke-width="2"/>
+<circle class="glow" cx="72" cy="72" r="10" fill="#F2B544" opacity=".3"/>
+<circle cx="72" cy="72" r="4" fill="#F2B544"/></g>
+<g fill="#141B36"><rect x="150" y="80" width="46" height="24" rx="3"/></g>
+<g fill="#8FB8E8" opacity=".5"><rect x="158" y="86" width="12" height="12" rx="1"/><rect x="176" y="86" width="12" height="12" rx="1"/></g>
+<path d="M0 104 Q100 100 200 105 Q300 110 400 103 L400 120 L0 120 Z" fill="#2A3557"/></svg>`};
+
+function render(h){app.innerHTML=h;window.scrollTo(0,0)}
+function go(s){S.screen=s;draw()}
+function band(p){return p>=.85?['Secure','p-sec']:p>=.6?['Emerging','p-em']:['Needs teaching','p-teach']}
+function scene(kind,pct,part){
+  const x=4+pct*74;
+  const dots=[1,2,3].map(n=>`<div class="step ${part>n?'done':part===n?'now':''}"></div>`).join('');
+  return `<div class="scene">${TERRAIN[kind]}<div class="flag">${PARTS[Math.min(part,3)].flag}</div>
+  <div class="traveler" style="transform:translateX(${x}%)"><div class="bob">${CAT}</div></div></div><div class="steps">${dots}</div>`;
+}
+function partRange(p){const s=Q.findIndex(q=>q.p===p);let e=s;while(e<Q.length&&Q[e].p===p)e++;return[s,e]}
+
+function draw(){({home,intro,quiz,results})[S.screen]();bind()}
+
+function home(){
+  render(`<div class="card">${scene('meadow',0,1)}
+  <h1 style="text-align:center;margin-top:14px">Science Quest</h1>
+  <p class="muted" style="text-align:center">Cross the living meadow, follow the habitat trail, and reach the discovery camp with the lantern cat.</p>
+  <p style="margin:18px 0;text-align:center">There are <b>three parts</b>. You can stop after any part.</p>
+  <div style="text-align:center"><button class="btn" data-go="1">Start the journey</button></div></div>
+  <div class="card"><div class="parentbar">For the grown-up, before you begin</div>
+  <ul class="muted">
+    <li><b>No paper or pencil at all</b> — this one is entirely tapping.</li>
+    <li>This is the shortest of the four, and the least like a test. Science moves to new topics in Grade 3 rather than building a skill ladder, so a gap here is something to touch on in passing, not a reason to hold anything back.</li>
+    <li>Part 3 is a preview of Grade 3 content he has not been taught yet. Missing most of it is expected and completely fine.</li>
+    <li>No teaching first, no retries. Read a question aloud if he asks.</li>
+    <li>He never sees a score. Results are for you at the end.</li>
+  </ul></div>`);
+}
+
+function intro(){
+  const p=S.part,P=PARTS[p],[s]=partRange(p);
+  const blurb={1:'The meadow is full of living things — and a few things that only look alive.',
+    2:'The trail runs through different habitats. Watch who eats what, and who hides from whom.',
+    3:'At camp, scientists are setting up an experiment. Some of this is brand new — guessing is allowed here.'}[p];
+  render(`<div class="card">${scene(P.terrain,0,p)}
+  <h2 style="text-align:center;margin-top:14px">Part ${p} — ${P.name}</h2>
+  <p style="text-align:center">${blurb}</p>
+  <p class="muted" style="text-align:center">Take your time. There's no clock.</p>
+  <div style="text-align:center"><button class="btn" data-start="${s}">Keep going</button></div></div>`);
+}
+
+function quiz(){
+  const q=Q[S.qi],P=PARTS[q.p],[s,e]=partRange(q.p);
+  const pct=(S.qi-s)/(e-s);
+  const short=q.o.every(o=>String(o[0]).length<=16);
+  render(`<div class="card">${scene(P.terrain,pct,q.p)}
+  <div class="stepnum" style="margin-top:12px">${P.name}</div>
+  <div class="qtext">${q.q}</div>
+  ${short?`<div class="opts-grid">${q.o.map((o,i)=>`<button class="opt" data-opt="${i}">${o[0]}</button>`).join('')}</div>`
+    :q.o.map((o,i)=>`<button class="opt" data-opt="${i}">${o[0]}</button>`).join('')}
+  ${S.qi>s?'<div style="margin-top:12px"><button class="btn ghost sm" data-back="1">← Back</button></div>':''}</div>`);
+}
+
+function score(){
+  const st={};
+  Q.forEach((q,i)=>{
+    st[q.s]=st[q.s]||{label:STRANDS[q.s],got:0,max:0,errs:[]};
+    st[q.s].max++;
+    const pick=S.ans[i];
+    if(pick!=null&&q.o[pick][1]===1)st[q.s].got++;
+    else if(pick!=null&&q.o[pick][1])st[q.s].errs.push(q.o[pick][1]);
+  });
+  Object.values(st).forEach(v=>v.pct=v.got/v.max);
+  return st;
+}
+
+const FIX={
+living:'Living-things ideas come back fastest through actual looking, not review pages — a walk, a houseplant, a bird at the window, asking "is it alive, how do you know?"',
+food:'Food chains are easiest to rebuild by drawing one together for an animal he already likes, arrows and all, on a single scrap of paper.',
+habitat:'Habitats and adaptations are ideal documentary territory — one nature episode plus "why do you think it has that?" does more than a worksheet.'
+};
+
+function results(){
+  const st=score();
+  const core=Object.entries(st).filter(([k])=>!k.startsWith('preview'));
+  const prev=Object.entries(st).filter(([k])=>k.startsWith('preview'));
+  const coreGot=core.reduce((a,[,v])=>a+v.got,0),coreMax=core.reduce((a,[,v])=>a+v.max,0);
+  const corePct=coreGot/coreMax;
+  const prevGot=prev.reduce((a,[,v])=>a+v.got,0),prevMax=prev.reduce((a,[,v])=>a+v.max,0);
+
+  const rows=core.map(([k,v])=>{const[l,c]=band(v.pct);const e=[...new Set(v.errs)];
+    return `<tr><td>${v.label}</td><td>${v.got}/${v.max}</td><td><span class="pill ${c}">${l}</span></td><td class="muted">${e.length?e.join('; '):'—'}</td></tr>`}).join('');
+  const pRows=prev.map(([k,v])=>{return `<tr><td>${v.label.replace('Grade 3 preview — ','')}</td><td>${v.got}/${v.max}</td><td class="muted">${v.got===v.max?'already familiar':v.got?'partly familiar':'new — will be taught'}</td></tr>`}).join('');
+
+  const sorted=core.slice().sort((a,b)=>a[1].pct-b[1].pct);
+  const weakKey=sorted[0][0],weak=sorted[0][1];
+  const secure=core.filter(([,v])=>v.pct>=.85).map(([,v])=>v.label);
+
+  const P = corePct>=.8
+    ? {t:'Start Grade 3 science directly',b:'Grade 2 life science concepts held up well. Move into the Grade 3 topics — investigation, senses, health, weather and biomes, materials — without any review unit first.'}
+    : corePct>=.55
+    ? {t:'Start Grade 3 science, revisiting one idea along the way',b:'Most concepts are intact with one softer area. Begin Grade 3 on schedule and fold the weaker idea below into ordinary conversation — no separate review unit needed.'}
+    : {t:'Start Grade 3 science, with a few foundation ideas revisited casually',b:'Several Grade 2 ideas have faded. That is normal after a break and is not a reason to repeat the course. Grade 3 topics are largely new anyway, so bring these back through conversation, walks, and documentaries alongside the new material.'};
+
+  render(`<div class="card noprint">${scene('camp',1,4)}
+  <h2 style="text-align:center;margin-top:14px">Journey complete</h2>
+  <p class="muted" style="text-align:center">Tell him he reached the camp. The rest is for you.</p>
+  <div style="text-align:center"><button class="btn" onclick="window.print()">Print or save these results</button></div></div>
+  <div class="card"><h2>Science results</h2><p class="muted">Date: ${new Date().toLocaleDateString()}</p>
+  <h3 style="margin-top:16px">Grade 2 content</h3>
+  <table><tr><th>Area</th><th>Score</th><th></th><th>Misunderstanding</th></tr>${rows}</table>
+  <h3 style="margin-top:20px">Grade 3 preview — not a placement score</h3>
+  <table><tr><th>Topic</th><th>Score</th><th></th></tr>${pRows}</table>
+  <p class="muted">Preview total: ${prevGot}/${prevMax}. All of this is taught directly at the start of Grade 3. A low score here means the course is well-pitched, not that he is behind.</p></div>
+  <div class="card"><h2>What to do about it</h2>
+  <div class="rec"><h3>${P.t}</h3><p>${P.b}</p></div>
+  ${weak.pct<.85?`<div class="rec"><h3>The one idea worth bringing back</h3>
+    <p><b>${weak.label}</b> came in at ${weak.got}/${weak.max}.</p>
+    <p class="muted"><b>How:</b> ${FIX[weakKey]}</p>
+    <p class="muted"><b>When:</b> this does not need a lesson slot. It fits in the lighter/shared learning anchor, at a meal, or on a walk — science is the subject that most easily lives outside school hours.</p></div>`:
+    `<div class="rec"><h3>Nothing needs revisiting</h3><p>All three Grade 2 areas are secure. Go straight into the new Grade 3 topics.</p></div>`}
+  ${secure.length?`<div class="rec"><h3>Don't re-teach these</h3><p>Secure: <b>${secure.join(', ')}</b>.</p></div>`:''}
+  <div class="rec" style="border-left-color:var(--gold)"><h3>A note on science this year</h3>
+    <p class="muted">Grade 3 science is topic-based rather than a skill ladder, so there is no repair loop and no risk of a gap compounding the way it can in maths or reading. If a week is disrupted, science is the safest subject to drop — it can be picked up later without cost, and much of it can be done by talking, watching, and going outside rather than sitting down.</p></div>
+  <div class="rec" style="border-left-color:var(--gold)"><h3>Recheck</h3>
+    <p>No formal recheck needed. If a Grade 2 idea comes up naturally in a Grade 3 topic and he has it, that is your answer.</p></div></div>
+  <div class="card noprint" style="text-align:center"><button class="btn ghost" onclick="location.reload()">Start over</button></div>`);
+}
+
+function bind(){
+  app.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{S.part=+b.dataset.go;go('intro')});
+  app.querySelectorAll('[data-start]').forEach(b=>b.onclick=()=>{S.qi=+b.dataset.start;go('quiz')});
+  app.querySelectorAll('[data-opt]').forEach(b=>b.onclick=()=>{
+    S.ans[S.qi]=+b.dataset.opt;
+    const cur=Q[S.qi].p;S.qi++;
+    if(S.qi>=Q.length){go('results');return}
+    if(Q[S.qi].p!==cur){S.part=Q[S.qi].p;go('intro');return}
+    draw();});
+  app.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>{if(S.qi>0)S.qi--;draw()});
+}
+draw();
+</script>
+</body>
+</html>

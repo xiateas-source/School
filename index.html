@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quest Home — Lantern Cat</title>
+<style>
+:root{--night:#161E38;--panel:#222D50;--panel2:#2B3862;--gold:#F2B544;--gold-soft:#F7D68A;
+--moss:#7BC5A4;--rose:#E08B8B;--sky:#8FB8E8;--parch:#F5EFE0;--muted:#A6B0CE;--shadow:0 8px 28px rgba(0,0,0,.35)}
+*{box-sizing:border-box}html,body{margin:0;padding:0}
+body{background:radial-gradient(1200px 600px at 50% -10%, #2A3560 0%, var(--night) 60%);color:var(--parch);
+font-family:"Verdana","Trebuchet MS",system-ui,sans-serif;min-height:100vh;padding:16px;font-size:17px;line-height:1.55}
+.wrap{max-width:760px;margin:0 auto}
+h1{font-family:"Georgia","Iowan Old Style",serif;font-weight:700;line-height:1.2;margin:0 0 10px;font-size:2rem;text-align:center}
+.card{background:var(--panel);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px;box-shadow:var(--shadow);margin-bottom:16px}
+.muted{color:var(--muted);font-size:.95rem;text-align:center}
+.scene{position:relative;height:120px;margin:-6px -6px 14px;border-radius:14px;overflow:hidden;background:linear-gradient(180deg,#1B2444 0%,#243055 100%)}
+.scene svg.terrain{position:absolute;inset:0;width:100%;height:100%}
+.traveler{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);width:96px;height:72px}
+.traveler svg{width:100%;height:100%;overflow:visible}
+.bob{animation:bob 1.6s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+.glow{animation:flicker 2.4s ease-in-out infinite}
+@keyframes flicker{0%,100%{opacity:.22}50%{opacity:.42}}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:6px}
+a.quest{display:block;text-decoration:none;color:var(--parch);background:var(--panel2);
+border:2px solid rgba(255,255,255,.12);border-radius:16px;padding:20px 18px;transition:transform .08s,border-color .12s}
+a.quest:hover{border-color:var(--gold);transform:translateY(-2px)}
+a.quest:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+.emoji{font-size:2rem;display:block;margin-bottom:8px}
+.qname{font-family:"Georgia",serif;font-size:1.25rem;font-weight:700;color:var(--gold-soft);margin-bottom:2px}
+.qsub{color:var(--muted);font-size:.88rem}
+@media(max-width:520px){.grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="card">
+  <div class="scene">
+    <svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none"><rect width="400" height="120" fill="#1B2444"/>
+    <circle cx="340" cy="24" r="12" fill="#F7D68A" opacity=".5"/>
+    <g fill="#141B36"><path d="M0 105 L55 40 L110 105z"/><path d="M90 105 L150 28 L210 105z"/><path d="M190 105 L250 45 L310 105z"/><path d="M290 105 L345 55 L400 105z"/></g>
+    <path d="M132 48 L150 28 L168 48 L150 40z" fill="#F5EFE0" opacity=".7"/>
+    <path d="M0 103 Q100 98 200 103 Q300 108 400 101 L400 120 L0 120 Z" fill="#2A3557"/>
+    <circle cx="80" cy="26" r="1.4" fill="#F5EFE0" opacity=".5"/><circle cx="200" cy="18" r="1.2" fill="#F5EFE0" opacity=".45"/></svg>
+    <div class="traveler"><div class="bob"><svg viewBox="0 0 80 60" aria-hidden="true">
+      <path d="M13 41 C3 39 5 26 13 29" stroke="#D9782F" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <rect x="21" y="46" width="5" height="10" rx="2.5" fill="#C96A24"/><rect x="37" y="46" width="5" height="10" rx="2.5" fill="#C96A24"/>
+      <ellipse cx="31" cy="40" rx="18" ry="11" fill="#E88A3C"/>
+      <ellipse cx="33" cy="45" rx="12" ry="5" fill="#F7C48E" opacity=".55"/>
+      <path d="M27 33 L19 19" stroke="#8A6A3A" stroke-width="2.5" stroke-linecap="round"/>
+      <circle class="glow" cx="17" cy="21" r="11" fill="#F2B544" opacity=".28"/>
+      <rect x="13" y="17" width="8.5" height="9.5" rx="2" fill="#F2B544" stroke="#C98F28" stroke-width="1.2"/>
+      <circle cx="51" cy="30" r="12.5" fill="#E88A3C"/>
+      <path d="M41 22 L42 11 L51 19 Z" fill="#E88A3C"/><path d="M57 18 L63 10 L64 22 Z" fill="#E88A3C"/>
+      <path d="M44.5 20 L45 14.5 L49 19 Z" fill="#F2A9A0" opacity=".8"/><path d="M58.5 18 L61.5 13.5 L62 20 Z" fill="#F2A9A0" opacity=".8"/>
+      <ellipse cx="58" cy="33.5" rx="7" ry="5.5" fill="#F7C48E" opacity=".6"/>
+      <ellipse cx="56" cy="29" rx="3" ry="3.6" fill="#7BC5A4"/><ellipse cx="56" cy="29" rx="1.1" ry="3.2" fill="#1E2A22"/>
+      <circle cx="57.2" cy="27.6" r=".9" fill="#F5EFE0" opacity=".9"/>
+      <path d="M61.5 33 l3.5 1.2 -3.5 1.2z" fill="#E08B8B"/>
+    </svg></div></div>
+  </div>
+  <h1>Choose a Quest</h1>
+  <p class="muted">Walk with the lantern cat. Pick a journey to begin — you can stop after any part.</p>
+  <div class="grid">
+    <a class="quest" href="mathquest.html">
+      <span class="emoji">⛰️</span>
+      <div class="qname">Math Quest</div>
+      <div class="qsub">Number peaks, shapes &amp; the market bridge</div>
+    </a>
+    <a class="quest" href="readingquest.html">
+      <span class="emoji">📖</span>
+      <div class="qname">Reading Quest</div>
+      <div class="qsub">Word caves, story trail &amp; spelling bridge</div>
+    </a>
+    <a class="quest" href="wordquest.html">
+      <span class="emoji">🔤</span>
+      <div class="qname">Word Quest</div>
+      <div class="qsub">Word workshop, sentence river &amp; story tower</div>
+    </a>
+    <a class="quest" href="sciencequest.html">
+      <span class="emoji">🌱</span>
+      <div class="qname">Science Quest</div>
+      <div class="qsub">Living meadow, habitat trail &amp; discovery camp</div>
+    </a>
+  </div>
+</div>
+</div>
+</body>
+</html>

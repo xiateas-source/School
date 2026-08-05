@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Math Quest — Lantern Cat</title>
+<style>
+:root{
+  --night:#161E38; --panel:#222D50; --panel2:#2B3862;
+  --gold:#F2B544; --gold-soft:#F7D68A;
+  --moss:#7BC5A4; --rose:#E08B8B; --sky:#8FB8E8;
+  --parch:#F5EFE0; --muted:#A6B0CE;
+  --shadow:0 8px 28px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:radial-gradient(1200px 600px at 50% -10%, #2A3560 0%, var(--night) 60%);
+  color:var(--parch);font-family:"Verdana","Trebuchet MS",system-ui,sans-serif;
+  min-height:100vh;padding:16px;font-size:17px;line-height:1.55}
+.wrap{max-width:760px;margin:0 auto}
+h1,h2,h3{font-family:"Georgia","Iowan Old Style",serif;font-weight:700;line-height:1.2;margin:0 0 10px}
+h1{font-size:2rem} h2{font-size:1.4rem} h3{font-size:1.1rem}
+.card{background:var(--panel);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px;box-shadow:var(--shadow);margin-bottom:16px}
+.muted{color:var(--muted);font-size:.92rem}
+.scene{position:relative;height:120px;margin:-6px -6px 14px;border-radius:14px;overflow:hidden;background:linear-gradient(180deg,#1B2444 0%,#243055 100%)}
+.scene svg.terrain{position:absolute;inset:0;width:100%;height:100%}
+.traveler{position:absolute;bottom:20px;left:0;width:78px;height:58px;transition:transform 1.1s cubic-bezier(.4,0,.2,1)}
+.traveler svg{width:100%;height:100%;overflow:visible}
+.bob{animation:bob 1.6s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+.glow{animation:flicker 2.4s ease-in-out infinite}
+@keyframes flicker{0%,100%{opacity:.22}50%{opacity:.42}}
+.flag{position:absolute;bottom:24px;right:12px;font-size:1.5rem;opacity:.9}
+.steps{display:flex;gap:6px;justify-content:center;margin-top:10px}
+.step{flex:1;height:5px;border-radius:99px;background:rgba(255,255,255,.13)}
+.step.done{background:var(--moss)} .step.now{background:var(--gold)}
+.btn{display:inline-block;background:var(--gold);color:#20180A;border:none;border-radius:14px;padding:14px 22px;font-size:1.05rem;font-weight:700;cursor:pointer;font-family:inherit;margin:6px 6px 6px 0;box-shadow:0 4px 0 #C98F28;transition:transform .08s}
+.btn:active{transform:translateY(2px);box-shadow:0 2px 0 #C98F28}
+.btn.ghost{background:transparent;color:var(--parch);border:2px solid rgba(255,255,255,.25);box-shadow:none}
+.btn.sm{padding:9px 14px;font-size:.9rem}
+.btn:focus-visible,.opt:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+.opt{display:block;width:100%;text-align:left;background:var(--panel2);color:var(--parch);border:2px solid rgba(255,255,255,.12);border-radius:14px;padding:15px 17px;margin:9px 0;font-size:1.02rem;cursor:pointer;font-family:inherit;line-height:1.45}
+.opt:hover{border-color:var(--gold)}
+.opts-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.opts-grid .opt{margin:0;text-align:center;font-family:"Georgia",serif;font-size:1.5rem;padding:18px 10px}
+.prob{font-family:"Georgia",serif;font-size:2.2rem;text-align:center;margin:14px 0 6px;color:var(--gold-soft)}
+.qtext{font-size:1.1rem;margin:14px 0 4px}
+.visual{text-align:center;margin:14px 0;font-size:1.8rem;letter-spacing:.35em;line-height:1.7}
+.shape{text-align:center;margin:16px 0}
+.shape svg{max-width:230px;width:70%;height:auto}
+.mini{width:96px;height:48px}
+.opt .mini{display:block;margin:0 auto}
+.pill{display:inline-block;padding:4px 11px;border-radius:99px;font-size:.78rem;font-weight:700}
+.p-sec{background:#2E4A44;color:var(--moss)} .p-em{background:#463B22;color:var(--gold)} .p-teach{background:#4A2E33;color:var(--rose)}
+.parentbar{background:#3B2E52;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:11px 15px;font-size:.88rem;margin-bottom:14px;color:var(--gold-soft)}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.93rem}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.12);vertical-align:top}
+th{color:var(--muted);font-weight:700;font-size:.82rem;text-transform:uppercase;letter-spacing:.05em}
+.rec{background:var(--panel2);border-radius:14px;padding:18px;margin:12px 0;border-left:4px solid var(--moss)}
+.rec h3{color:var(--moss);margin-bottom:6px}
+.stepnum{color:var(--muted);font-size:.82rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+ul{padding-left:20px} li{margin:5px 0}
+@media print{body{background:#fff;color:#000}.card,.rec{background:#fff;border:1px solid #999;box-shadow:none}.noprint,.scene,.steps{display:none}h1,h2,h3{color:#000}.muted,th{color:#444}.pill{border:1px solid #666;color:#000}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+const app=document.getElementById('app');
+const S={screen:'home',qi:0,ans:{},ruler:{}};
+
+/* Each question: s = strand, err labels on wrong options explain the mistake type */
+const Q=[
+/* ---- PART 1: NUMBER PEAKS (place value + operations) ---- */
+{p:1,s:'place',q:'In the number 384, what is the 8 worth?',o:[['80',1],['8','reads digit, not its place'],['800','place value shifted up'],['3','wrong digit']]},
+{p:1,s:'place',q:'Which one shows 506 broken apart?',o:[['500 + 6',1],['5 + 0 + 6','reads digits, not values'],['500 + 60','misplaced the zero'],['50 + 6','place value shifted down']]},
+{p:1,s:'place',q:'Which sign goes here?   349 ___ 394',o:[['<',1],['>','compared left digits only'],['=','not comparing']]},
+{p:1,s:'place',q:'Is 24 odd or even?',o:[['Even',1],['Odd','odd/even not secure']]},
+{p:1,s:'place',q:'725 + 100 = ?',o:[['825',1],['735','added into the tens'],['726','added into the ones'],['1725','added into the hundreds place wrongly']]},
+{p:1,s:'addsub',q:'47 + 38 = ?',o:[['85',1],['75','did not carry the ten'],['715','wrote both column sums side by side'],['80','counting slip']]},
+{p:1,s:'addsub',q:'82 − 45 = ?',o:[['37',1],['43','subtracted smaller from larger in each column'],['47','did not regroup'],['27','regrouped but lost a ten']]},
+{p:1,s:'addsub',q:'263 + 148 = ?',o:[['411',1],['401','did not carry from the tens'],['3011','wrote each column sum separately'],['311','carried once but not twice']]},
+{p:1,s:'addsub',q:'530 − 274 = ?',o:[['256',1],['344','subtracted smaller from larger in each column'],['366','regrouped across the zero incorrectly'],['246','lost a ten while regrouping']]},
+{p:1,s:'addsub',q:'There were 26 birds. 15 more landed, then 12 flew away. How many now?',o:[['29',1],['53','added all three numbers'],['23','subtracted instead of adding first'],['38','forgot the last step']]},
+{p:1,s:'reason',q:'Sam worked out 47 + 38 and wrote <b>715</b>. What went wrong?',o:[['He wrote each column answer side by side instead of carrying',1],['He forgot to add the ones','not what happened here'],['He subtracted instead of adding','not what happened here'],['Nothing — 715 is right','did not spot the error']]},
+{p:1,s:'reason',q:'Which is a good way to check that 530 − 274 = 256?',o:[['Add 256 + 274 and see if you get 530',1],['Add 530 + 274 and see what happens','does not undo the subtraction'],['Subtract 256 from 274','unrelated operation'],['You cannot check subtraction','checking strategies not secure']]},
+/* ---- PART 2: SHAPE GROVE (arrays, geometry, measurement, data) ---- */
+{p:2,s:'groups',q:'Here are 3 rows of 4.<div class="visual">● ● ● ●<br>● ● ● ●<br>● ● ● ●</div>Which addition matches it?',o:[['4 + 4 + 4',1],['3 + 4','added the two numbers'],['3 + 3 + 3 + 3 + 3','used wrong row count'],['4 + 3 + 4','not an equal-groups idea']]},
+{p:2,s:'groups',q:'How many dots are there altogether in those 3 rows of 4?',o:[['12',1],['7','added instead of grouped'],['9','counted rows only'],['16','miscounted the array']]},
+{p:2,s:'geom',q:'Which shape has exactly 5 sides?',o:[['Pentagon',1],['Hexagon','off by one side'],['Square','basic shape confusion'],['Triangle','basic shape confusion']]},
+{p:2,s:'geom',q:'A rectangle is cut in half corner to corner. What two shapes are made?',o:[['Two triangles',1],['Two squares','partitioning not secure'],['Two circles','partitioning not secure'],['Two rectangles','partitioning not secure']]},
+{p:2,s:'geom',q:'How many lines of symmetry does a square have?',o:[['4',1],['2','found only the straight folds'],['1','symmetry not secure'],['0','symmetry not secure']]},
+{p:2,s:'frac',q:'This rectangle is cut into equal pieces.<div class="shape"><svg viewBox="0 0 200 60"><rect x="2" y="2" width="196" height="56" fill="none" stroke="#F7D68A" stroke-width="3"/><line x1="51" y1="2" x2="51" y2="58" stroke="#F7D68A" stroke-width="3"/><line x1="100" y1="2" x2="100" y2="58" stroke="#F7D68A" stroke-width="3"/><line x1="149" y1="2" x2="149" y2="58" stroke="#F7D68A" stroke-width="3"/></svg></div>What is each piece called?',o:[['A fourth',1],['A third','counted pieces wrong'],['A half','counted pieces wrong'],['A whole','piece vs whole confusion']]},
+{p:2,s:'frac',q:'This circle is cut into equal pieces.<div class="shape"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="36" fill="none" stroke="#F7D68A" stroke-width="3"/><line x1="40" y1="40" x2="40" y2="4" stroke="#F7D68A" stroke-width="3"/><line x1="40" y1="40" x2="71" y2="58" stroke="#F7D68A" stroke-width="3"/><line x1="40" y1="40" x2="9" y2="58" stroke="#F7D68A" stroke-width="3"/></svg></div>What is each piece called?',o:[['A third',1],['A fourth','counted pieces wrong'],['A half','counted pieces wrong'],['A quarter','counted pieces wrong']]},
+{p:2,s:'frac',q:'Which one is <b>not</b> cut into equal shares?',o:[['<svg class="mini" viewBox="0 0 80 40"><rect x="2" y="2" width="76" height="36" fill="none" stroke="#F7D68A" stroke-width="2.5"/><line x1="26" y1="2" x2="26" y2="38" stroke="#F7D68A" stroke-width="2.5"/></svg>',1],['<svg class="mini" viewBox="0 0 80 40"><rect x="2" y="2" width="76" height="36" fill="none" stroke="#F7D68A" stroke-width="2.5"/><line x1="40" y1="2" x2="40" y2="38" stroke="#F7D68A" stroke-width="2.5"/></svg>','these two pieces are equal'],['<svg class="mini" viewBox="0 0 80 40"><rect x="2" y="2" width="76" height="36" fill="none" stroke="#F7D68A" stroke-width="2.5"/><line x1="2" y1="20" x2="78" y2="20" stroke="#F7D68A" stroke-width="2.5"/></svg>','these two pieces are equal']]},
+{p:2,s:'frac',q:'You cut a sandwich into <b>two equal pieces</b> and eat both pieces. How much did you eat?',o:[['The whole sandwich — two halves make one whole',1],['Half the sandwich','did not join the halves back'],['Two whole sandwiches','doubled the whole'],['A quarter','pieces counted wrong']]},
+{p:2,s:'frac',q:'Both squares are cut into <b>fourths</b>, but in different ways.<div class="shape"><svg viewBox="0 0 170 70"><rect x="2" y="6" width="60" height="60" fill="none" stroke="#F7D68A" stroke-width="2.5"/><line x1="32" y1="6" x2="32" y2="66" stroke="#F7D68A" stroke-width="2.5"/><line x1="2" y1="36" x2="62" y2="36" stroke="#F7D68A" stroke-width="2.5"/><rect x="105" y="6" width="60" height="60" fill="none" stroke="#F7D68A" stroke-width="2.5"/><line x1="120" y1="6" x2="120" y2="66" stroke="#F7D68A" stroke-width="2.5"/><line x1="135" y1="6" x2="135" y2="66" stroke="#F7D68A" stroke-width="2.5"/><line x1="150" y1="6" x2="150" y2="66" stroke="#F7D68A" stroke-width="2.5"/></svg></div>Is one fourth of the first square the same amount as one fourth of the second?',o:[['Yes — the pieces are different shapes but the same amount',1],['No — they look different, so they are different amounts','shape and amount conflated'],['No — the second one has more pieces','miscounted the shares']]},
+{p:2,s:'meas',q:'About how long is a pencil?',o:[['7 inches',1],['7 feet','unit size not secure'],['7 miles','unit size not secure']]},
+{p:2,s:'meas',q:'One book is 8 inches long. Another is 11 inches. How much longer is the second?',o:[['3 inches',1],['19 inches','added instead of compared'],['11 inches','read one value only'],['2 inches','counting slip']]},
+{p:2,s:'meas',q:'Count the tallies:<div class="visual">卌 卌 |||</div>',o:[['13',1],['10','ignored the singles'],['15','counted a group wrong'],['8','counted marks not groups']]},
+{p:2,s:'data',q:'Votes: Cats 6, Dogs 9, Fish 3.<br>How many more votes did dogs get than fish?',o:[['6',1],['12','added instead of compared'],['3','used the wrong pair'],['9','read one bar only']]},
+{p:2,s:'data',q:'Using those same votes, how many votes were there in total?',o:[['18',1],['15','left one category out'],['9','read the largest only'],['21','added a value twice']]},
+/* ---- PART 3: MARKET BRIDGE (time + money) ---- */
+{p:3,s:'time',q:'What time is 20 minutes after 4:10?',o:[['4:30',1],['4:20','added to the wrong part'],['6:10','added to the hour'],['4:12','minutes not secure']]},
+{p:3,s:'time',q:'The clock shows 3:45. How would you say that another way?',o:[['Quarter to four',1],['Quarter past three','direction reversed'],['Half past three','fraction of hour not secure'],['Quarter to three','hour off by one']]},
+{p:3,s:'money',q:'How much is 3 quarters, 2 dimes, and 1 nickel?',o:[['$1.00',1],['$0.90','coin value error'],['$1.05','coin value error'],['$0.60','counted coins, not values']]},
+{p:3,s:'money',q:'$4.50 is the same as how many cents?',o:[['450 cents',1],['45 cents','decimal place shifted'],['4.50 cents','notation not secure'],['4500 cents','decimal place shifted']]},
+{p:3,s:'money',q:'You have $10 and spend $6.25. How much is left?',o:[['$3.75',1],['$4.75','did not regroup the dollar'],['$3.85','regrouping slip'],['$16.25','added instead']]},
+/* ---- PART 3 END: GRADE 3 PREVIEW ---- */
+{p:3,s:'preview',q:'Round 468 to the nearest ten.',o:[['470',1],['460','rounded down'],['400','rounded to hundred instead'],['500','rounded to hundred instead']]},
+{p:3,s:'preview',q:'What is 4 × 3?',o:[['12',1],['7','added instead'],['43','not multiplying'],['9','wrong fact']]},
+{p:3,s:'preview',q:'12 shared equally into 4 groups. How many in each group?',o:[['3',1],['4','swapped the numbers'],['8','subtracted'],['48','multiplied']]},
+{p:3,s:'preview',q:'Which is bigger?',o:[['1/3',1],['1/6','bigger denominator looked bigger'],['They are equal','fractions not yet taught']]},
+{p:3,s:'preview',q:'A rectangle is 6 long and 2 wide. What is the distance all the way around?',o:[['16',1],['12','multiplied (found area)'],['8','added two sides only'],['10','partial perimeter']]}
+];
+
+const STRANDS={place:'Place value',addsub:'Adding & subtracting',reason:'Explaining & checking',groups:'Equal groups & arrays',frac:'Equal shares & fractions',geom:'Geometry',meas:'Measurement',data:'Data & graphs',time:'Telling time',money:'Money',ruler:'Measuring with a ruler',preview:'Grade 3 preview'};
+const PARTS={1:{name:'Number Peaks',terrain:'peaks',flag:'⛰️'},2:{name:'Shape Grove',terrain:'grove',flag:'🌳'},3:{name:'Market Bridge',terrain:'market',flag:'🏁'}};
+
+const CAT=`<svg viewBox="0 0 80 60" aria-hidden="true">
+  <path d="M13 41 C3 39 5 26 13 29" stroke="#D9782F" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M9 37 C6.5 36 6.5 33 8 31.5" stroke="#B65A1C" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+  <path d="M6.5 28.5 C6 27 7 25.5 9 25" stroke="#B65A1C" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  <rect x="21" y="46" width="5" height="10" rx="2.5" fill="#C96A24"/>
+  <rect x="37" y="46" width="5" height="10" rx="2.5" fill="#C96A24"/>
+  <ellipse cx="31" cy="40" rx="18" ry="11" fill="#E88A3C"/>
+  <path d="M24 31.5 L23 47" stroke="#C4661F" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <path d="M31 30.5 L30.5 48" stroke="#C4661F" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <path d="M38 31.5 L38.5 47.5" stroke="#C4661F" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <ellipse cx="33" cy="45" rx="12" ry="5" fill="#F7C48E" opacity=".55"/>
+  <path d="M27 33 L19 19" stroke="#8A6A3A" stroke-width="2.5" stroke-linecap="round"/>
+  <circle class="glow" cx="17" cy="21" r="11" fill="#F2B544" opacity=".28"/>
+  <rect x="13" y="17" width="8.5" height="9.5" rx="2" fill="#F2B544" stroke="#C98F28" stroke-width="1.2"/>
+  <circle cx="51" cy="30" r="12.5" fill="#E88A3C"/>
+  <path d="M41 22 L42 11 L51 19 Z" fill="#E88A3C"/><path d="M57 18 L63 10 L64 22 Z" fill="#E88A3C"/>
+  <path d="M44.5 20 L45 14.5 L49 19 Z" fill="#F2A9A0" opacity=".8"/>
+  <path d="M58.5 18 L61.5 13.5 L62 20 Z" fill="#F2A9A0" opacity=".8"/>
+  <path d="M46 21 L48 25.5 M51.5 20 L52 25 M57 21 L55.5 25.5" stroke="#C4661F" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+  <ellipse cx="58" cy="33.5" rx="7" ry="5.5" fill="#F7C48E" opacity=".6"/>
+  <ellipse cx="56" cy="29" rx="3" ry="3.6" fill="#7BC5A4"/><ellipse cx="56" cy="29" rx="1.1" ry="3.2" fill="#1E2A22"/>
+  <circle cx="57.2" cy="27.6" r=".9" fill="#F5EFE0" opacity=".9"/>
+  <path d="M61.5 33 l3.5 1.2 -3.5 1.2z" fill="#E08B8B"/>
+  <path d="M61 36 L71 35.5 M61 37.5 L70 39.5" stroke="#F5EFE0" stroke-width="1" opacity=".7" stroke-linecap="round"/>
+</svg>`;
+
+const TERRAIN={
+peaks:`<svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none"><rect width="400" height="120" fill="#1B2444"/>
+<circle cx="340" cy="24" r="12" fill="#F7D68A" opacity=".5"/>
+<path d="M0 105 L55 40 L110 105z" fill="#141B36"/><path d="M90 105 L150 28 L210 105z" fill="#141B36"/><path d="M190 105 L250 45 L310 105z" fill="#141B36"/><path d="M290 105 L345 55 L400 105z" fill="#141B36"/>
+<path d="M132 48 L150 28 L168 48 L150 40z" fill="#F5EFE0" opacity=".7"/><path d="M42 58 L55 40 L68 58 L55 51z" fill="#F5EFE0" opacity=".55"/>
+<path d="M0 103 Q100 98 200 103 Q300 108 400 101 L400 120 L0 120 Z" fill="#2A3557"/>
+<circle cx="80" cy="26" r="1.4" fill="#F5EFE0" opacity=".5"/><circle cx="200" cy="18" r="1.2" fill="#F5EFE0" opacity=".45"/></svg>`,
+grove:`<svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none"><rect width="400" height="120" fill="#1B2444"/>
+<circle cx="55" cy="26" r="12" fill="#F7D68A" opacity=".45"/>
+<g fill="#141B36"><circle cx="60" cy="70" r="22"/><circle cx="150" cy="62" r="26"/><circle cx="250" cy="72" r="20"/><circle cx="335" cy="64" r="24"/></g>
+<g fill="#2A2036"><rect x="56" y="88" width="8" height="16"/><rect x="146" y="86" width="9" height="18"/><rect x="246" y="90" width="8" height="14"/><rect x="331" y="86" width="9" height="18"/></g>
+<g fill="#1F2947" opacity=".8"><rect x="100" y="86" width="16" height="16" rx="2"/><circle cx="200" cy="92" r="9"/><path d="M290 102 L299 84 L308 102z"/></g>
+<path d="M0 103 Q100 99 200 104 Q300 109 400 102 L400 120 L0 120 Z" fill="#2A3557"/></svg>`,
+market:`<svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none"><rect width="400" height="120" fill="#1B2444"/>
+<circle cx="330" cy="26" r="11" fill="#F7D68A" opacity=".45"/>
+<g><path d="M30 62 L75 62 L82 78 L23 78z" fill="#C4661F" opacity=".65"/><rect x="28" y="78" width="50" height="26" fill="#141B36"/>
+<path d="M140 58 L190 58 L197 74 L133 74z" fill="#7BC5A4" opacity=".5"/><rect x="138" y="74" width="54" height="30" fill="#141B36"/>
+<path d="M255 62 L305 62 L312 78 L248 78z" fill="#8FB8E8" opacity=".45"/><rect x="253" y="78" width="54" height="26" fill="#141B36"/></g>
+<g fill="#F2B544" opacity=".8"><circle cx="45" cy="86" r="3"/><circle cx="56" cy="86" r="3"/><circle cx="160" cy="84" r="3"/><circle cx="172" cy="84" r="3"/><circle cx="270" cy="88" r="3"/></g>
+<g stroke="#F2B544" stroke-width="1" opacity=".4"><path d="M100 40 L100 104"/><path d="M225 40 L225 104"/></g>
+<circle cx="100" cy="40" r="4" fill="#F2B544" opacity=".7"/><circle cx="225" cy="40" r="4" fill="#F2B544" opacity=".7"/>
+<path d="M0 104 Q100 100 200 105 Q300 110 400 103 L400 120 L0 120 Z" fill="#2A3557"/></svg>`};
+
+function render(h){app.innerHTML=h;window.scrollTo(0,0)}
+function go(s){S.screen=s;draw()}
+function band(p){return p>=.85?['Secure','p-sec']:p>=.6?['Emerging','p-em']:['Needs teaching','p-teach']}
+function scene(kind,pct,part){
+  const x=4+pct*74;
+  const dots=[1,2,3].map(n=>`<div class="step ${part>n?'done':part===n?'now':''}"></div>`).join('');
+  return `<div class="scene">${TERRAIN[kind]}<div class="flag">${PARTS[Math.min(part,3)].flag}</div>
+    <div class="traveler" style="transform:translateX(${x}%)"><div class="bob">${CAT}</div></div></div>
+    <div class="steps">${dots}</div>`;
+}
+function partRange(p){const s=Q.findIndex(q=>q.p===p);let e=s;while(e<Q.length&&Q[e].p===p)e++;return[s,e]}
+
+function draw(){({home,intro,quiz,rulerIntro,rulerRate,results})[S.screen]();bind()}
+
+function home(){
+  render(`<div class="card">${scene('peaks',0,1)}
+    <h1 style="text-align:center;margin-top:14px">Math Quest</h1>
+    <p class="muted" style="text-align:center">Climb the number peaks, wander the shape grove, and cross the market bridge with the lantern cat.</p>
+    <p style="margin:18px 0;text-align:center">There are <b>three parts</b>. You can stop after any part.</p>
+    <div style="text-align:center"><button class="btn" data-go="intro">Start the journey</button></div>
+  </div>
+  <div class="card"><div class="parentbar">For the grown-up, before you begin</div>
+  <ul class="muted">
+    <li><b>No paper or pencil needed</b> — everything is tapping. He may still use fingers, or count out loud.</li>
+    <li>No calculator, no teaching first, no retries. Read a question aloud if he asks.</li>
+    <li>The wrong answers are designed on purpose: each one matches a specific kind of mistake, so the results tell you <i>why</i> he missed something, not just that he did.</li>
+    <li>If he's guessing or fading, stop and finish the part another day. A tired guess is worse than no data.</li>
+    <li>He never sees a score. Results are for you at the end.</li>
+  </ul></div>`);
+}
+
+function intro(){
+  const [s]=partRange(S.part||1);
+  const p=S.part||1, P=PARTS[p];
+  const blurb={1:'Numbers are carved into the mountainside. Work out each one and tap your answer.',
+    2:'The grove is full of shapes, rows of stones, and things to measure.',
+    3:'Market stalls line the bridge — clocks, coins, and prices.'}[p];
+  render(`<div class="card">${scene(P.terrain,0,p)}
+    <h2 style="text-align:center;margin-top:14px">Part ${p} — ${P.name}</h2>
+    <p style="text-align:center">${blurb}</p>
+    <p class="muted" style="text-align:center">Take your time. There's no clock.</p>
+    <div style="text-align:center"><button class="btn" data-start="${s}">Keep going</button></div>
+  </div>`);
+}
+
+function quiz(){
+  const q=Q[S.qi], P=PARTS[q.p], [s,e]=partRange(q.p);
+  const pct=(S.qi-s)/(e-s);
+  const short=q.o.every(o=>String(o[0]).length<=6);
+  render(`<div class="card">${scene(P.terrain,pct,q.p)}
+    <div class="stepnum" style="margin-top:12px">${P.name}</div>
+    <div class="qtext">${q.q}</div>
+    ${short?`<div class="opts-grid">${q.o.map((o,i)=>`<button class="opt" data-opt="${i}">${o[0]}</button>`).join('')}</div>`
+      :q.o.map((o,i)=>`<button class="opt" data-opt="${i}">${o[0]}</button>`).join('')}
+    ${S.qi>s?'<div style="margin-top:12px"><button class="btn ghost sm" data-back="1">← Back</button></div>':''}
+  </div>`);
+}
+
+function rulerIntro(){
+  render(`<div class="card">${scene('market',1,3)}
+  <h2 style="text-align:center;margin-top:14px">Last stop — The Measuring Post</h2>
+  <p style="text-align:center">One thing to do with a real ruler, then you're finished.</p>
+  <p class="muted" style="text-align:center">Hand him a ruler and any object — a book, a spoon, a shoe — and ask him to measure how long it is.</p>
+  <div style="text-align:center"><button class="btn" data-ruler="go">He's measured it</button></div>
+  <div class="parentbar" style="margin-top:18px">Don't show him where to start or which edge to line up. This is the one thing that can't be tested by tapping, and lining the object up at zero is the part that usually slips.</div></div>`);
+}
+
+const RQ=[
+ {k:'r_zero',t:'Did he line the object up at the start of the ruler?',o:[['Yes, at zero without prompting',2],['Started at the 1, or at the very edge of the ruler',1],['Lined it up anywhere / needed showing',0]]},
+ {k:'r_read',t:'Did he read the measurement correctly?',o:[['Yes, correct number and unit',2],['Right number, no unit — or off by one mark',1],['Could not read it',0]]}
+];
+
+function rulerRate(){
+  const i=S.ri||0;
+  if(i>=RQ.length){go('results');return}
+  const w=RQ[i];
+  render(`<div class="card">${scene('market',1,3)}
+  <div class="parentbar" style="margin-top:14px">For the grown-up · ${i+1} of ${RQ.length}</div>
+  <h3>${w.t}</h3>
+  ${w.o.map((o,j)=>`<button class="opt" data-rr="${j}">${o[0]}</button>`).join('')}</div>`);
+}
+
+function score(){
+  const st={};
+  Q.forEach((q,i)=>{
+    st[q.s]=st[q.s]||{label:STRANDS[q.s],got:0,max:0,errs:[]};
+    st[q.s].max++;
+    const pick=S.ans[i];
+    if(pick!=null && q.o[pick][1]===1) st[q.s].got++;
+    else if(pick!=null && q.o[pick][1]) st[q.s].errs.push(q.o[pick][1]);
+  });
+  Object.values(st).forEach(v=>v.pct=v.got/v.max);
+  return st;
+}
+
+function plan(st){
+  const core=Object.entries(st).filter(([k])=>k!=='preview').map(([,v])=>v);
+  const pct=core.reduce((a,v)=>a+v.got,0)/core.reduce((a,v)=>a+v.max,0);
+  const weakCount=core.filter(v=>v.pct<.7).length;
+  if(pct>=.85&&weakCount<=1) return {t:'Plan A — Start Grade 3 math',
+    b:'Grade 2 foundations are solid. Begin Grade 3 and handle any isolated miss as it comes up in the normal course, rather than pre-reviewing.'};
+  if(pct>=.65) return {t:'Plan B — Start Grade 3 math, with one short review strand',
+    b:'Most of Grade 2 is secure. Begin Grade 3 on schedule and spend 10–15 minutes a few days a week on the single weakest strand below — not on everything at once.'};
+  return {t:'Plan C — A short Grade 2 repair period first',
+    b:'Several foundations are still shaky, and Grade 3 leans on them directly. Spend 2–3 weeks rebuilding the weakest strands below, then start Grade 3. This is a pause, not a grade-level demotion.'};
+}
+
+const FIX={
+place:'Place value is best repaired with objects, not worksheets — bundles of ten (straws, beans, coins) and asking "how many tens, how many ones?" Two minutes a day beats a page of problems.',
+addsub:'Regrouping errors usually mean the written procedure ran ahead of the concept. Go back to trading physical tens for ones a few times before returning to written problems, and keep it to 2–3 problems at a sitting.',
+groups:'Equal groups are the direct foundation of multiplication in Grade 3. Build them with real objects — rows of buttons, muffin tins, egg cartons — before any symbols.',
+frac:'Equal shares are the direct foundation of Grade 3 fractions, so this one is worth doing properly before fraction work starts. Fix it with food and paper, not symbols: fold paper into halves, thirds, fourths; cut a real sandwich or pancake and name the pieces out loud; ask "is that fair?" until he checks the pieces are actually equal. Nothing written.',
+reason:'Explaining and checking is a talking skill, not a writing one. Deliberately make a mistake in front of him and ask him to catch it, or ask "how could we check that?" after an answer. Two minutes, spoken, no recording needed.',
+geom:'Geometry gaps are usually vocabulary, not reasoning. Name shapes out loud around the house for a week; fold paper to find symmetry lines rather than drawing them.',
+meas:'Measurement needs real measuring — a ruler and actual objects. Estimating first, then checking, builds the sense of unit size that the questions were testing.',
+data:'Data gaps are usually reading the graph, not the arithmetic. Make one real graph together about something he cares about, then ask the same comparison questions.',
+time:'Time is easier on a real analog clock you can turn with your hands than on a page. Practise in passing — "what time will it be in twenty minutes?" — rather than as a lesson.',
+money:'Use actual coins. Counting mixed coins aloud while shopping or sorting a jar teaches this faster than any printed page.'
+};
+
+function results(){
+  const st=score(), P=plan(st);
+  const core=Object.entries(st).filter(([k])=>k!=='preview');
+  const rows=core.map(([k,v])=>{const[l,c]=band(v.pct);
+    const errs=[...new Set(v.errs)];
+    return `<tr><td>${v.label}</td><td>${v.got}/${v.max}</td><td><span class="pill ${c}">${l}</span></td><td class="muted">${errs.length?errs.join('; '):'—'}</td></tr>`}).join('');
+  const pv=st.preview;
+  const weak=core.map(([,v])=>v).sort((a,b)=>a.pct-b.pct)[0];
+  const weakKey=core.sort((a,b)=>a[1].pct-b[1].pct)[0][0];
+  const secure=core.filter(([,v])=>v.pct>=.85).map(([,v])=>v.label);
+
+  const rulerTotal=Object.values(S.ruler).reduce((a,b)=>a+b,0);
+  const rulerRows=RQ.map(q=>{const opt=q.o.find(o=>o[1]===S.ruler[q.k]);
+    return `<tr><td>${q.t}</td><td class="muted">${opt?opt[0]:'not recorded'}</td></tr>`}).join('');
+  const fracWeak = st.frac && st.frac.pct<.85;
+
+  render(`<div class="card noprint">${scene('market',1,4)}
+    <h2 style="text-align:center;margin-top:14px">Journey complete</h2>
+    <p class="muted" style="text-align:center">Tell him he made it across. The rest of this page is for you.</p>
+    <div style="text-align:center"><button class="btn" onclick="window.print()">Print or save these results</button></div>
+  </div>
+  <div class="card"><h2>Math results</h2><p class="muted">Date: ${new Date().toLocaleDateString()}</p>
+    <table><tr><th>Strand</th><th>Score</th><th></th><th>Mistake pattern</th></tr>${rows}</table>
+    <h3 style="margin-top:20px">Measuring with a ruler</h3>
+    <table>${rulerRows}</table>
+    <p class="muted">Ruler task: ${rulerTotal}/4. Starting at the 1 instead of zero is the single most common slip and is quick to fix — it is not a measurement-concept problem.</p>
+    <p class="muted" style="margin-top:14px"><b>Grade 3 preview:</b> ${pv.got}/${pv.max}. On entry, 0–1 is normal, 2–3 shows familiarity, 4–5 shows strong readiness. Grade 3 teaches all of this directly — a low score here is not a reason to wait.</p>
+  </div>
+  <div class="card"><h2>What to do about it</h2>
+    <div class="rec"><h3>${P.t}</h3><p>${P.b}</p></div>
+    ${fracWeak?`<div class="rec" style="border-left-color:var(--rose)"><h3 style="color:var(--rose)">Do this one before Grade 3 fractions begin</h3>
+      <p><b>Equal shares & fractions</b> came in at ${st.frac.got}/${st.frac.max}. This is a Grade 2 skill that Grade 3 fraction work sits directly on top of, so it is worth closing before that unit arrives — otherwise fractions will look like a Grade 3 problem when it is really this.</p>
+      <p class="muted"><b>How:</b> ${FIX.frac}</p></div>`:''}
+    <div class="rec"><h3>Start here — the single weakest strand</h3>
+      <p><b>${weak.pct<.85?weak.label:'Nothing needs repair'}</b>${weak.pct<.85?` came in at ${weak.got}/${weak.max}.`:' — every strand is secure.'}</p>
+      ${weak.pct<.85?`<p class="muted"><b>How:</b> ${FIX[weakKey]}</p>
+      <p class="muted"><b>When:</b> put this in the confidence-win or learn-together slot, early, while he's fresh — never as independent work. 10 minutes, not a full lesson.</p>
+      <p class="muted"><b>When to stop:</b> when he gets three of these right cold, on two different days. Then move to the next weakest strand — one at a time, never several.</p>`:''}
+    </div>
+    ${secure.length?`<div class="rec"><h3>Don't re-teach these</h3><p>Secure: <b>${secure.join(', ')}</b>. Skipping or fast-forwarding this content in Grade 3 is reasonable — repeating what he already owns costs momentum.</p></div>`:''}
+    <div class="rec" style="border-left-color:var(--gold)"><h3>Reading the mistake column</h3>
+      <p class="muted">A pattern like "did not carry" or "subtracted smaller from larger" is a <i>procedure</i> gap — he understands the numbers but the written method slipped. A pattern like "reads digit, not its place" or "counted coins, not values" is a <i>concept</i> gap and needs objects, not more problems. They're fixed differently, so it's worth glancing at which kind showed up.</p></div>
+    <div class="rec" style="border-left-color:var(--gold)"><h3>Recheck</h3>
+      <p>Work the plan for two ordinary weeks, then ask: too easy, productive challenge, or too hard? That's better evidence than re-testing. Full recheck at 6 weeks only if you chose Plan C.</p></div>
+  </div>
+  <div class="card noprint" style="text-align:center"><button class="btn ghost" onclick="location.reload()">Start over</button></div>`);
+}
+
+function bind(){
+  app.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{S.part=1;go('intro')});
+  app.querySelectorAll('[data-start]').forEach(b=>b.onclick=()=>{S.qi=+b.dataset.start;go('quiz')});
+  app.querySelectorAll('[data-opt]').forEach(b=>b.onclick=()=>{
+    S.ans[S.qi]=+b.dataset.opt;
+    const cur=Q[S.qi].p; S.qi++;
+    if(S.qi>=Q.length){go('rulerIntro');return}
+    if(Q[S.qi].p!==cur){S.part=Q[S.qi].p;go('intro');return}
+    draw();});
+  app.querySelectorAll('[data-ruler]').forEach(b=>b.onclick=()=>{S.ri=0;go('rulerRate')});
+  app.querySelectorAll('[data-rr]').forEach(b=>b.onclick=()=>{
+    const i=S.ri||0,w=RQ[i];
+    S.ruler[w.k]=w.o[+b.dataset.rr][1];
+    S.ri=i+1;
+    if(S.ri>=RQ.length)go('results');else draw();});
+  app.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>{if(S.qi>0)S.qi--;draw()});
+}
+draw();
+</script>
+</body>
+</html>

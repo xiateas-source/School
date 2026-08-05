@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reading Quest — Lantern Cat</title>
+<style>
+:root{
+  --night:#161E38; --panel:#222D50; --panel2:#2B3862;
+  --gold:#F2B544; --gold-soft:#F7D68A;
+  --moss:#7BC5A4; --rose:#E08B8B; --sky:#8FB8E8;
+  --parch:#F5EFE0; --muted:#A6B0CE;
+  --shadow:0 8px 28px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:radial-gradient(1200px 600px at 50% -10%, #2A3560 0%, var(--night) 60%);
+  color:var(--parch);
+  font-family:"Verdana","Trebuchet MS",system-ui,sans-serif;
+  min-height:100vh; padding:16px; font-size:17px; line-height:1.55;
+}
+.wrap{max-width:760px;margin:0 auto}
+h1,h2,h3{font-family:"Georgia","Iowan Old Style",serif;font-weight:700;line-height:1.2;margin:0 0 10px}
+h1{font-size:2rem} h2{font-size:1.4rem} h3{font-size:1.1rem}
+.card{background:var(--panel);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:22px;box-shadow:var(--shadow);margin-bottom:16px}
+.muted{color:var(--muted);font-size:.92rem}
+
+.scene{position:relative;height:120px;margin:-6px -6px 14px;border-radius:14px;overflow:hidden;
+  background:linear-gradient(180deg,#1B2444 0%,#243055 100%)}
+.scene svg.terrain{position:absolute;inset:0;width:100%;height:100%}
+.traveler{position:absolute;bottom:20px;left:0;width:78px;height:58px;
+  transition:transform 1.1s cubic-bezier(.4,0,.2,1)}
+.traveler svg{width:100%;height:100%;overflow:visible}
+.bob{animation:bob 1.6s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+.glow{animation:flicker 2.4s ease-in-out infinite}
+@keyframes flicker{0%,100%{opacity:.22}50%{opacity:.42}}
+.flag{position:absolute;bottom:24px;right:12px;font-size:1.5rem;opacity:.9}
+.steps{display:flex;gap:6px;justify-content:center;margin-top:10px}
+.step{flex:1;height:5px;border-radius:99px;background:rgba(255,255,255,.13)}
+.step.done{background:var(--moss)} .step.now{background:var(--gold)}
+
+.btn{display:inline-block;background:var(--gold);color:#20180A;border:none;border-radius:14px;
+  padding:14px 22px;font-size:1.05rem;font-weight:700;cursor:pointer;font-family:inherit;
+  margin:6px 6px 6px 0;box-shadow:0 4px 0 #C98F28;transition:transform .08s}
+.btn:active{transform:translateY(2px);box-shadow:0 2px 0 #C98F28}
+.btn.ghost{background:transparent;color:var(--parch);border:2px solid rgba(255,255,255,.25);box-shadow:none}
+.btn.sm{padding:9px 14px;font-size:.9rem}
+.btn:focus-visible,.opt:focus-visible,.rate:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+.opt{display:block;width:100%;text-align:left;background:var(--panel2);color:var(--parch);
+  border:2px solid rgba(255,255,255,.12);border-radius:14px;padding:15px 17px;margin:9px 0;
+  font-size:1.02rem;cursor:pointer;font-family:inherit;line-height:1.45}
+.opt:hover{border-color:var(--gold)}
+.word{font-family:"Georgia",serif;font-size:2.5rem;text-align:center;letter-spacing:.02em;margin:14px 0 4px;color:var(--gold-soft)}
+.rates{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px}
+.rate{flex:1;min-width:110px;border:2px solid rgba(255,255,255,.18);background:var(--panel2);color:var(--parch);
+  border-radius:12px;padding:12px 8px;font-size:.92rem;font-weight:700;cursor:pointer;font-family:inherit}
+.rate[data-v="2"]:hover{border-color:var(--moss);background:#2E4A44}
+.rate[data-v="1"]:hover{border-color:var(--gold);background:#463B22}
+.rate[data-v="0"]:hover{border-color:var(--rose);background:#4A2E33}
+.passage{background:var(--panel2);border-left:4px solid var(--gold);border-radius:10px;padding:16px 18px;margin:14px 0;font-size:1.05rem;line-height:1.7}
+.pill{display:inline-block;padding:4px 11px;border-radius:99px;font-size:.78rem;font-weight:700;letter-spacing:.03em}
+.p-sec{background:#2E4A44;color:var(--moss)} .p-em{background:#463B22;color:var(--gold)} .p-teach{background:#4A2E33;color:var(--rose)}
+.parentbar{background:#3B2E52;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:11px 15px;font-size:.88rem;margin-bottom:14px;color:var(--gold-soft)}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.93rem}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.12);vertical-align:top}
+th{color:var(--muted);font-weight:700;font-size:.82rem;text-transform:uppercase;letter-spacing:.05em}
+.rec{background:var(--panel2);border-radius:14px;padding:18px;margin:12px 0;border-left:4px solid var(--moss)}
+.rec h3{color:var(--moss);margin-bottom:6px}
+.stepnum{color:var(--muted);font-size:.82rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+ul{padding-left:20px} li{margin:5px 0}
+@media print{body{background:#fff;color:#000}.card,.rec{background:#fff;border:1px solid #999;box-shadow:none}.noprint,.scene,.steps{display:none}h1,h2,h3{color:#000}.muted,th{color:#444}.pill{border:1px solid #666;color:#000}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+const app = document.getElementById('app');
+const S = { screen:'home', wi:0, words:{}, ci:0, comp:{}, spell:{}, speech:null, si:0 };
+
+const WORD_GROUPS = [
+  {id:'blends', label:'Blends', words:['clap','trust','swept','stomp','blend']},
+  {id:'digraphs', label:'Digraphs', words:['shrimp','whistle','thank','chunk']},
+  {id:'rcontrol', label:'R-controlled vowels', words:['sharp','corn','turtle','bird']},
+  {id:'silente', label:'Silent-e', words:['shine','globe','flute','brave']},
+  {id:'teams', label:'Long-vowel teams', words:['dream','float','bright','train']},
+  {id:'other', label:'oo / soft c & g / qu / -le', words:['spoon','circle','cottage','quilt','candle']},
+  {id:'multi', label:'Affixes & multisyllable', words:['unhappily','disagreement','misunderstood','reteaching']}
+];
+const NONSENSE = ['blorn','shindle','snoak','glime','quep','fendle','thrist','molbin'];
+const COMP = [
+  {level:2, passage:"A garden spider spins a new web almost every night. First, she attaches sticky threads to two branches. Then she fills in the middle with a spiral pattern. If the web breaks during the day, she may eat the old silk and use it again to build a fresh web when night returns.",
+   qs:[
+    {skill:'Main idea', q:'What is this passage mostly about?', opts:['How a spider builds and rebuilds her web','Why branches grow near each other','How to catch a spider safely'], a:0},
+    {skill:'Vocabulary', q:'In this passage, "spiral" means a pattern that…', opts:['is straight like a ruler','curves around and around','has sharp corners'], a:1},
+    {skill:'Detail', q:'What does the spider attach first?', opts:['The spiral middle','Sticky threads to two branches','A pile of old silk'], a:1},
+    {skill:'Inference', q:'Why might she eat the old silk instead of leaving it?', opts:['So she can use it again and not waste it','Because silk tastes sweet','To hide from the branches'], a:0}]},
+  {level:3, passage:"Long before refrigerators existed, people used ice houses to keep food cold through the summer. Workers cut large blocks of ice from frozen lakes in winter and packed them in sawdust inside a thick-walled building. The sawdust worked so well that some blocks still had not melted by the following autumn.",
+   qs:[
+    {skill:'Main idea', q:'What is this passage mostly about?', opts:['How people kept ice cold before refrigerators','Why lakes freeze in the winter','How sawdust is made at a mill'], a:0},
+    {skill:'Vocabulary', q:'Sawdust worked as "insulation," which means it…', opts:['made the ice colder than before','kept the heat away from the ice','turned the ice into water'], a:1},
+    {skill:'Detail', q:'When did workers cut the ice?', opts:['In the summer','In the autumn','In the winter'], a:2},
+    {skill:'Inference', q:'Why does the writer mention autumn at the end?', opts:['To show how long the ice lasted','To explain when lakes freeze','To say when the building was built'], a:0}]}
+];
+const SPELL = [
+  {w:'stump',g:'A'},{w:'flash',g:'A'},{w:'chest',g:'A'},
+  {w:'brave',g:'B'},{w:'stream',g:'B'},{w:'porch',g:'B'},{w:'spoon',g:'B'},
+  {w:'hopping',g:'C'},{w:'careful',g:'C'},
+  {w:'unhappy',g:'D'},{w:'rebuilding',g:'D'}
+];
+
+const CAT = `<svg viewBox="0 0 80 60" aria-hidden="true">
+  <path d="M13 41 C3 39 5 26 13 29" stroke="#D9782F" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M9 37 C6.5 36 6.5 33 8 31.5" stroke="#B65A1C" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+  <path d="M6.5 28.5 C6 27 7 25.5 9 25" stroke="#B65A1C" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  <rect x="21" y="46" width="5" height="10" rx="2.5" fill="#C96A24"/>
+  <rect x="37" y="46" width="5" height="10" rx="2.5" fill="#C96A24"/>
+  <ellipse cx="31" cy="40" rx="18" ry="11" fill="#E88A3C"/>
+  <path d="M24 31.5 L23 47" stroke="#C4661F" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <path d="M31 30.5 L30.5 48" stroke="#C4661F" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <path d="M38 31.5 L38.5 47.5" stroke="#C4661F" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <ellipse cx="33" cy="45" rx="12" ry="5" fill="#F7C48E" opacity=".55"/>
+  <path d="M27 33 L19 19" stroke="#8A6A3A" stroke-width="2.5" stroke-linecap="round"/>
+  <circle class="glow" cx="17" cy="21" r="11" fill="#F2B544" opacity=".28"/>
+  <rect x="13" y="17" width="8.5" height="9.5" rx="2" fill="#F2B544" stroke="#C98F28" stroke-width="1.2"/>
+  <circle cx="51" cy="30" r="12.5" fill="#E88A3C"/>
+  <path d="M41 22 L42 11 L51 19 Z" fill="#E88A3C"/>
+  <path d="M57 18 L63 10 L64 22 Z" fill="#E88A3C"/>
+  <path d="M44.5 20 L45 14.5 L49 19 Z" fill="#F2A9A0" opacity=".8"/>
+  <path d="M58.5 18 L61.5 13.5 L62 20 Z" fill="#F2A9A0" opacity=".8"/>
+  <path d="M46 21 L48 25.5 M51.5 20 L52 25 M57 21 L55.5 25.5" stroke="#C4661F" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+  <ellipse cx="58" cy="33.5" rx="7" ry="5.5" fill="#F7C48E" opacity=".6"/>
+  <ellipse cx="56" cy="29" rx="3" ry="3.6" fill="#7BC5A4"/>
+  <ellipse cx="56" cy="29" rx="1.1" ry="3.2" fill="#1E2A22"/>
+  <circle cx="57.2" cy="27.6" r=".9" fill="#F5EFE0" opacity=".9"/>
+  <path d="M61.5 33 l3.5 1.2 -3.5 1.2z" fill="#E08B8B"/>
+  <path d="M61 36 L71 35.5 M61 37.5 L70 39.5" stroke="#F5EFE0" stroke-width="1" opacity=".7" stroke-linecap="round"/>
+</svg>`;
+
+const TERRAIN = {
+  cave:`<svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none">
+    <rect width="400" height="120" fill="#1B2444"/>
+    <path d="M0 120 L0 30 Q40 8 80 26 Q120 4 165 24 Q210 2 255 26 Q300 6 345 28 Q375 16 400 32 L400 120 Z" fill="#141B36"/>
+    <path d="M28 30 l7 22 -7 -4z M92 26 l6 26 -6 -5z M170 24 l8 24 -8 -4z M262 28 l6 22 -6 -4z M338 30 l7 20 -7 -3z" fill="#0E1329"/>
+    <path d="M0 100 Q100 92 200 99 Q300 106 400 98 L400 120 L0 120 Z" fill="#252F52"/>
+    <circle cx="120" cy="60" r="1.6" fill="#F2B544" opacity=".5"/><circle cx="300" cy="52" r="1.4" fill="#F2B544" opacity=".4"/>
+  </svg>`,
+  trail:`<svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none">
+    <rect width="400" height="120" fill="#1B2444"/>
+    <circle cx="345" cy="26" r="13" fill="#F7D68A" opacity=".55"/>
+    <g fill="#141B36"><path d="M30 100 L44 44 L58 100z"/><path d="M85 100 L100 38 L115 100z"/><path d="M150 100 L163 50 L176 100z"/><path d="M230 100 L245 42 L260 100z"/><path d="M300 100 L312 54 L324 100z"/></g>
+    <g fill="#1F2947"><path d="M60 100 L72 58 L84 100z"/><path d="M190 100 L203 46 L216 100z"/><path d="M270 100 L281 60 L292 100z"/></g>
+    <path d="M0 102 Q100 96 200 102 Q300 108 400 100 L400 120 L0 120 Z" fill="#2A3557"/>
+    <circle cx="60" cy="30" r="1.4" fill="#F5EFE0" opacity=".5"/><circle cx="140" cy="22" r="1.2" fill="#F5EFE0" opacity=".4"/><circle cx="215" cy="34" r="1.3" fill="#F5EFE0" opacity=".45"/>
+  </svg>`,
+  bridge:`<svg class="terrain" viewBox="0 0 400 120" preserveAspectRatio="none">
+    <rect width="400" height="120" fill="#1B2444"/>
+    <circle cx="60" cy="28" r="11" fill="#F7D68A" opacity=".45"/>
+    <path d="M0 120 L0 62 L52 62 L52 120z" fill="#141B36"/><path d="M400 120 L400 62 L348 62 L348 120z" fill="#141B36"/>
+    <path d="M52 66 Q200 44 348 66" stroke="#8A6A3A" stroke-width="4" fill="none"/>
+    <path d="M52 78 Q200 56 348 78" stroke="#6B5230" stroke-width="6" fill="none"/>
+    <g stroke="#8A6A3A" stroke-width="2" opacity=".8"><path d="M90 70 L90 60"/><path d="M140 64 L140 54"/><path d="M200 60 L200 50"/><path d="M260 63 L260 53"/><path d="M310 69 L310 59"/></g>
+    <path d="M0 104 Q100 110 200 104 Q300 98 400 106 L400 120 L0 120 Z" fill="#243052" opacity=".9"/>
+    <circle cx="250" cy="24" r="1.4" fill="#F5EFE0" opacity=".5"/><circle cx="320" cy="34" r="1.2" fill="#F5EFE0" opacity=".4"/>
+  </svg>`
+};
+
+function render(h){ app.innerHTML=h; window.scrollTo(0,0); }
+function go(s){ S.screen=s; draw(); }
+function band(p){ return p>=.85?['Secure','p-sec']:p>=.6?['Emerging','p-em']:['Needs teaching','p-teach']; }
+function allWords(){ const o=[]; WORD_GROUPS.forEach(g=>g.words.forEach(w=>o.push({w,g:g.id}))); NONSENSE.forEach(w=>o.push({w,g:'nonsense'})); return o; }
+const WORDS = allWords();
+const TOTALC = COMP.reduce((a,c)=>a+c.qs.length,0);
+
+function scene(kind, pct, part){
+  const x = 4 + pct*74;
+  const dots = [1,2,3].map(n=>`<div class="step ${part>n?'done':part===n?'now':''}"></div>`).join('');
+  return `<div class="scene">${TERRAIN[kind]}
+    <div class="flag">${kind==='cave'?'🕳️':kind==='trail'?'🌲':'🏁'}</div>
+    <div class="traveler" style="transform:translateX(${x}%)"><div class="bob">${CAT}</div></div>
+  </div><div class="steps">${dots}</div>`;
+}
+
+function draw(){
+  ({home,wintro,words,cintro,comp,sintro,spell,speech,results})[S.screen]();
+  bind();
+}
+
+function home(){
+  render(`<div class="card">
+    ${scene('trail',0,1)}
+    <h1 style="text-align:center;margin-top:14px">Reading Quest</h1>
+    <p class="muted" style="text-align:center">Walk with the lantern cat through the word caves, along the story trail, and over the spelling bridge.</p>
+    <p style="margin:18px 0;text-align:center">There are <b>three parts</b>. You can stop after any part.</p>
+    <div style="text-align:center"><button class="btn" data-go="wintro">Start the journey</button></div>
+  </div>
+  <div class="card">
+    <div class="parentbar">For the grown-up, before you begin</div>
+    <ul class="muted">
+      <li>You sit with him throughout — you tap the ratings, he reads and answers.</li>
+      <li><b>Paper and pencil needed for Part 3 only</b> (spelling). Everything else is tapping.</li>
+      <li>No teaching or practising the words first. No retries.</li>
+      <li>Wait about 5 seconds on a word, then say "try it one more time." If still stuck, tell him the word and move on without comment.</li>
+      <li>Don't count accent or a harmless mispronunciation as an error when the word is clear. A self-correction counts as correct.</li>
+      <li>He never sees a score. Results are for you at the end.</li>
+    </ul>
+  </div>`);
+}
+
+function wintro(){
+  render(`<div class="card">
+    ${scene('cave',0,1)}
+    <h2 style="text-align:center;margin-top:14px">Part 1 — The Word Caves</h2>
+    <p style="text-align:center">Words are glowing on the cave wall. Read each one out loud to the cat.</p>
+    <p class="muted" style="text-align:center">Some are real. Some are made-up words from an old map — read those out loud too.</p>
+    <div style="text-align:center"><button class="btn" data-go="words">Light the lantern</button></div>
+    <div class="parentbar" style="margin-top:18px">Tap how he read it. <b>Read it easily</b> = first try, no help. <b>Needed a nudge</b> = got it after your one reminder. <b>Not yet</b> = couldn't read it.</div>
+  </div>`);
+}
+
+function words(){
+  const it = WORDS[S.wi];
+  render(`<div class="card">
+    ${scene('cave', S.wi/WORDS.length, 1)}
+    <div class="stepnum" style="text-align:center;margin-top:12px">Word Caves</div>
+    <div class="word">${it.w}</div>
+    <p class="muted" style="text-align:center">${it.g==='nonsense'?'A made-up map word':'Read it out loud'}</p>
+    <div class="rates">
+      <button class="rate" data-v="2" data-rate="2">Read it easily</button>
+      <button class="rate" data-v="1" data-rate="1">Needed a nudge</button>
+      <button class="rate" data-v="0" data-rate="0">Not yet</button>
+    </div>
+    ${S.wi>0?'<div style="text-align:center;margin-top:14px"><button class="btn ghost sm" data-back="w">← Back one word</button></div>':''}
+  </div>`);
+}
+
+function cintro(){
+  render(`<div class="card">
+    ${scene('trail',0,2)}
+    <h2 style="text-align:center;margin-top:14px">Part 2 — The Story Trail</h2>
+    <p style="text-align:center">Two stories wait along the trail. Read each one, then tap your answers.</p>
+    <p class="muted" style="text-align:center">Read out loud or in your head — whichever you like.</p>
+    <div style="text-align:center"><button class="btn" data-go="comp">Follow the trail</button></div>
+  </div>`);
+}
+
+function comp(){
+  let qi=S.ci,p=0;
+  for(let i=0;i<COMP.length;i++){ if(qi<COMP[i].qs.length){p=i;break;} qi-=COMP[i].qs.length; }
+  const P=COMP[p],Q=P.qs[qi];
+  render(`<div class="card">
+    ${scene('trail', S.ci/TOTALC, 2)}
+    <div class="stepnum" style="margin-top:12px">Story Trail · Story ${p+1}</div>
+    <div class="passage">${P.passage}</div>
+    <h3 style="margin-top:16px">${Q.q}</h3>
+    ${Q.opts.map((o,i)=>`<button class="opt" data-opt="${i}">${o}</button>`).join('')}
+    ${S.ci>0?'<div style="margin-top:12px"><button class="btn ghost sm" data-back="c">← Back</button></div>':''}
+  </div>`);
+}
+
+function sintro(){
+  render(`<div class="card">
+    ${scene('bridge',0,3)}
+    <h2 style="text-align:center;margin-top:14px">Part 3 — The Spelling Bridge</h2>
+    <p style="text-align:center">The cat says each word out loud. You write it on paper.</p>
+    <p class="muted" style="text-align:center"><b>You need a pencil and paper for this part.</b></p>
+    <div style="text-align:center"><button class="btn" data-go="spell">Cross the bridge</button></div>
+    <div class="parentbar" style="margin-top:18px">Say the word, use it in a sentence, say it again. He writes only the word. <b>Do not correct anything until the whole part is finished.</b></div>
+  </div>`);
+}
+
+function spell(){
+  const it=SPELL[S.si];
+  render(`<div class="card">
+    ${scene('bridge', S.si/SPELL.length, 3)}
+    <div class="stepnum" style="text-align:center;margin-top:12px">Spelling Bridge</div>
+    <div class="word">${it.w}</div>
+    <p class="muted" style="text-align:center">Say it, use it in a sentence, say it again</p>
+    <div class="rates">
+      <button class="rate" data-v="2" data-sp="1">Spelled correctly</button>
+      <button class="rate" data-v="0" data-sp="0">Not correct</button>
+    </div>
+    ${S.si>0?'<div style="text-align:center;margin-top:14px"><button class="btn ghost sm" data-back="s">← Back one word</button></div>':''}
+  </div>`);
+}
+
+function speech(){
+  render(`<div class="card">
+    ${scene('bridge',1,3)}
+    <h2 style="margin-top:14px">Last question — for the grown-up</h2>
+    <p class="muted">About speech sounds, not reading. It separates a decoding gap from a sound he finds hard to say.</p>
+    <h3 style="margin-top:18px">When you modelled a word he missed, could he then say it back accurately?</h3>
+    <button class="opt" data-sph="ok">Yes — once I said it, he could say it back correctly</button>
+    <button class="opt" data-sph="flag">No — the same sounds stayed difficult even after I modelled them, and I hear this in his ordinary speech too</button>
+    <button class="opt" data-sph="na">He didn't miss enough words for me to tell</button>
+  </div>`);
+}
+
+function score(){
+  const g={};
+  WORD_GROUPS.forEach(grp=>{
+    const v=grp.words.map(w=>S.words[w]??0), got=v.reduce((a,b)=>a+b,0), max=grp.words.length*2;
+    g[grp.id]={label:grp.label,got,max,pct:got/max,rusty:v.filter(x=>x===1).length,miss:v.filter(x=>x===0).length};
+  });
+  const nv=NONSENSE.map(w=>S.words[w]??0), ng=nv.reduce((a,b)=>a+b,0);
+  const non={label:'Made-up word decoding',got:ng,max:NONSENSE.length*2,pct:ng/(NONSENSE.length*2),rusty:nv.filter(x=>x===1).length,miss:nv.filter(x=>x===0).length};
+  const cs={}; let ci=0;
+  COMP.forEach(P=>P.qs.forEach(Q=>{ const k='L'+P.level; cs[k]=cs[k]||{got:0,max:0,skills:[]};
+    const ok=S.comp[ci]===Q.a; cs[k].got+=ok?1:0; cs[k].max++; if(!ok)cs[k].skills.push(Q.skill); ci++; }));
+  const sp={};
+  ['A','B','C','D'].forEach(k=>{ const it=SPELL.filter(s=>s.g===k), got=it.filter(s=>S.spell[s.w]===1).length;
+    sp[k]={got,max:it.length,pct:got/it.length,missed:it.filter(s=>S.spell[s.w]!==1).map(s=>s.w)}; });
+  return {g,non,cs,sp};
+}
+
+function plan(r){
+  const realOk=Object.values(r.g).slice(0,6).every(x=>x.pct>=.85);
+  const L3=r.cs.L3?r.cs.L3.got/r.cs.L3.max:0, L2=r.cs.L2?r.cs.L2.got/r.cs.L2.max:0;
+  if(r.non.pct<.6||L2<.5) return {t:'Plan C — Keep building decoding before independent Grade 3 reading',
+    b:'Made-up words or Grade 2 comprehension came in low, which means patterns are being recognised rather than decoded. Finish the Grade 2 decoding sequence first, starting at the weakest group below.'};
+  if(!realOk||r.non.pct<.85||L3<.5) return {t:'Plan B — Start Grade 3 reading, with a short daily decoding strand',
+    b:'Comprehension is strong enough to move up, but one or more pattern groups are still shaky. Keep the interesting Grade 3 reading and add 10–15 focused minutes a day on the weakest group only.'};
+  return {t:'Plan A — Start Grade 3 reading; decoding is closed out',
+    b:'Real words, made-up words, and comprehension are all secure. No separate phonics course is needed. Spelling continues as its own short strand.'};
+}
+
+function results(){
+  const r=score(), P=plan(r);
+  const rows=[...Object.values(r.g),r.non].map(x=>{const[l,c]=band(x.pct);
+    return `<tr><td>${x.label}</td><td>${x.got}/${x.max}</td><td><span class="pill ${c}">${l}</span></td><td class="muted">${x.miss?x.miss+' missed':''}${x.miss&&x.rusty?', ':''}${x.rusty?x.rusty+' needed a nudge':''}${!x.miss&&!x.rusty?'clean':''}</td></tr>`}).join('');
+  const cRows=Object.entries(r.cs).map(([k,v])=>{const[l,c]=band(v.got/v.max);
+    return `<tr><td>${k==='L2'?'Grade 2 passage':'Grade 3 passage'}</td><td>${v.got}/${v.max}</td><td><span class="pill ${c}">${l}</span></td><td class="muted">${v.skills.length?'Missed: '+[...new Set(v.skills)].join(', '):'all correct'}</td></tr>`}).join('');
+  const spN={A:'Short vowels, blends, digraphs',B:'Vowel teams, r-controlled, silent-e, oo',C:'Endings and suffixes',D:'Prefixes and multisyllable'};
+  const sRows=Object.entries(r.sp).map(([k,v])=>{const[l,c]=band(v.pct);
+    return `<tr><td>${spN[k]}</td><td>${v.got}/${v.max}</td><td><span class="pill ${c}">${l}</span></td><td class="muted">${v.missed.length?'Missed: '+v.missed.join(', '):'clean'}</td></tr>`}).join('');
+  const weak=[...Object.values(r.g)].sort((a,b)=>a.pct-b.pct)[0];
+  const spWeak=Object.entries(r.sp).filter(([k,v])=>v.pct<.85).map(([k])=>spN[k]);
+  const cWeak=[...new Set(Object.values(r.cs).flatMap(v=>v.skills))];
+  const speechNote=S.speech==='flag'?`<div class="rec" style="border-left-color:var(--rose)">
+    <h3 style="color:var(--rose)">Worth mentioning at his next check-up</h3>
+    <p>You noted the same sounds stayed hard even after you modelled them, and that you hear it in ordinary speech too. That's worth raising with his pediatrician or a speech-language pathologist — not because anything is wrong, but because it's easier to sort out early. Keep teaching reading normally meanwhile. This tool can't diagnose anything; it just noticed a pattern worth a second opinion.</p></div>`:'';
+
+  render(`<div class="card noprint">
+    ${scene('bridge',1,4)}
+    <h2 style="text-align:center;margin-top:14px">Journey complete</h2>
+    <p class="muted" style="text-align:center">Tell him he walked the whole map. The rest of this page is for you.</p>
+    <div style="text-align:center"><button class="btn" onclick="window.print()">Print or save these results</button></div>
+  </div>
+  <div class="card">
+    <h2>Reading results</h2><p class="muted">Date: ${new Date().toLocaleDateString()}</p>
+    <h3 style="margin-top:20px">Word reading, by pattern</h3>
+    <table><tr><th>Pattern group</th><th>Score</th><th></th><th>Notes</th></tr>${rows}</table>
+    <h3 style="margin-top:20px">Comprehension</h3>
+    <table><tr><th>Passage</th><th>Score</th><th></th><th>Notes</th></tr>${cRows}</table>
+    <h3 style="margin-top:20px">Spelling, by strand</h3>
+    <table><tr><th>Strand</th><th>Score</th><th></th><th>Notes</th></tr>${sRows}</table>
+  </div>
+  <div class="card">
+    <h2>What to do about it</h2>
+    <div class="rec"><h3>${P.t}</h3><p>${P.b}</p></div>
+    <div class="rec"><h3>Start here — the single weakest thing</h3>
+      <p><b>${weak.pct<.85?weak.label:'Nothing in word reading needs repair'}</b>${weak.pct<.85?` came in at ${weak.got}/${weak.max}. This is the one strand to work on first — not all of them at once.`:'. Word reading is solid across every pattern group.'}</p>
+      ${weak.pct<.85?`<p class="muted"><b>How:</b> 10 minutes, early in the day, in the confidence-win or learn-together slot — never as independent work, since a shaky pattern needs you there. Read 5–6 words in that pattern aloud together, then find the pattern inside a book he already enjoys. No worksheet.</p>
+      <p class="muted"><b>When to stop:</b> when he reads 5 new words in that pattern cold, on two different days. Then move to the next weakest group.</p>`:''}
+    </div>
+    ${spWeak.length?`<div class="rec"><h3>Spelling strand to begin at</h3>
+      <p>Start spelling instruction at: <b>${spWeak[0]}</b>. Don't start at the beginning of a spelling programme — start here.</p>
+      <p class="muted"><b>How:</b> 5–10 minutes, 3–4 days a week, separate from other writing. Two or three words at a time, not a list of fifteen. Spelling is the one place handwriting practice can live, so it needn't appear anywhere else.</p></div>`:
+      `<div class="rec"><h3>Spelling</h3><p>All four strands are secure. Spelling can stay light — a few words a week inside real writing rather than a separate programme.</p></div>`}
+    ${cWeak.length?`<div class="rec"><h3>Comprehension skills to bring into conversation</h3>
+      <p>Missed at least once: <b>${cWeak.join(', ')}</b>.</p>
+      <p class="muted"><b>How:</b> no worksheets needed. Ask one of these about whatever he's already reading for pleasure — "what was that chapter mostly about?" for main idea, "why do you think she did that?" for inference. One question, orally, not every day.</p></div>`:
+      `<div class="rec"><h3>Comprehension</h3><p>Main idea, vocabulary, detail and inference were all correct. Protect pleasure reading as-is — it doesn't need converting into assignments to count.</p></div>`}
+    ${speechNote}
+    <div class="rec" style="border-left-color:var(--gold)"><h3>Recheck</h3>
+      <p>Use the chosen plan for two ordinary weeks, then ask one question: too easy, productive challenge, or too hard? That answer is worth more than re-testing. Full recheck in 6 weeks only if you picked Plan B or C.</p></div>
+  </div>
+  <div class="card noprint" style="text-align:center"><button class="btn ghost" onclick="location.reload()">Start over</button></div>`);
+}
+
+function bind(){
+  app.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+  app.querySelectorAll('[data-rate]').forEach(b=>b.onclick=()=>{
+    S.words[WORDS[S.wi].w]=+b.dataset.rate; S.wi++;
+    if(S.wi>=WORDS.length){S.wi=WORDS.length-1;go('cintro');}else draw();});
+  app.querySelectorAll('[data-opt]').forEach(b=>b.onclick=()=>{
+    S.comp[S.ci]=+b.dataset.opt; S.ci++;
+    if(S.ci>=TOTALC){S.ci=TOTALC-1;go('sintro');}else draw();});
+  app.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>{
+    S.spell[SPELL[S.si].w]=+b.dataset.sp; S.si++;
+    if(S.si>=SPELL.length){S.si=SPELL.length-1;go('speech');}else draw();});
+  app.querySelectorAll('[data-sph]').forEach(b=>b.onclick=()=>{S.speech=b.dataset.sph;go('results');});
+  app.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>{
+    const t=b.dataset.back;
+    if(t==='w'&&S.wi>0)S.wi--; if(t==='c'&&S.ci>0)S.ci--; if(t==='s'&&S.si>0)S.si--; draw();});
+}
+draw();
+</script>
+</body>
+</html>
