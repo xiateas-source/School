@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cat-trainer-raster-v2';
+const CACHE_NAME = 'cat-trainer-raster-v3';
 const APP_FILES = [
   './',
   './index.html',
