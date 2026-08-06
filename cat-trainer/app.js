@@ -1,9 +1,14 @@
 'use strict';
 
 (function startCatTrainer(){
+  const style = document.createElement('link');
+  style.rel = 'stylesheet';
+  style.href = 'image-fix.css?v=45';
+  document.head.appendChild(style);
+
   const loadScript = src => new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = `${src}?v=44`;
+    script.src = `${src}?v=45`;
     script.async = false;
     script.onload = resolve;
     script.onerror = () => reject(new Error(`${src} failed to load`));
