@@ -1,0 +1,32 @@
+.raster-sprite {
+  display: block;
+  flex: 0 0 auto;
+  aspect-ratio: 1 / 1;
+  background-image: var(--sprite);
+  background-repeat: no-repeat;
+  background-size: var(--ss);
+  background-position: var(--sx) var(--sy);
+}
+
+.cat-figure .raster-sprite,
+.cafe-cat .raster-sprite,
+#peek-cat-art .raster-sprite,
+.evolution-art .raster-sprite {
+  width: 100%;
+  height: 100%;
+}
+
+.shop-art .raster-sprite {
+  width: 72px;
+  height: 72px;
+}
+
+.trainer-art,
+.parent-avatar-button .raster-sprite,
+.family-portraits .raster-sprite,
+.parent-intro .raster-sprite,
+.modal-parent-art,
+.cafe-peek-art > .raster-sprite,
+.placed-decor-item {
+  background-color: transparent;
+}
