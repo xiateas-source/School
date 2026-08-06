@@ -1,0 +1,86 @@
+/* Direct transparent PNG artwork — v46 */
+.asset-image {
+  display: block;
+  max-width: 100%;
+  object-fit: contain;
+  background: transparent;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.parent-avatar-button img { width: 38px; height: 48px; }
+.trainer-art { object-fit: contain; }
+
+.cat-figure .asset-image,
+.cafe-cat .asset-image,
+#peek-cat-art .asset-image,
+.evolution-art .asset-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 5px rgba(61,62,82,.14));
+}
+
+.cafe-peek-art > img {
+  position: absolute;
+  width: 165px;
+  height: 135px;
+  object-fit: contain;
+  right: -7px;
+  bottom: 0;
+}
+
+.shop-art img { width: 82px; height: 82px; margin: auto; }
+
+.family-portraits { gap: 1px; }
+.family-portraits img { width: 58px; height: 118px; object-fit: contain; }
+.family-portraits #family-abba-art { height: 136px; width: 68px; }
+.family-portraits #family-arlo-art { height: 89px; width: 54px; }
+.family-portraits #family-wesley-art { height: 83px; width: 63px; }
+
+.parent-intro > img { width: 96px; height: 138px; object-fit: contain; }
+.modal-parent-art { width: 112px; height: 150px; margin-inline: auto; object-fit: contain; }
+
+.quest-symbol img,
+.quest-group-title img {
+  width: 31px;
+  height: 31px;
+  object-fit: contain;
+}
+.quest-group-title > span { overflow: hidden; }
+
+.cafe-room {
+  background-image: var(--cat-cafe-room, url('assets/cafe-room.png'));
+  background-size: cover;
+  background-position: center 48%;
+  background-repeat: no-repeat;
+}
+.room-wall-pattern,
+.room-window,
+.room-banner,
+.room-floor { display: none; }
+
+.placed-decor-item {
+  position: absolute;
+  z-index: 3;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 4px rgba(70,54,45,.13));
+}
+.decor-yarn-blue { width: 86px; left: 7%; bottom: 20%; }
+.decor-bed-blue { width: 155px; right: 3%; bottom: 4%; }
+.decor-plant-png { width: 88px; right: 5%; top: 26%; }
+.decor-cat-tree { width: 112px; left: 2%; top: 24%; }
+.decor-bed-pink { width: 148px; left: 30%; bottom: 4%; }
+.decor-food-bowl { width: 74px; right: 25%; bottom: 4%; }
+.decor-water-bowl { width: 74px; left: 23%; bottom: 4%; }
+.decor-yarn-pink { width: 78px; left: 6%; bottom: 39%; }
+.decor-bookshelf { width: 118px; right: 1%; top: 10%; }
+.decor-toy-basket { width: 88px; left: 1%; bottom: 2%; }
+.decor-moon-collar { width: 72px; left: 44%; top: 8%; }
+
+@media (max-width: 440px) {
+  .family-strip { grid-template-columns: 1fr; }
+  .family-portraits { justify-content: flex-start; }
+  .decor-bookshelf { width: 104px; }
+  .decor-cat-tree { width: 100px; }
+}
