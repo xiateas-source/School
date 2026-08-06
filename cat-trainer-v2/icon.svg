@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Cat Trainer star cat icon">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7557db"/><stop offset="1" stop-color="#263268"/></linearGradient>
+    <linearGradient id="cat" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e0d4ff"/><stop offset="1" stop-color="#8065df"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="120" fill="url(#bg)"/>
+  <circle cx="399" cy="105" r="54" fill="#62e7bf" opacity=".23"/>
+  <path d="m256 52 18 38 42 6-30 29 7 41-37-20-37 20 7-41-30-29 42-6Z" fill="#ffe681"/>
+  <path d="M145 225 99 145l82 35c36-28 115-28 151 0l81-35-44 84c28 34 35 88 18 131-18 45-58 77-111 82-65 6-127-25-148-79-22-54-4-106 17-138Z" fill="url(#cat)" stroke="#ffe681" stroke-width="18" stroke-linejoin="round"/>
+  <ellipse cx="207" cy="286" rx="23" ry="30" fill="#19213d"/><ellipse cx="309" cy="286" rx="23" ry="30" fill="#19213d"/>
+  <circle cx="200" cy="278" r="8" fill="#fff"/><circle cx="302" cy="278" r="8" fill="#fff"/>
+  <path d="m238 329 18 15 18-15" fill="#ffe681" stroke="#ffe681" stroke-width="8" stroke-linecap="round"/>
+  <path d="M256 344c0 23-31 27-43 10m43-10c0 23 31 27 43 10" fill="none" stroke="#49364e" stroke-width="10" stroke-linecap="round"/>
+  <path d="M171 326 64 306m107 48-113 15m283-43 107-20m-107 48 113 15" stroke="#ffe681" stroke-width="9" stroke-linecap="round" opacity=".9"/>
+</svg>
