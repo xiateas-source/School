@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#fffaf2">
+  <title>Opening Cat Trainer</title>
+  <style>
+    body{font-family:system-ui,sans-serif;background:#fffaf2;color:#173467;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;text-align:center}
+    main{max-width:360px;background:#fff;border:2px dashed #b9a8dc;border-radius:28px;padding:28px;box-shadow:0 12px 30px #3b2a1814}
+  </style>
+</head>
+<body>
+  <main><h1>Opening Cat Trainer…</h1><p>Loading the stable app with the repaired image layer.</p></main>
+  <script>
+    (async()=>{
+      const response=await fetch('./cat-trainer/index.html?v=45',{cache:'no-store'});
+      let html=await response.text();
+      html=html.replace('<head>','<head><base href="./cat-trainer/"><link rel="stylesheet" href="image-fix.css?v=45">');
+      html=html.replace('<script src="app.js"></'+'script>','<script src="app.js?v=45"></'+'script>');
+      document.open();
+      document.write(html);
+      document.close();
+    })().catch(error=>{
+      document.body.innerHTML='<main><h1>Cat Trainer could not open</h1><p>Please check the internet connection and try again.</p></main>';
+      console.error(error);
+    });
+  </script>
+</body>
+</html>
