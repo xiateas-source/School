@@ -1,20 +1,18 @@
-// ⬇️ PASTE YOUR FIREBASE CONFIG HERE ⬇️
-// After you create your free Firebase project (see FIREBASE-SETUP.md), Firebase
-// gives you a small block that looks exactly like the one below. Replace the
-// placeholder values with the real ones. This is the ONLY file you need to edit.
-//
-// These values are NOT secret — they only identify your project. Access is
-// protected by the security rules, not by hiding this config.
+// Firebase project config for the family's Cat Trainer backend.
+// These values are NOT secret — they only identify the project. Access is
+// protected by the Firestore security rules, not by hiding this file.
+// SDK version pinned to match the project: 12.17.1.
+
+export const FIREBASE_SDK_VERSION = '12.17.1';
 
 export const firebaseConfig = {
-  apiKey: 'PASTE_API_KEY',
-  authDomain: 'PASTE_PROJECT.firebaseapp.com',
-  projectId: 'PASTE_PROJECT_ID',
-  storageBucket: 'PASTE_PROJECT.appspot.com',
-  messagingSenderId: 'PASTE_SENDER_ID',
-  appId: 'PASTE_APP_ID'
+  apiKey: 'AIzaSyCRagkh-5QNCe37PZTviYaJxnUn1SeGE6M',
+  authDomain: 'xiatea-afc59.firebaseapp.com',
+  projectId: 'xiatea-afc59',
+  storageBucket: 'xiatea-afc59.firebasestorage.app',
+  messagingSenderId: '202758488500',
+  appId: '1:202758488500:web:a724c7ce1299bc21d2f2e1',
+  measurementId: 'G-EHEYZ01ECS'
 };
 
-// Set to true automatically once real values are pasted (used to show a friendly
-// "finish setup" message instead of a crash while the placeholder is still here).
 export const isConfigured = !firebaseConfig.apiKey.startsWith('PASTE_');

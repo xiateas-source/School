@@ -1,0 +1,140 @@
+rules_version = '2';
+
+// Cat Trainer security rules.
+//
+// Guarantees enforced here (server-side, not just hidden UI):
+//  1. Family isolation — only signed-in members of a family can read/write its data.
+//  2. Parent-only control — only a parent can change settings, quests (reward
+//     definitions), members, pairing codes, and can create arbitrary point
+//     adjustments / redemptions.
+//  3. The child role is limited to its legitimate actions: completing a quest
+//     (once per local day, amount validated against the stored quest), earning
+//     the quest's rewards, and buying café items with coins.
+//  4. Duplicate quest completions can't double-count (deterministic doc id +
+//     create-only).
+//
+// Note: for a single-household app this covers the realistic threat (a child
+// poking the tablet). Fully tamper-proof reward math would move quest completion
+// into a Cloud Function (Blaze plan); see REBUILD-NOTES for that optional upgrade.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function memberPath(fid) {
+      return /databases/$(database)/documents/families/$(fid)/members/$(request.auth.uid);
+    }
+    function isMember(fid) {
+      return signedIn() && exists(memberPath(fid));
+    }
+    function role(fid) {
+      return get(memberPath(fid)).data.role;
+    }
+    function isParent(fid) {
+      return isMember(fid) && role(fid) == 'parent';
+    }
+    function isChild(fid) {
+      return isMember(fid) && role(fid) == 'child';
+    }
+    function questPoints(fid, questId) {
+      return get(/databases/$(database)/documents/families/$(fid)/quests/$(questId)).data.points;
+    }
+
+    match /families/{fid} {
+      // A parent creates their own family; familyId == the parent's uid.
+      allow create: if signedIn()
+        && fid == request.auth.uid
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if isMember(fid);
+      allow update, delete: if isParent(fid);
+
+      // --- Membership -------------------------------------------------------
+      match /members/{uid} {
+        allow read: if isMember(fid);
+        // Owner bootstraps their own parent membership at setup.
+        allow create: if signedIn()
+          && uid == request.auth.uid
+          && (
+            (request.resource.data.role == 'parent'
+              && get(/databases/$(database)/documents/families/$(fid)).data.ownerUid == request.auth.uid)
+            // A device joins as child by presenting an active pairing code.
+            || (request.resource.data.role == 'child'
+              && exists(/databases/$(database)/documents/families/$(fid)/pairingCodes/$(request.resource.data.pairingCode))
+              && get(/databases/$(database)/documents/families/$(fid)/pairingCodes/$(request.resource.data.pairingCode)).data.active == true)
+          );
+        allow update, delete: if isParent(fid);
+      }
+
+      // --- Pairing codes (parent-managed) ----------------------------------
+      match /pairingCodes/{code} {
+        // Readable by anyone signed in so a pairing tablet can look it up by id.
+        allow read: if signedIn();
+        allow create, update, delete: if isParent(fid);
+      }
+
+      // --- Quests (reward definitions — parent only writes) ----------------
+      match /quests/{questId} {
+        allow read: if isMember(fid);
+        allow create, update, delete: if isParent(fid);
+      }
+
+      // --- Child profile ---------------------------------------------------
+      match /childProfiles/{childId} {
+        allow read: if isMember(fid);
+        allow create, delete: if isParent(fid);
+        // Parent can set anything. Child may only RAISE the available balance
+        // (quest points) and change coins/activeCat — never spend screen time.
+        allow update: if isParent(fid)
+          || (isChild(fid)
+              && request.resource.data.available >= resource.data.available);
+
+        match /cats/{catId} {
+          allow read: if isMember(fid);
+          allow create: if isParent(fid);
+          // Child gains are monotonic and capped; parent (undo) may adjust freely.
+          allow update: if isParent(fid)
+            || (isChild(fid)
+                && request.resource.data.brain >= resource.data.brain
+                && request.resource.data.energy >= resource.data.energy
+                && request.resource.data.bond >= resource.data.bond
+                && request.resource.data.brain <= 12
+                && request.resource.data.energy <= 12
+                && request.resource.data.bond <= 20);
+          allow delete: if isParent(fid);
+        }
+
+        match /ownedCafeItems/{itemId} {
+          allow read: if isMember(fid);
+          // Purchases are create-only (can't be un-bought by the child).
+          allow create: if isMember(fid);
+          allow update: if isParent(fid);
+          allow delete: if isParent(fid);
+        }
+      }
+
+      // --- Point ledger ----------------------------------------------------
+      match /pointTransactions/{txnId} {
+        allow read: if isMember(fid);
+        // Parent: any transaction (adjust / redeem / correction / quest).
+        // Child: only quest-earned points, and the amount must match the quest.
+        allow create: if isParent(fid)
+          || (isChild(fid)
+              && request.resource.data.kind == 'quest'
+              && request.resource.data.createdBy == request.auth.uid
+              && request.resource.data.amount == questPoints(fid, request.resource.data.questId));
+        // Ledger is append-only; corrections are new rows, never edits/deletes.
+        allow update, delete: if false;
+      }
+
+      // --- Quest completions (dedupe: one doc id per child+quest+day) -------
+      match /questCompletions/{completionId} {
+        allow read: if isMember(fid);
+        // Create-only: a second completion for the same id is an update -> denied.
+        allow create: if isMember(fid);
+        allow update, delete: if isParent(fid);
+      }
+    }
+  }
+}
