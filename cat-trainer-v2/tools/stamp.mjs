@@ -33,6 +33,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // fixed so the concatenated hash is stable regardless of filesystem ordering.
 const FILES = [
   'index.html',
+  'sw.js',
   'firebase-config.js',
   'src/app.js',
   'src/auth.js',
@@ -45,9 +46,13 @@ const FILES = [
   'src/shared/dates.js'
 ];
 
-// Strip any existing ?v=… stamp from a specifier/URL so hashing and re-stamping
-// are stable. Only touches stamps we own (the `v` param).
-const unstamp = (s) => s.replace(/\?v=[^'"\s)]*/g, '');
+// Normalize a file to its canonical, un-stamped form so hashing and re-stamping
+// are stable: drop any ?v=… query we own, and blank the service worker's
+// CACHE_VERSION so the hash doesn't depend on the value we're about to write.
+const unstamp = (s) =>
+  s
+    .replace(/\?v=[^'"\s)]*/g, '')
+    .replace(/(const CACHE_VERSION = ')[^']*(')/, '$1$2');
 
 // --- JS: local relative imports ending in .js -------------------------------
 // Matches:  from './x.js'  ·  from '../x.js'  ·  import('./x.js')
@@ -59,6 +64,14 @@ function restampJs(clean, version) {
   return clean
     .replace(staticImport, (_m, pre, spec, post) => `${pre}${spec}?v=${version}${post}`)
     .replace(dynImport, (_m, pre, spec, post) => `${pre}${spec}?v=${version}${post}`);
+}
+
+// --- sw.js: the cache version constant --------------------------------------
+function restampSw(clean, version) {
+  return clean.replace(
+    /(const CACHE_VERSION = ')[^']*(')/,
+    (_m, pre, post) => `${pre}${version}${post}`
+  );
 }
 
 // --- index.html: the entry module and the stylesheet ------------------------
@@ -87,7 +100,9 @@ let changed = 0;
 for (const f of cleaned) {
   const stamped = f.rel.endsWith('.html')
     ? restampHtml(f.clean, version)
-    : restampJs(f.clean, version);
+    : f.rel === 'sw.js'
+      ? restampSw(f.clean, version)
+      : restampJs(f.clean, version);
   const before = readFileSync(f.path, 'utf8');
   if (stamped !== before) {
     writeFileSync(f.path, stamped);
