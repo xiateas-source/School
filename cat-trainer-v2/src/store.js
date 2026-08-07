@@ -43,29 +43,34 @@ function paths(sdk, database, fid) {
 }
 
 // --- One-time family setup (parent) ------------------------------------------
+// Writes must be ordered so each security-rule check sees already-committed data:
+//   1. family        (owner can create their own family)
+//   2. parent member (rule reads the now-committed family's ownerUid)
+//   3. child + cats + quests (rules' isParent() reads the now-committed member)
+// A single batch fails because rules' get()/exists() can't see pending writes
+// from the same batch.
 export async function setupFamily(parentUid, { familyName = 'Our Family', parentName = 'Mom' } = {}) {
   const { database, sdk } = await fs();
-  const { writeBatch, serverTimestamp, getDoc } = sdk;
+  const { writeBatch, setDoc, serverTimestamp, getDoc } = sdk;
   const p = paths(sdk, database, parentUid);
 
-  const existing = await getDoc(p.family());
-  if (existing.exists()) return; // already set up
+  // Existence check. On the very first run the owner isn't a member yet, so the
+  // family read is denied — treat that as "not set up" rather than an error.
+  try {
+    const existing = await getDoc(p.family());
+    if (existing.exists()) return; // already set up — don't clobber progress
+  } catch (_) { /* permission-denied on first run: proceed to create */ }
 
-  const batch = writeBatch(database);
-  batch.set(p.family(), {
+  await setDoc(p.family(), {
     ownerUid: parentUid,
     name: familyName,
     createdAt: serverTimestamp(),
     settings: { allowNegative: false, dailyCap: null, timezone: 'America/Chicago' }
   });
-  batch.set(p.member(parentUid), { role: 'parent', displayName: parentName });
-  batch.set(p.child(), {
-    name: 'Sirus',
-    activeCatId: 'nova',
-    available: 0,
-    coins: 0,
-    childCanSwitchCat: true
-  });
+  await setDoc(p.member(parentUid), { role: 'parent', displayName: parentName });
+
+  const batch = writeBatch(database);
+  batch.set(p.child(), { name: 'Sirus', activeCatId: 'nova', available: 0, coins: 0, childCanSwitchCat: true });
   CAT_IDS.forEach(catId => batch.set(p.cat(catId), freshCatProgress()));
   seededQuests().forEach(q => batch.set(p.quest(q.id), q));
   await batch.commit();

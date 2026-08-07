@@ -329,9 +329,14 @@ async function boot() {
       if (fid && deviceRole() === 'child') enterChild(fid, user.uid);
       // otherwise, waiting for the pairing form to complete
     } else {
-      await store.setupFamily(user.uid, { parentName: 'Mom' });
-      rememberDeviceRole('parent', user.uid);
-      enterParent(user.uid, user);
+      try {
+        await store.setupFamily(user.uid, { parentName: 'Mom' });
+        rememberDeviceRole('parent', user.uid);
+        await enterParent(user.uid, user);
+      } catch (err) {
+        console.error('Parent setup failed', err);
+        el('signin-note').textContent = 'Setup error: ' + (err && err.message || err);
+      }
     }
   });
 }
