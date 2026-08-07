@@ -270,8 +270,40 @@ export async function redeemScreenTime(familyId, uid, minutes, { deviceId = 'pho
   });
 }
 
+// Read the child (and, if the entry touched a cat, that cat) up front, then
+// reverse the entry's effects. Firestore transactions require ALL reads before
+// ANY writes — the previous version read the cat after writing the child, which
+// threw and made undo silently fail.
+async function reverseEntry(tx, p, familyId, sdk, txn) {
+  const childSnap = await tx.get(p.child());
+  const child = childSnap.data();
+  let catRef = null, catSnap = null;
+  if (txn.catId && (txn.brain || txn.energy || txn.bond)) {
+    catRef = p.cat(txn.catId);
+    catSnap = await tx.get(catRef);
+  }
+  // ---- writes ----
+  const childUpdate = { available: Math.max(0, (child.available || 0) - Number(txn.amount || 0)) };
+  if (txn.coins) childUpdate.coins = Math.max(0, (child.coins || 0) - Number(txn.coins));
+  tx.update(p.child(), childUpdate);
+  if (catSnap) {
+    const cat = catSnap.data();
+    const next = {
+      brain: clamp((cat.brain || 0) - Number(txn.brain || 0), 0, CAPS.brain),
+      energy: clamp((cat.energy || 0) - Number(txn.energy || 0), 0, CAPS.energy),
+      bond: clamp((cat.bond || 0) - Number(txn.bond || 0), 0, CAPS.bond)
+    };
+    next.evolved = isHeroReady(next);
+    tx.update(catRef, next);
+  }
+  // If reversing a quest, clear its completion so it can be earned again today.
+  if (txn.kind === 'quest' && txn.questId) {
+    tx.delete(p.completion(`${CHILD_ID}_${txn.questId}_${txn.localDate}`));
+  }
+}
+
 // Undo = a compensating "correction" transaction that reverses the last entry's
-// effects, preserving history (never a silent delete).
+// effects, preserving history (leaves an audit note, never a silent delete).
 export async function undoLast(familyId, uid, lastTxn) {
   if (!lastTxn) return;
   const { database, sdk } = await fs();
@@ -279,29 +311,7 @@ export async function undoLast(familyId, uid, lastTxn) {
   const p = paths(sdk, database, familyId);
 
   await runTransaction(database, async (tx) => {
-    const childSnap = await tx.get(p.child());
-    const child = childSnap.data();
-    const after = Math.max(0, (child.available || 0) - Number(lastTxn.amount || 0));
-    const childUpdate = { available: after };
-    if (lastTxn.coins) childUpdate.coins = Math.max(0, (child.coins || 0) - Number(lastTxn.coins));
-    tx.update(p.child(), childUpdate);
-
-    if (lastTxn.catId && (lastTxn.brain || lastTxn.energy || lastTxn.bond)) {
-      const catRef = p.cat(lastTxn.catId);
-      const catSnap = await tx.get(catRef);
-      const cat = catSnap.data();
-      const next = {
-        brain: clamp((cat.brain || 0) - Number(lastTxn.brain || 0), 0, CAPS.brain),
-        energy: clamp((cat.energy || 0) - Number(lastTxn.energy || 0), 0, CAPS.energy),
-        bond: clamp((cat.bond || 0) - Number(lastTxn.bond || 0), 0, CAPS.bond)
-      };
-      next.evolved = isHeroReady(next);
-      tx.update(catRef, next);
-    }
-    // If undoing a quest, clear its completion so it can be earned again today.
-    if (lastTxn.kind === 'quest' && lastTxn.questId) {
-      tx.delete(p.completion(`${CHILD_ID}_${lastTxn.questId}_${lastTxn.localDate}`));
-    }
+    await reverseEntry(tx, p, familyId, sdk, lastTxn);
     const txnRef = doc(collection(database, 'families', familyId, 'pointTransactions'));
     tx.set(txnRef, {
       childId: CHILD_ID, amount: -Number(lastTxn.amount || 0), kind: 'correction',
@@ -311,6 +321,19 @@ export async function undoLast(familyId, uid, lastTxn) {
       catId: lastTxn.catId || null, createdBy: uid, deviceId: 'phone',
       createdAt: serverTimestamp(), localDate: localDate(), timeLabel: localTimeLabel()
     });
+  });
+}
+
+// Delete a specific ledger entry (parent-only): reverses its effect on the
+// balance / cat / coins and removes the row entirely.
+export async function deleteTransaction(familyId, uid, txn) {
+  if (!txn || !txn.id) return;
+  const { database, sdk } = await fs();
+  const { runTransaction } = sdk;
+  const p = paths(sdk, database, familyId);
+  await runTransaction(database, async (tx) => {
+    await reverseEntry(tx, p, familyId, sdk, txn);
+    tx.delete(p.txn(txn.id));
   });
 }
 

@@ -98,11 +98,12 @@ function renderAll() {
   else { renderChildHome(); renderChildQuests(); renderChildCats(); renderChildCafe(); renderChildLog(); }
 }
 
-function ledgerRow(t) {
+function ledgerRow(t, deletable = false) {
   const cls = t.amount >= 0 ? 'plus' : 'minus';
   const sign = t.amount >= 0 ? '+' : '';
+  const del = deletable ? `<button class="icon-btn del-txn" data-del-txn="${esc(t.id)}" aria-label="Delete this entry">🗑️</button>` : '';
   return `<div class="ledger-item"><span class="ledger-delta ${cls}">${sign}${t.amount}</span>
-    <p>${esc(t.reasonLabel || '')}</p><time>${esc(t.timeLabel || '')}</time></div>`;
+    <p>${esc(t.reasonLabel || '')}</p><time>${esc(t.timeLabel || '')}</time>${del}</div>`;
 }
 
 function renderQuickActions() {
@@ -117,10 +118,10 @@ function renderParentDash() {
   el('p-earned').textContent = earned;
   el('p-spent').textContent = spent;
   const rows = state.recentTxns.slice(0, 6);
-  el('dash-ledger').innerHTML = rows.length ? rows.map(ledgerRow).join('') : '<div class="empty">No activity yet today.</div>';
+  el('dash-ledger').innerHTML = rows.length ? rows.map(t => ledgerRow(t, true)).join('') : '<div class="empty">No activity yet today.</div>';
 }
 function renderLedger() {
-  el('full-ledger').innerHTML = state.recentTxns.length ? state.recentTxns.map(ledgerRow).join('') : '<div class="empty">No point changes yet.</div>';
+  el('full-ledger').innerHTML = state.recentTxns.length ? state.recentTxns.map(t => ledgerRow(t, true)).join('') : '<div class="empty">No point changes yet.</div>';
 }
 function renderParentQuests() {
   el('parent-quests').innerHTML = state.quests.map(q =>
@@ -231,12 +232,28 @@ function bindEvents() {
     const buy = e.target.closest('[data-buy]');
     if (buy) { try { await store.purchaseCafeItem(state.familyId, state.uid, buy.dataset.buy); toast('Added to the café!'); } catch (err) { toast(err.message === 'not-enough-coins' ? 'Not enough coins yet.' : 'Could not buy that.'); } return; }
 
+    const delTxn = e.target.closest('[data-del-txn]');
+    if (delTxn) {
+      const t = state.recentTxns.find(x => x.id === delTxn.dataset.delTxn);
+      if (t && confirm('Delete this entry? Its points will be reversed.')) {
+        try { await store.deleteTransaction(state.familyId, state.uid, t); toast('Entry deleted.'); }
+        catch (err) { toast('Could not delete — try again.'); }
+      }
+      return;
+    }
+
     const edit = e.target.closest('[data-edit-quest]'); if (edit) return openQuestDialog(edit.dataset.editQuest);
     const del = e.target.closest('[data-del-quest]');
     if (del) { if (confirm('Delete this quest?')) { await store.deleteQuest(state.familyId, del.dataset.delQuest); toast('Quest deleted.'); } return; }
 
     if (e.target.closest('#add-quest-btn')) return openQuestDialog(null);
-    if (e.target.closest('#undo-btn')) { const last = state.recentTxns[0]; if (!last) return toast('Nothing to undo.'); await store.undoLast(state.familyId, state.uid, last); toast('Undone.'); return; }
+    if (e.target.closest('#undo-btn')) {
+      const last = state.recentTxns[0];
+      if (!last) return toast('Nothing to undo.');
+      try { await store.undoLast(state.familyId, state.uid, last); toast('Undone.'); }
+      catch (err) { console.error('Undo failed', err); toast('Undo failed — try again.'); }
+      return;
+    }
     if (e.target.closest('#redeem-btn')) { el('redeem-available').textContent = state.child.available||0; el('redeem-minutes').value=''; el('redeem-dialog').showModal(); return; }
     if (e.target.closest('#make-code-btn')) return makePairingCode();
     if (e.target.closest('#signout-btn')) { await signOutUser(); location.reload(); return; }

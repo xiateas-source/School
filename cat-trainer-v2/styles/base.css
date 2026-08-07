@@ -120,9 +120,11 @@ main { padding: 0 16px; }
 /* ---------- Ledger ---------- */
 .ledger-list { display: flex; flex-direction: column; gap: 8px; }
 .ledger-item {
-  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
+  display: grid; grid-template-columns: auto 1fr auto auto; gap: 10px; align-items: center;
   background: var(--cream); border-radius: 12px; padding: 10px 12px;
 }
+.del-txn { font-size: 1rem; opacity: .55; }
+.del-txn:active { opacity: 1; }
 .ledger-delta { font-weight: 800; font-size: 1.05rem; min-width: 42px; text-align: center; }
 .ledger-delta.plus { color: var(--green); }
 .ledger-delta.minus { color: var(--orange); }
