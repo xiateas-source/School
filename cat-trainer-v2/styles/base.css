@@ -115,7 +115,8 @@ main { padding: 0 16px; }
 .adjust.positive { background: #e7f4e2; color: #4f8442; }
 .adjust.negative { background: #fbe6da; color: #c56a3c; }
 .adjust.restore { background: #ece6f7; color: #6b5bb0; }
-.inline-form { display: grid; grid-template-columns: 80px 1fr auto; gap: 8px; margin-bottom: 12px; }
+.point-note { margin-bottom: 10px; }
+.inline-form { display: grid; grid-template-columns: 80px 1fr; gap: 8px; margin-bottom: 12px; }
 .btn-row { display: flex; gap: 10px; }
 
 /* ---------- Ledger ---------- */
@@ -129,7 +130,9 @@ main { padding: 0 16px; }
 .ledger-delta { font-weight: 800; font-size: 1.05rem; min-width: 42px; text-align: center; }
 .ledger-delta.plus { color: var(--green); }
 .ledger-delta.minus { color: var(--orange); }
+.ledger-text { min-width: 0; }
 .ledger-item p { margin: 0; font-size: .92rem; }
+.ledger-note { display: block; color: var(--muted); font-size: .76rem; margin-top: 2px; }
 .ledger-item time { color: var(--muted); font-size: .78rem; }
 .empty { color: var(--muted); text-align: center; padding: 20px; }
 

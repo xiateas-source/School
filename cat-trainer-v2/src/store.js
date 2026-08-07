@@ -2,15 +2,15 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=7ecc14ba';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=7ecc14ba';
-import { seededQuests } from './data/quests.js?v=7ecc14ba';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=7ecc14ba';
+import { initFirebase, db, dbSdk } from './firebase.js?v=b91a1d3e';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=b91a1d3e';
+import { seededQuests } from './data/quests.js?v=b91a1d3e';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=b91a1d3e';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, applyBalanceDelta
-} from './shared/rewards.js?v=7ecc14ba';
-import { localDate, localTimeLabel } from './shared/dates.js?v=7ecc14ba';
+} from './shared/rewards.js?v=b91a1d3e';
+import { localDate, localTimeLabel } from './shared/dates.js?v=b91a1d3e';
 
 export const CHILD_ID = 'sirus';
 
@@ -183,7 +183,7 @@ export function todayTotals(recentTxns) {
 
 // Parent point adjustment (quick action or custom). Positive changes build Bond
 // on the active cat.
-export async function adjustPoints(familyId, uid, { amount, reasonCode, reasonLabel, deviceId = 'phone' }) {
+export async function adjustPoints(familyId, uid, { amount, reasonCode, reasonLabel, note = '', deviceId = 'phone' }) {
   const { database, sdk } = await fs();
   const { runTransaction, serverTimestamp, doc, collection } = sdk;
   const p = paths(sdk, database, familyId);
@@ -212,7 +212,7 @@ export async function adjustPoints(familyId, uid, { amount, reasonCode, reasonLa
     const txnRef = doc(collection(database, 'families', familyId, 'pointTransactions'));
     tx.set(txnRef, {
       childId: CHILD_ID, amount: applied, kind: 'adjust',
-      reasonCode: reasonCode || 'custom', reasonLabel: label,
+      reasonCode: reasonCode || 'custom', reasonLabel: label, note: note || '',
       bond, coins: 0, brain: 0, energy: 0, catId: child.activeCatId,
       createdBy: uid, deviceId, createdAt: serverTimestamp(),
       localDate: localDate(), timeLabel: localTimeLabel()
@@ -280,7 +280,7 @@ export async function completeQuest(familyId, uid, questId, { deviceId = 'tablet
 }
 
 // Parent records screen time used — draws down the available balance.
-export async function redeemScreenTime(familyId, uid, minutes, { deviceId = 'phone' } = {}) {
+export async function redeemScreenTime(familyId, uid, minutes, { deviceId = 'phone', note = '' } = {}) {
   const { database, sdk } = await fs();
   const { runTransaction, serverTimestamp, doc, collection } = sdk;
   const p = paths(sdk, database, familyId);
@@ -295,7 +295,7 @@ export async function redeemScreenTime(familyId, uid, minutes, { deviceId = 'pho
     const txnRef = doc(collection(database, 'families', familyId, 'pointTransactions'));
     tx.set(txnRef, {
       childId: CHILD_ID, amount: applied, kind: 'redeem',
-      reasonCode: 'screen_time', reasonLabel: 'Screen time used',
+      reasonCode: 'screen_time', reasonLabel: 'Screen time used', note: note || '',
       bond: 0, coins: 0, brain: 0, energy: 0,
       createdBy: uid, deviceId, createdAt: serverTimestamp(),
       localDate: localDate(), timeLabel: localTimeLabel()

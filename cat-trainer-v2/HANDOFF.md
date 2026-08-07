@@ -93,11 +93,16 @@ families/{familyId}                 familyId == parent's auth uid
                                      owner; Abba is a co-parent who joined by code)
   childProfiles/{childId='sirus'}   { name, activeCatId, available, coins, childCanSwitchCat }
     cats/{catId}                    { brain, energy, bond, evolved }   (independent per cat)
-    ownedCafeItems/{itemId}         { purchasedAt, price }
+    ownedCafeItems/{itemId}         { purchasedAt, price, x?, y?, placed? }
+                                    (x/y = saved room position %; placed=false = tucked
+                                     away in the shop. Absent x/y → a default slot;
+                                     absent placed → shown. Child may edit these.)
   quests/{questId}                  { title, section, enabled, order, points, brain, energy, coins }
-  pointTransactions/{txnId}         { childId, amount, kind, reasonCode, reasonLabel,
+  pointTransactions/{txnId}         { childId, amount, kind, reasonCode, reasonLabel, note?,
                                       bond, coins, brain, energy, catId, questId?,
                                       createdBy, deviceId, createdAt, localDate, timeLabel }
+                                    (note = optional free-text Mom/Abba attach to an
+                                     add/subtract; shown as a second line in the ledger)
   questCompletions/{childId_questId_localDate}   deterministic id = dedupe key
 pairings/{code}                     top-level { familyId, role:'child'|'parent', active, createdAt }
                                     (role:'child' = tablet pairing; role:'parent' = co-parent invite)
@@ -115,7 +120,11 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
 - **Parent-only** — settings, quests, members, pairing codes, arbitrary point
   adjustments/redemptions, and **deleting ledger entries**.
 - **Child** — may complete a quest once/day (amount validated against the stored
-  quest), earn its rewards (monotonic, capped), and buy café items.
+  quest), earn its rewards (monotonic, capped), buy café items, and **rearrange /
+  put away its own café décor** (update `x/y/placed` on an owned item). That last
+  update is guarded so the purchase record stays immutable — `price` +
+  `purchasedAt` can't change and only a parent can delete an item. Café items
+  grant no points/coins, so a child editing them can't manufacture value.
 - **Membership joins** — a user can create only their *own* member doc, and only
   as (1) the family owner bootstrapping their parent membership, (2) a **co-parent**
   presenting an active `role:'parent'` invite code for the family, or (3) a child
@@ -123,12 +132,17 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
   the `validPairing(fid, code, wantRole)` helper. Either parent can now mint codes
   (`pairings` create/manage gated by `isParent(familyId)`, not just the owner).
 
-> ⚠️ **The rules changed for Abba's co-parent login and MUST be re-published in
-> the console** (Firestore Database → Rules → paste `firestore.rules` → Publish).
-> Until Mom does this, the co-parent join is denied with "Missing or insufficient
-> permissions." See `FIREBASE-SETUP.md` → "Publishing / updating the security
-> rules." (The earlier ledger-delete rules were already published on 2026-08-07;
-> this is a *new* change on top.)
+> ⚠️ **Rules must be re-published in the console** (Firestore Database → Rules →
+> paste `firestore.rules` → Publish). Until Mom does this, the affected feature is
+> denied with "Missing or insufficient permissions." See `FIREBASE-SETUP.md` →
+> "Publishing / updating the security rules."
+> - **Latest change (2026-08-07): the interactive café** added the child
+>   `ownedCafeItems` update rule above. **Pending re-publish** — until then, drag /
+>   put-away / place fail on the tablet (tap reactions still work, they're
+>   client-only). The point-notes feature needs **no** rules change (notes ride on
+>   parent-created transactions, which the rules already allow).
+> - Earlier changes (co-parent login, ledger-delete) were already published on
+>   2026-08-07; the café one is a *new* change on top.
 >
 > Co-parents are mutually trusted: any parent can edit/remove another parent's
 > membership (`members` update/delete is `isParent(fid)`). Fine for a household.
@@ -160,6 +174,14 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - [x] Quest completion once/day with points + Brain/Energy/Bond + coins
 - [x] Cats: independent progress, active-cat selection, Hero Form + celebration
 - [x] Cat Café: buy items with coins, decorate the room
+- [x] **Interactive Cat Café**: drag décor to arrange (positions saved per item +
+      synced), tap the cat (bounce + hearts) / tap an item (wiggle), and Put away /
+      Place items from the shop. New items land in a stable default slot until moved.
+      _(shipped 2026-08-07; **drag/put-away/place pending the rules re-publish** in §6
+      — tap reactions work without it)_
+- [x] **Notes on point changes**: Mom/Abba can attach a free-text note to any add,
+      subtract, or screen-time redemption from the parent portal; it shows as a
+      second line in the ledger. (No rules change.)
 - [x] Sirus's read-only Point Log
 - [x] Ledger with device attribution; America/Chicago day boundary
 - [x] Service worker: offline app shell + installable PWA; cache purged per deploy
