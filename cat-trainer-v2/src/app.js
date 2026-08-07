@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=ff06d966';
+import { isConfigured } from './firebase.js?v=899f7bba';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=ff06d966';
-import * as store from './store.js?v=ff06d966';
-import { CAT_DEFS } from './data/cats.js?v=ff06d966';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=ff06d966';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=ff06d966';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=ff06d966';
+} from './auth.js?v=899f7bba';
+import * as store from './store.js?v=899f7bba';
+import { CAT_DEFS } from './data/cats.js?v=899f7bba';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=899f7bba';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=899f7bba';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=899f7bba';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -223,14 +223,24 @@ function ownedCafeRecord(itemId) { return state.ownedItems.find(o => o.id === it
 // placed layer and yank the item out of Sirus's hand.
 let cafeDrag = null;
 // Café cat idle poses, advanced by tapping the cat (non-evolved cats only).
-const CAFE_POSES = ['sit', 'play', 'eat', 'sleep'];
+const CAFE_POSES = ['sit', 'play', 'eat', 'sleep', 'celebrate'];
 let cafePoseIdx = 0;
+// Art for a café pose. If the cat is "sleeping" and owns + placed its own bed,
+// it naps ON that bed (the cat-on-bed art) instead of the plain curled pose.
+function cafePoseArt(def, poseKey) {
+  if (!def.poses) return def.art;
+  if (poseKey === 'sleep' && def.bedItemId && def.bedPose) {
+    const rec = ownedCafeRecord(def.bedItemId);
+    if (rec && rec.placed !== false) return def.bedPose;
+  }
+  return def.poses[poseKey];
+}
 
 function renderChildCafe() {
   el('c-coins').textContent = state.child.coins || 0;
   const id = state.child.activeCatId; const cat = state.cats[id] || {}; const def = CAT_DEFS[id];
   el('c-cafe-room').style.backgroundImage = `url("${CAFE_ROOM_ART}")`;
-  el('c-cafe-cat').src = cat.evolved ? def.heroArt : (def.poses ? def.poses[CAFE_POSES[cafePoseIdx]] : def.art);
+  el('c-cafe-cat').src = cat.evolved ? def.heroArt : cafePoseArt(def, CAFE_POSES[cafePoseIdx]);
   if (!cafeDrag) {
     el('c-placed').innerHTML = state.ownedItems.filter(o => o.placed !== false).map(o => {
       const item = CAFE_ITEMS[o.id]; if (!item) return '';
@@ -279,6 +289,12 @@ function initCafeInteractions() {
     cafeDrag.el.style.left = x + '%';
     cafeDrag.el.style.top = y + '%';
     cafeDrag.lastX = x; cafeDrag.lastY = y;
+    // Leave a little paw-print trail as the item is dragged (throttled).
+    const now = performance.now();
+    if (now - (cafeDrag.lastPaw || 0) > 110) {
+      cafeDrag.lastPaw = now;
+      spawnFx('assets/fx-paw.png', room, { count: 1, cx: x + 13, cy: y + 10, spread: 0, size: 26, life: 700, mode: 'trail' });
+    }
   });
 
   const endDrag = async (e) => {
@@ -305,7 +321,7 @@ function reactCat() {
   // Tapping a (non-hero) cat cycles it through its idle poses: sit→play→eat→sleep.
   if (!cat.evolved && def.poses) {
     cafePoseIdx = (cafePoseIdx + 1) % CAFE_POSES.length;
-    catEl.src = def.poses[CAFE_POSES[cafePoseIdx]];
+    catEl.src = cafePoseArt(def, CAFE_POSES[cafePoseIdx]);
   }
   catEl.classList.remove('bounce'); void catEl.offsetWidth; catEl.classList.add('bounce');
   spawnFx('assets/fx-sparkle.png', el('c-cafe-room'), { count: 3, cx: 50, cy: 52, spread: 22, size: 46 });

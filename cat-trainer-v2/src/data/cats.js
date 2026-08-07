@@ -13,7 +13,9 @@ export const CAT_DEFS = {
     heroTitle: 'Keeper of Bright Ideas',
     art: 'assets/nova.png',
     heroArt: 'assets/nova-hero.png',
-    poses: { sit: 'assets/nova-sit.png', play: 'assets/nova-play.png', eat: 'assets/nova-eat.png', sleep: 'assets/nova-sleep.png' }
+    poses: { sit: 'assets/nova-sit.png', play: 'assets/nova-play.png', eat: 'assets/nova-eat.png', sleep: 'assets/nova-sleep.png', celebrate: 'assets/nova-celebrate.png' },
+    // If this café bed item is owned + placed, the café cat naps ON it.
+    bedItemId: 'bed', bedPose: 'assets/nova-blue-star-bed.png'
   },
   ember: {
     id: 'ember',
@@ -23,7 +25,8 @@ export const CAT_DEFS = {
     heroTitle: 'Champion of Big Energy',
     art: 'assets/ember.png',
     heroArt: 'assets/ember-hero.png',
-    poses: { sit: 'assets/ember-sit.png', play: 'assets/ember-play.png', eat: 'assets/ember-eat.png', sleep: 'assets/ember-sleep.png' }
+    poses: { sit: 'assets/ember-sit.png', play: 'assets/ember-play.png', eat: 'assets/ember-eat.png', sleep: 'assets/ember-sleep.png', celebrate: 'assets/ember-celebrate.png' },
+    bedItemId: 'greenBed', bedPose: 'assets/ember-green-paw-bed.png'
   },
   moss: {
     id: 'moss',
@@ -33,7 +36,8 @@ export const CAT_DEFS = {
     heroTitle: 'Guardian of Home and Heart',
     art: 'assets/moss.png',
     heroArt: 'assets/moss-hero.png',
-    poses: { sit: 'assets/moss-sit.png', play: 'assets/moss-play.png', eat: 'assets/moss-eat.png', sleep: 'assets/moss-sleep.png' }
+    poses: { sit: 'assets/moss-sit.png', play: 'assets/moss-play.png', eat: 'assets/moss-eat.png', sleep: 'assets/moss-sleep.png', celebrate: 'assets/moss-celebrate.png' },
+    bedItemId: 'pinkBed', bedPose: 'assets/moss-pink-heart-bed.png'
   }
 };
 

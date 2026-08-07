@@ -154,7 +154,7 @@ on the first-run family existence check. Keep this ordering if you touch setup.
 
 ## 7. Assets
 
-52 PNGs in `assets/`, transparent except `cafe-room.png` and the app-icon tiles
+61 PNGs in `assets/`, transparent except `cafe-room.png` and the app-icon tiles
 (intentionally opaque). Source of truth = Google Drive **"Cat Trainer Artwork"**
 folder (owner `sirusxclass@gmail.com`), with subfolders: Pets, Hero Forms, Cat
 Cafe, Activity Poses, Effects, UI Icons, Family. To replace/add one, download from
@@ -165,9 +165,13 @@ corrupt once and had to be re-pulled.
 Added 2026-08-07 from Drive: 6 café items (`bunting-pastel`, `pet-house-green`,
 `pet-pillow-mint`, `bed-green-paws`, `collar-teal-heart`, `crown-gold-heart`);
 `coin.png`; app icons (`icon-192/512`, `apple-touch-icon`); 12 cat poses
-(`{nova,ember,moss}-{sit,play,eat,sleep}`); 4 effects (`fx-{sparkle,starburst,
-confetti,paw}`). Still unused in Drive if wanted later: `*-celebrating` poses,
-the on-bed poses, extra UI icons (`night-routine`, `tidy-and-help`, `game-time-star`).
+(`{nova,ember,moss}-{sit,play,eat,sleep,celebrate}`); the on-bed nap poses
+(`{nova-blue-star,ember-green-paw,moss-pink-heart}-bed`, shown when the cat's
+signature bed is placed); 4 effects (`fx-{sparkle,starburst,confetti,paw}`); and
+section/reward icons (`night-routine`, `tidy-and-help`, `game-time-star`). The
+café cat's tap cycle is sit→play→eat→sleep→celebrate; `fx-paw` is the drag trail.
+Still unused in Drive if wanted later: the Family-folder portraits and the
+`.zip` bundles (bulk sources only).
 
 Known art nit: **`ember-hero.png` looks almost identical to `ember.png`** — the
 evolution won't feel special. Candidate for a fresher Drive asset.
