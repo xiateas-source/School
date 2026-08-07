@@ -23,6 +23,17 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null;
     }
+    function pairing(code) {
+      return get(/databases/$(database)/documents/pairings/$(code)).data;
+    }
+
+    // --- Pairing codes (top-level so an un-joined tablet can look one up) -----
+    // familyId == the parent's uid, so only that parent can manage their codes.
+    match /pairings/{code} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.familyId == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.familyId == request.auth.uid;
+    }
     function memberPath(fid) {
       return /databases/$(database)/documents/families/$(fid)/members/$(request.auth.uid);
     }
@@ -59,19 +70,14 @@ service cloud.firestore {
           && (
             (request.resource.data.role == 'parent'
               && get(/databases/$(database)/documents/families/$(fid)).data.ownerUid == request.auth.uid)
-            // A device joins as child by presenting an active pairing code.
+            // A device joins as child by presenting an active pairing code that
+            // points at THIS family.
             || (request.resource.data.role == 'child'
-              && exists(/databases/$(database)/documents/families/$(fid)/pairingCodes/$(request.resource.data.pairingCode))
-              && get(/databases/$(database)/documents/families/$(fid)/pairingCodes/$(request.resource.data.pairingCode)).data.active == true)
+              && exists(/databases/$(database)/documents/pairings/$(request.resource.data.pairingCode))
+              && pairing(request.resource.data.pairingCode).active == true
+              && pairing(request.resource.data.pairingCode).familyId == fid)
           );
         allow update, delete: if isParent(fid);
-      }
-
-      // --- Pairing codes (parent-managed) ----------------------------------
-      match /pairingCodes/{code} {
-        // Readable by anyone signed in so a pairing tablet can look it up by id.
-        allow read: if signedIn();
-        allow create, update, delete: if isParent(fid);
       }
 
       // --- Quests (reward definitions — parent only writes) ----------------
