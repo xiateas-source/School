@@ -163,6 +163,8 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - [x] Service worker: offline app shell + installable PWA; cache purged per deploy
 - [x] Co-parent login (Abba): own email+password, joins Mom's family by invite code,
       full parent powers, own ledger identity; header shows who's signed in
+      _(shipped + rules published 2026-08-07; **pending first on-device test with
+      Abba** — Mom generates the code in Settings, Abba redeems it via "I'm Abba")_
 
 ## 9. Known issues / limitations
 
