@@ -182,7 +182,8 @@ main { padding: 0 16px; }
 .cafe-room {
   position: relative; width: 100%; aspect-ratio: 3/4; max-height: 420px;
   border-radius: 18px; overflow: hidden; box-shadow: var(--shadow);
-  background: center/cover no-repeat var(--cafe-room, #f3e6d0);
+  background-color: #f3e6d0;
+  background-size: cover; background-position: center; background-repeat: no-repeat;
 }
 .cafe-cat { position: absolute; bottom: 8%; left: 50%; transform: translateX(-50%); width: 40%; }
 #c-placed img, #parent-cafe .placed img { position: absolute; width: 26%; }

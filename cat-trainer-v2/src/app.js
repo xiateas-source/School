@@ -10,7 +10,7 @@ import * as store from './store.js';
 import { CAT_DEFS } from './data/cats.js';
 import { SECTIONS, SECTION_META } from './data/quests.js';
 import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js';
-import { QUICK_ACTIONS, HERO_THRESHOLD, isHeroReady } from './shared/rewards.js';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -125,7 +125,7 @@ function renderLedger() {
 function renderParentQuests() {
   el('parent-quests').innerHTML = state.quests.map(q =>
     `<div class="parent-quest-row"><div class="q-body"><strong>${esc(q.title)}</strong>
-      <br><small>${esc(q.section)} · +${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} ${q.coins?'· ●'+q.coins:''} ${q.enabled===false?'· (off)':''}</small></div>
+      <br><small>${esc(q.section)} · +${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''} ${q.enabled===false?'· (off)':''}</small></div>
       <button class="icon-btn" data-edit-quest="${esc(q.id)}">✎</button>
       <button class="icon-btn" data-del-quest="${esc(q.id)}">×</button></div>`
   ).join('') || '<div class="empty">No quests yet.</div>';
@@ -172,7 +172,7 @@ function renderChildHome() {
 function childQuestCard(q) {
   const done = state.todayCompletions.includes(q.id);
   return `<div class="quest-card ${done?'done':''}"><div class="q-body"><div class="q-title">${esc(q.title)}</div>
-    <div class="q-reward">+${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} ${q.coins?'· ●'+q.coins:''}</div></div>
+    <div class="q-reward">+${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''}</div></div>
     <button class="quest-complete" data-complete="${esc(q.id)}" ${done?'disabled':''}>${done?'✓':'+'}</button></div>`;
 }
 function renderChildQuests() {
@@ -191,7 +191,7 @@ function renderChildCats() {
 function renderChildCafe() {
   el('c-coins').textContent = state.child.coins || 0;
   const id = state.child.activeCatId; const cat = state.cats[id] || {};
-  el('c-cafe-room').style.setProperty('--cafe-room', `url('${CAFE_ROOM_ART}')`);
+  el('c-cafe-room').style.backgroundImage = `url("${CAFE_ROOM_ART}")`;
   el('c-cafe-cat').src = cat.evolved ? CAT_DEFS[id].heroArt : CAT_DEFS[id].art;
   const positions = [['12%','20%'],['64%','18%'],['20%','50%'],['66%','48%'],['40%','30%'],['8%','66%'],['72%','66%']];
   el('c-placed').innerHTML = state.ownedItems.map((itemId, i) => {
@@ -203,7 +203,7 @@ function renderChildCafe() {
     const owned = state.ownedItems.includes(item.id);
     const afford = (state.child.coins || 0) >= item.price;
     return `<div class="shop-item"><img src="${item.art}" alt="${esc(item.name)}"><strong>${esc(item.name)}</strong>
-      <small>● ${item.price}</small>
+      <small>🪙 ${item.price}</small>
       <button data-buy="${item.id}" ${owned||!afford?'disabled':''}>${owned?'Placed':afford?'Buy':'Need coins'}</button></div>`;
   }).join('');
 }
@@ -262,6 +262,17 @@ function bindEvents() {
   el('redeem-confirm').addEventListener('click', async () => {
     const mins = Number(el('redeem-minutes').value) || 0;
     if (mins > 0) { await store.redeemScreenTime(state.familyId, state.uid, mins); toast(`Recorded ${mins} min used.`); }
+  });
+  el('custom-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const amount = Number(el('custom-amount').value) || 0;
+    const reason = el('custom-reason').value.trim() || 'Custom adjustment';
+    if (!amount) return;
+    try {
+      await store.adjustPoints(state.familyId, state.uid, { amount, reasonLabel: reason });
+      toast(`${amount > 0 ? '+' : ''}${amount} · ${reason}`);
+      el('custom-reason').value = '';
+    } catch (err) { toast('Could not save — check connection.'); }
   });
   el('quest-save').addEventListener('click', saveQuestFromDialog);
 }
