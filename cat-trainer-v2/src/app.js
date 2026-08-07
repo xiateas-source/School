@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js';
+import { isConfigured } from './firebase.js?v=196b08d8';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId
-} from './auth.js';
-import * as store from './store.js';
-import { CAT_DEFS } from './data/cats.js';
-import { SECTIONS, SECTION_META } from './data/quests.js';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js';
+} from './auth.js?v=196b08d8';
+import * as store from './store.js?v=196b08d8';
+import { CAT_DEFS } from './data/cats.js?v=196b08d8';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=196b08d8';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=196b08d8';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=196b08d8';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
