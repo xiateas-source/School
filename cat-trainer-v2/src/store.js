@@ -2,15 +2,15 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=5d43044a';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=5d43044a';
-import { seededQuests } from './data/quests.js?v=5d43044a';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=5d43044a';
+import { initFirebase, db, dbSdk } from './firebase.js?v=7ecc14ba';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=7ecc14ba';
+import { seededQuests } from './data/quests.js?v=7ecc14ba';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=7ecc14ba';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, applyBalanceDelta
-} from './shared/rewards.js?v=5d43044a';
-import { localDate, localTimeLabel } from './shared/dates.js?v=5d43044a';
+} from './shared/rewards.js?v=7ecc14ba';
+import { localDate, localTimeLabel } from './shared/dates.js?v=7ecc14ba';
 
 export const CHILD_ID = 'sirus';
 
@@ -152,7 +152,7 @@ export async function subscribe(familyId, handlers = {}) {
     handlers.onQuests(quests);
   }));
   if (handlers.onOwnedItems) unsubs.push(onSnapshot(p.ownedItems(), s => {
-    handlers.onOwnedItems(s.docs.map(d => d.id));
+    handlers.onOwnedItems(s.docs.map(d => ({ id: d.id, ...d.data() })));
   }));
   if (handlers.onTodayCompletions) unsubs.push(onSnapshot(
     query(p.completions(), where('localDate', '==', today)),
@@ -385,8 +385,27 @@ export async function purchaseCafeItem(familyId, uid, itemId) {
     const coins = childSnap.data().coins || 0;
     if (coins < item.price) throw new Error('not-enough-coins');
     tx.update(p.child(), { coins: coins - item.price });
-    tx.set(p.ownedItem(itemId), { purchasedAt: sdk.serverTimestamp(), price: item.price });
+    tx.set(p.ownedItem(itemId), { purchasedAt: sdk.serverTimestamp(), price: item.price, placed: true });
   });
+}
+
+// Rearrange décor: save an item's room position (x/y as % of the room). The
+// child may do this on their own items — café items grant no points/coins, so
+// this can't be abused for value; the rules keep price + purchasedAt immutable.
+export async function moveCafeItem(familyId, itemId, x, y) {
+  const { database, sdk } = await fs();
+  const { updateDoc } = sdk;
+  const p = paths(sdk, database, familyId);
+  await updateDoc(p.ownedItem(itemId), { x, y });
+}
+
+// Put an owned item away (placed:false → hidden from the room but still owned
+// and re-placeable from the shop) or bring it back out (placed:true).
+export async function setCafeItemPlaced(familyId, itemId, placed) {
+  const { database, sdk } = await fs();
+  const { updateDoc } = sdk;
+  const p = paths(sdk, database, familyId);
+  await updateDoc(p.ownedItem(itemId), { placed });
 }
 
 export async function setActiveCat(familyId, catId) {

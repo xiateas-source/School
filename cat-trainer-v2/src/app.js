@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=5d43044a';
+import { isConfigured } from './firebase.js?v=7ecc14ba';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=5d43044a';
-import * as store from './store.js?v=5d43044a';
-import { CAT_DEFS } from './data/cats.js?v=5d43044a';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=5d43044a';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=5d43044a';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=5d43044a';
+} from './auth.js?v=7ecc14ba';
+import * as store from './store.js?v=7ecc14ba';
+import { CAT_DEFS } from './data/cats.js?v=7ecc14ba';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=7ecc14ba';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=7ecc14ba';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=7ecc14ba';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -195,34 +195,113 @@ function renderChildCats() {
   const canSwitch = state.child.childCanSwitchCat !== false;
   el('c-cats').innerHTML = Object.keys(CAT_DEFS).map(id => catCardHtml(id, canSwitch)).join('');
 }
+// Stable default slot per item (indexed by café-item order) so freshly-bought
+// décor lands somewhere sensible before Sirus drags it. 11 slots for 11 items;
+// each avoids the cat's center-bottom area and the other slots.
+const CAFE_ITEM_IDS = Object.keys(CAFE_ITEMS);
+const CAFE_SLOTS = [
+  [5,5],  [39,4],  [72,6],
+  [4,28],          [72,28],
+          [40,22],
+  [5,50],          [73,49],
+          [40,48],
+  [6,71],          [73,70]
+];
+function cafeSlot(itemId) {
+  const i = CAFE_ITEM_IDS.indexOf(itemId);
+  return CAFE_SLOTS[(i < 0 ? 0 : i) % CAFE_SLOTS.length];
+}
+function ownedCafeRecord(itemId) { return state.ownedItems.find(o => o.id === itemId); }
+
+// Active drag; also a render guard so a snapshot mid-drag doesn't rebuild the
+// placed layer and yank the item out of Sirus's hand.
+let cafeDrag = null;
+
 function renderChildCafe() {
   el('c-coins').textContent = state.child.coins || 0;
   const id = state.child.activeCatId; const cat = state.cats[id] || {};
   el('c-cafe-room').style.backgroundImage = `url("${CAFE_ROOM_ART}")`;
   el('c-cafe-cat').src = cat.evolved ? CAT_DEFS[id].heroArt : CAT_DEFS[id].art;
-  // One slot per café item (11) so a full collection never stacks on itself.
-  // The cat sits center-bottom (~30–70% wide, lower half), so the center column
-  // is kept to the upper area and the bottom row hugs the sides.
-  const positions = [
-    ['5%','5%'],  ['39%','4%'],  ['72%','6%'],
-    ['4%','28%'],                ['72%','28%'],
-                  ['40%','22%'],
-    ['5%','50%'],                ['73%','49%'],
-                  ['40%','48%'],
-    ['6%','71%'],                ['73%','70%']
-  ];
-  el('c-placed').innerHTML = state.ownedItems.map((itemId, i) => {
-    const item = CAFE_ITEMS[itemId]; if (!item) return '';
-    const [l, t] = positions[i % positions.length];
-    return `<img src="${item.art}" alt="${esc(item.name)}" style="left:${l};top:${t}">`;
-  }).join('');
-  el('c-shop').innerHTML = Object.values(CAFE_ITEMS).map(item => {
-    const owned = state.ownedItems.includes(item.id);
+  if (!cafeDrag) {
+    el('c-placed').innerHTML = state.ownedItems.filter(o => o.placed !== false).map(o => {
+      const item = CAFE_ITEMS[o.id]; if (!item) return '';
+      const [x, y] = (o.x != null && o.y != null) ? [o.x, o.y] : cafeSlot(o.id);
+      return `<img class="cafe-decor" src="${item.art}" alt="${esc(item.name)}" data-decor="${o.id}"
+        style="left:${x}%;top:${y}%" draggable="false">`;
+    }).join('');
+  }
+  el('c-shop').innerHTML = CAFE_ITEM_IDS.map(itemId => {
+    const item = CAFE_ITEMS[itemId];
+    const owned = ownedCafeRecord(itemId);
     const afford = (state.child.coins || 0) >= item.price;
+    let btn;
+    if (!owned) btn = `<button data-buy="${item.id}" ${afford ? '' : 'disabled'}>${afford ? 'Buy' : 'Need coins'}</button>`;
+    else if (owned.placed !== false) btn = `<button class="ghost-btn" data-putaway="${item.id}">Put away</button>`;
+    else btn = `<button data-place="${item.id}">Place</button>`;
     return `<div class="shop-item"><img src="${item.art}" alt="${esc(item.name)}"><strong>${esc(item.name)}</strong>
-      <small>🪙 ${item.price}</small>
-      <button data-buy="${item.id}" ${owned||!afford?'disabled':''}>${owned?'Placed':afford?'Buy':'Need coins'}</button></div>`;
+      <small>🪙 ${item.price}</small>${btn}</div>`;
   }).join('');
+}
+
+// ---- Café interactions (drag to arrange · tap to react) ---------------------
+function initCafeInteractions() {
+  const room = el('c-cafe-room');
+  if (!room) return;
+
+  room.addEventListener('pointerdown', (e) => {
+    const img = e.target.closest('[data-decor]');
+    if (!img) return; // not a décor item (e.g. the cat) — leave it to click/react
+    e.preventDefault();
+    cafeDrag = { id: img.dataset.decor, el: img, rect: room.getBoundingClientRect(),
+                 grabX: e.clientX, grabY: e.clientY, moved: false };
+    img.classList.add('dragging');
+    try { img.setPointerCapture(e.pointerId); } catch (_) { /* older browsers */ }
+  });
+
+  room.addEventListener('pointermove', (e) => {
+    if (!cafeDrag) return;
+    if (!cafeDrag.moved && Math.abs(e.clientX - cafeDrag.grabX) + Math.abs(e.clientY - cafeDrag.grabY) > 6) cafeDrag.moved = true;
+    if (!cafeDrag.moved) return;
+    const r = cafeDrag.rect;
+    // Center the item under the finger; clamp so it stays fully inside the room.
+    // Décor is 26% wide and ~19.5% of the room tall (the room is a 3:4 box).
+    const x = Math.min(74, Math.max(0, ((e.clientX - r.left) / r.width) * 100 - 13));
+    const y = Math.min(80.5, Math.max(0, ((e.clientY - r.top) / r.height) * 100 - 9.75));
+    cafeDrag.el.style.left = x + '%';
+    cafeDrag.el.style.top = y + '%';
+    cafeDrag.lastX = x; cafeDrag.lastY = y;
+  });
+
+  const endDrag = async (e) => {
+    if (!cafeDrag) return;
+    const d = cafeDrag; cafeDrag = null;
+    d.el.classList.remove('dragging');
+    try { d.el.releasePointerCapture(e.pointerId); } catch (_) { /* no-op */ }
+    if (d.moved && d.lastX != null) {
+      const round = (n) => Math.round(n * 10) / 10;
+      try { await store.moveCafeItem(state.familyId, d.id, round(d.lastX), round(d.lastY)); }
+      catch (_) { toast('Could not save that move.'); renderChildCafe(); }
+    } else {
+      // A tap (no real drag) → a playful wiggle.
+      d.el.classList.remove('wiggle'); void d.el.offsetWidth; d.el.classList.add('wiggle');
+    }
+  };
+  room.addEventListener('pointerup', endDrag);
+  room.addEventListener('pointercancel', endDrag);
+}
+
+function reactCat() {
+  const cat = el('c-cafe-cat');
+  cat.classList.remove('bounce'); void cat.offsetWidth; cat.classList.add('bounce');
+  const room = el('c-cafe-room');
+  for (let i = 0; i < 4; i++) {
+    const h = document.createElement('span');
+    h.className = 'cafe-heart'; h.textContent = '💜';
+    h.style.left = (38 + Math.random() * 24) + '%';
+    h.style.animationDelay = (i * 90) + 'ms';
+    room.appendChild(h);
+    setTimeout(() => h.remove(), 1300 + i * 90);
+  }
 }
 function renderChildLog() {
   el('c-log').innerHTML = state.recentTxns.length ? state.recentTxns.map(ledgerRow).join('') : '<div class="empty">Complete a quest to start your log!</div>';
@@ -247,6 +326,12 @@ function bindEvents() {
 
     const buy = e.target.closest('[data-buy]');
     if (buy) { try { await store.purchaseCafeItem(state.familyId, state.uid, buy.dataset.buy); toast('Added to the café!'); } catch (err) { toast(err.message === 'not-enough-coins' ? 'Not enough coins yet.' : 'Could not buy that.'); } return; }
+
+    if (e.target.closest('#c-cafe-cat')) return reactCat();
+    const putaway = e.target.closest('[data-putaway]');
+    if (putaway) { try { await store.setCafeItemPlaced(state.familyId, putaway.dataset.putaway, false); toast('Put away.'); } catch (err) { toast('Could not update the café.'); } return; }
+    const place = e.target.closest('[data-place]');
+    if (place) { try { await store.setCafeItemPlaced(state.familyId, place.dataset.place, true); toast('Placed!'); } catch (err) { toast('Could not update the café.'); } return; }
 
     const delTxn = e.target.closest('[data-del-txn]');
     if (delTxn) {
@@ -335,6 +420,7 @@ function bindEvents() {
     } catch (err) { toast('Could not save — check connection.'); }
   });
   el('quest-save').addEventListener('click', saveQuestFromDialog);
+  initCafeInteractions();
 }
 
 async function handleComplete(questId) {
