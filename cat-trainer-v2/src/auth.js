@@ -8,31 +8,32 @@ import { initFirebase, auth, authSdk } from './firebase.js';
 
 const EMAIL_KEY = 'catTrainerEmailForSignIn';
 
-// --- Parent: email link -------------------------------------------------------
-
-export async function sendParentSignInLink(email) {
+// --- Parent: email + password -------------------------------------------------
+// Reliable on any device (no email round-trip). First sign-in creates the
+// account; after that the same email + password signs Mom back in.
+export async function parentSignIn(email, password) {
   await initFirebase();
-  const { sendSignInLinkToEmail } = authSdk();
-  const actionCodeSettings = {
-    url: window.location.origin + window.location.pathname,
-    handleCodeInApp: true
-  };
-  await sendSignInLinkToEmail(auth(), email, actionCodeSettings);
-  window.localStorage.setItem(EMAIL_KEY, email);
+  const { signInWithEmailAndPassword, createUserWithEmailAndPassword } = authSdk();
+  try {
+    const res = await createUserWithEmailAndPassword(auth(), email, password);
+    return res.user;
+  } catch (err) {
+    if (err && err.code === 'auth/email-already-in-use') {
+      const res = await signInWithEmailAndPassword(auth(), email, password);
+      return res.user;
+    }
+    throw err;
+  }
 }
 
-// Call on page load — completes sign-in if the user arrived via the email link.
-export async function completeEmailLinkIfPresent() {
-  await initFirebase();
-  const { isSignInWithEmailLink, signInWithEmailLink } = authSdk();
-  if (!isSignInWithEmailLink(auth(), window.location.href)) return null;
-  let email = window.localStorage.getItem(EMAIL_KEY);
-  if (!email) email = window.prompt('Confirm your email to finish signing in:');
-  const result = await signInWithEmailLink(auth(), email, window.location.href);
-  window.localStorage.removeItem(EMAIL_KEY);
-  // Clean the link params out of the URL.
-  window.history.replaceState({}, document.title, window.location.pathname);
-  return result.user;
+// Turn a Firebase auth error into a friendly message.
+export function friendlyAuthError(err) {
+  const code = err && err.code || '';
+  if (code.includes('wrong-password') || code.includes('invalid-credential')) return 'Wrong password — try again.';
+  if (code.includes('weak-password')) return 'Password needs at least 6 characters.';
+  if (code.includes('invalid-email')) return 'That email address looks off.';
+  if (code.includes('network')) return 'No connection — check wifi and try again.';
+  return 'Could not sign in. ' + (err && err.message || '');
 }
 
 // --- Child: anonymous ---------------------------------------------------------

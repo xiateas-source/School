@@ -3,7 +3,7 @@
 
 import { isConfigured } from './firebase.js';
 import {
-  completeEmailLinkIfPresent, sendParentSignInLink, signInChildDevice,
+  parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId
 } from './auth.js';
 import * as store from './store.js';
@@ -245,8 +245,9 @@ function bindEvents() {
 
   el('signin-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    try { await sendParentSignInLink(el('signin-email').value.trim()); el('signin-note').textContent = 'Check your email and tap the link on THIS device.'; }
-    catch (err) { el('signin-note').textContent = 'Could not send link: ' + err.message; }
+    el('signin-note').textContent = 'Signing in…';
+    try { await parentSignIn(el('signin-email').value.trim(), el('signin-password').value); }
+    catch (err) { el('signin-note').textContent = friendlyAuthError(err); }
   });
   el('pair-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -320,7 +321,6 @@ function chooseRole(choice) {
 async function boot() {
   if (!isConfigured) { el('gate-note').textContent = 'Setup not finished yet.'; return; }
   bindEvents();
-  try { await completeEmailLinkIfPresent(); } catch (err) { console.warn(err); }
 
   await onAuth(async (user) => {
     if (!user) { showGateScreen('gate'); return; }
