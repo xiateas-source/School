@@ -146,6 +146,7 @@ main { padding: 0 16px; }
 /* ---------- Child home ---------- */
 .child-hero { text-align: center; padding: 10px 0 4px; }
 .time-badge { background: var(--paper); border-radius: 18px; box-shadow: var(--shadow); display: inline-block; padding: 10px 22px; line-height: 1.1; }
+.time-star { display: block; width: 36px; height: 36px; object-fit: contain; margin: 0 auto 2px; }
 .time-badge small { display: block; font-size: .62rem; color: var(--muted); letter-spacing: .12em; }
 .time-badge strong { font-size: 2.4rem; color: var(--gold); }
 .time-badge span { color: var(--muted); font-size: .8rem; }
@@ -214,6 +215,8 @@ main { padding: 0 16px; }
 .fx-rise { animation: fxRise 1.15s ease forwards; }
 .fx-fall { animation: fxFall 1.4s ease-in forwards; }
 .fx-pop  { animation: fxPop .9s ease-out forwards; }
+.fx-trail { animation: fxTrail .7s ease forwards; }
+@keyframes fxTrail { 0%{opacity:.85; transform:translate(-50%,-50%) scale(.55)} 100%{opacity:0; transform:translate(-50%,-50%) scale(1)} }
 @keyframes fxRise { 0%{opacity:0; transform:translate(-50%,-50%) scale(.5)} 20%{opacity:1} 100%{opacity:0; transform:translate(-50%,-125%) scale(1.1)} }
 @keyframes fxFall { 0%{opacity:0; transform:translate(-50%,-120%) scale(.7) rotate(0)} 15%{opacity:1} 100%{opacity:0; transform:translate(-50%,60%) scale(1) rotate(38deg)} }
 @keyframes fxPop  { 0%{opacity:0; transform:translate(-50%,-50%) scale(.3)} 30%{opacity:.9} 100%{opacity:0; transform:translate(-50%,-50%) scale(1.8)} }

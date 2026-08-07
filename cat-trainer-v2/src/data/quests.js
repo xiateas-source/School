@@ -9,8 +9,8 @@ export const SECTION_META = {
   Morning: { icon: 'assets/morning-icon.png', glyph: '☀', color: 'green' },
   Brain: { icon: 'assets/brain-icon.png', glyph: '★', color: 'purple' },
   Move: { icon: 'assets/move-icon.png', glyph: '⚡', color: 'orange' },
-  Tidy: { icon: null, glyph: '◆', color: 'blue' },
-  Night: { icon: null, glyph: '☾', color: 'pink' }
+  Tidy: { icon: 'assets/tidy-and-help-icon.png', glyph: '◆', color: 'blue' },
+  Night: { icon: 'assets/night-routine-icon.png', glyph: '☾', color: 'pink' }
 };
 
 export const DEFAULT_QUESTS = [
