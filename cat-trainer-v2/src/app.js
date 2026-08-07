@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=7ecc14ba';
+import { isConfigured } from './firebase.js?v=b91a1d3e';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=7ecc14ba';
-import * as store from './store.js?v=7ecc14ba';
-import { CAT_DEFS } from './data/cats.js?v=7ecc14ba';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=7ecc14ba';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=7ecc14ba';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=7ecc14ba';
+} from './auth.js?v=b91a1d3e';
+import * as store from './store.js?v=b91a1d3e';
+import { CAT_DEFS } from './data/cats.js?v=b91a1d3e';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=b91a1d3e';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=b91a1d3e';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=b91a1d3e';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -108,8 +108,9 @@ function ledgerRow(t, deletable = false) {
   const cls = t.amount >= 0 ? 'plus' : 'minus';
   const sign = t.amount >= 0 ? '+' : '';
   const del = deletable ? `<button class="icon-btn del-txn" data-del-txn="${esc(t.id)}" aria-label="Delete this entry">🗑️</button>` : '';
+  const note = t.note ? `<small class="ledger-note">${esc(t.note)}</small>` : '';
   return `<div class="ledger-item"><span class="ledger-delta ${cls}">${sign}${t.amount}</span>
-    <p>${esc(t.reasonLabel || '')}</p><time>${esc(t.timeLabel || '')}</time>${del}</div>`;
+    <div class="ledger-text"><p>${esc(t.reasonLabel || '')}</p>${note}</div><time>${esc(t.timeLabel || '')}</time>${del}</div>`;
 }
 
 function renderQuickActions() {
@@ -316,7 +317,7 @@ function bindEvents() {
     const cgo = e.target.closest('[data-cgo]'); if (cgo) return navChild(cgo.dataset.cgo);
 
     const quick = e.target.closest('[data-quick]');
-    if (quick) { try { await store.adjustPoints(state.familyId, state.uid, { reasonCode: quick.dataset.quick }); const a = QUICK_ACTIONS.find(x=>x.code===quick.dataset.quick); toast(`${a.amount>0?'+':''}${a.amount} · ${a.label}`); } catch (err) { toast('Could not save — check connection.'); } return; }
+    if (quick) { const note = el('point-note').value.trim(); try { await store.adjustPoints(state.familyId, state.uid, { reasonCode: quick.dataset.quick, note }); const a = QUICK_ACTIONS.find(x=>x.code===quick.dataset.quick); el('point-note').value = ''; toast(`${a.amount>0?'+':''}${a.amount} · ${a.label}`); } catch (err) { toast('Could not save — check connection.'); } return; }
 
     const train = e.target.closest('[data-train]');
     if (train) { await store.setActiveCat(state.familyId, train.dataset.train); toast(`${CAT_DEFS[train.dataset.train].name} is now training.`); return; }
@@ -355,7 +356,7 @@ function bindEvents() {
       catch (err) { console.error('Undo failed', err); toast('Undo failed — try again.'); }
       return;
     }
-    if (e.target.closest('#redeem-btn')) { el('redeem-available').textContent = state.child.available||0; el('redeem-minutes').value=''; el('redeem-dialog').showModal(); return; }
+    if (e.target.closest('#redeem-btn')) { el('redeem-available').textContent = state.child.available||0; el('redeem-minutes').value=''; el('redeem-note').value=''; el('redeem-dialog').showModal(); return; }
     if (e.target.closest('#make-code-btn')) return makePairingCode();
     if (e.target.closest('#make-coparent-code-btn')) return makeCoparentCode();
     if (e.target.closest('#signout-btn')) { await signOutUser(); location.reload(); return; }
@@ -406,17 +407,18 @@ function bindEvents() {
   });
   el('redeem-confirm').addEventListener('click', async () => {
     const mins = Number(el('redeem-minutes').value) || 0;
-    if (mins > 0) { await store.redeemScreenTime(state.familyId, state.uid, mins); toast(`Recorded ${mins} min used.`); }
+    const note = el('redeem-note').value.trim();
+    if (mins > 0) { await store.redeemScreenTime(state.familyId, state.uid, mins, { note }); el('redeem-note').value = ''; toast(`Recorded ${mins} min used.`); }
   });
   el('custom-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const amount = Number(el('custom-amount').value) || 0;
-    const reason = el('custom-reason').value.trim() || 'Custom adjustment';
+    const reason = el('point-note').value.trim() || 'Custom adjustment';
     if (!amount) return;
     try {
       await store.adjustPoints(state.familyId, state.uid, { amount, reasonLabel: reason });
       toast(`${amount > 0 ? '+' : ''}${amount} · ${reason}`);
-      el('custom-reason').value = '';
+      el('point-note').value = '';
     } catch (err) { toast('Could not save — check connection.'); }
   });
   el('quest-save').addEventListener('click', saveQuestFromDialog);

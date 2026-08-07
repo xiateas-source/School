@@ -7,7 +7,7 @@
   <title>Cat Trainer</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=7ecc14ba">
+  <link rel="stylesheet" href="styles/base.css?v=b91a1d3e">
 </head>
 <body>
   <div id="app">
@@ -96,10 +96,10 @@
           </div>
           <section class="card">
             <h3>Quick points</h3>
+            <input id="point-note" type="text" maxlength="80" class="point-note" placeholder="Add a note (optional) — attaches to the next point change">
             <div class="quick-actions" id="quick-actions"></div>
             <form id="custom-form" class="inline-form">
               <input id="custom-amount" type="number" inputmode="numeric" value="1" aria-label="Amount">
-              <input id="custom-reason" type="text" maxlength="60" placeholder="Reason (optional)">
               <button class="primary-button" type="submit">Apply</button>
             </form>
             <div class="btn-row">
@@ -238,6 +238,7 @@
     <h2>Record screen time used</h2>
     <p class="muted">Available now: <b id="redeem-available">0</b> minutes</p>
     <input id="redeem-minutes" type="number" inputmode="numeric" min="0" placeholder="Minutes used">
+    <input id="redeem-note" type="text" maxlength="80" placeholder="Note (optional)">
     <div class="btn-row">
       <button class="text-button" value="cancel">Cancel</button>
       <button class="primary-button" id="redeem-confirm" value="default">Record</button>
@@ -270,7 +271,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=7ecc14ba"></script>
+  <script type="module" src="src/app.js?v=b91a1d3e"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.
