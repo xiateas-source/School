@@ -43,6 +43,7 @@ img { max-width: 100%; }
 }
 .big-choice:active { transform: scale(.98); }
 .big-choice.mom { border-color: #e7d9f2; }
+.big-choice.dad { border-color: #cfe4f2; }
 .big-choice.kid { border-color: #d9ecc8; }
 .choice-art { width: 56px; height: 56px; object-fit: contain; }
 .big-choice span { display: flex; flex-direction: column; }

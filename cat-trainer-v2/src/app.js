@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=6e1109c4';
+import { isConfigured } from './firebase.js?v=2ccec269';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
-  onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId
-} from './auth.js?v=6e1109c4';
-import * as store from './store.js?v=6e1109c4';
-import { CAT_DEFS } from './data/cats.js?v=6e1109c4';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=6e1109c4';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=6e1109c4';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=6e1109c4';
+  onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
+} from './auth.js?v=2ccec269';
+import * as store from './store.js?v=2ccec269';
+import { CAT_DEFS } from './data/cats.js?v=2ccec269';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=2ccec269';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=2ccec269';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=2ccec269';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -50,9 +50,15 @@ function navChild(name) {
 }
 
 // ---- Entering an app --------------------------------------------------------
-async function enterParent(familyId, user) {
-  state.role = 'parent'; state.familyId = familyId; state.uid = user.uid;
+async function enterParent(familyId, user, name) {
+  const label = name || deviceParentName() || (familyId === user.uid ? 'Mom' : 'Parent');
+  const eyebrow = el('p-dash-eyebrow');
+  if (eyebrow) eyebrow.textContent = `${label.toUpperCase()}’S DASHBOARD`;
   el('settings-email').textContent = user.email || '';
+  // Skip re-subscribing if we're already in this exact family (avoids a double
+  // subscribe when both a form and the auth listener route the same sign-in).
+  if (state.role === 'parent' && state.familyId === familyId && state.uid === user.uid) return;
+  state.role = 'parent'; state.familyId = familyId; state.uid = user.uid;
   showShell('parent'); navParent('dash');
   renderQuickActions();
   await subscribeAll();
@@ -256,6 +262,7 @@ function bindEvents() {
     }
     if (e.target.closest('#redeem-btn')) { el('redeem-available').textContent = state.child.available||0; el('redeem-minutes').value=''; el('redeem-dialog').showModal(); return; }
     if (e.target.closest('#make-code-btn')) return makePairingCode();
+    if (e.target.closest('#make-coparent-code-btn')) return makeCoparentCode();
     if (e.target.closest('#signout-btn')) { await signOutUser(); location.reload(); return; }
     if (e.target.closest('#evo-close')) return el('evolution-dialog').close();
   });
@@ -263,8 +270,34 @@ function bindEvents() {
   el('signin-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     el('signin-note').textContent = 'Signing in…';
-    try { await parentSignIn(el('signin-email').value.trim(), el('signin-password').value); }
-    catch (err) { el('signin-note').textContent = friendlyAuthError(err); }
+    try {
+      const user = await parentSignIn(el('signin-email').value.trim(), el('signin-password').value);
+      // Owner path: first sign-in creates the family; later ones are a no-op.
+      await store.setupFamily(user.uid, { parentName: 'Mom' });
+      rememberDeviceRole('parent', user.uid, 'Mom', user.uid);
+      await enterParent(user.uid, user, 'Mom');
+    } catch (err) { el('signin-note').textContent = friendlyAuthError(err); }
+  });
+  el('coparent-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    el('coparent-note').textContent = 'Signing in…';
+    try {
+      const user = await parentSignIn(el('coparent-email').value.trim(), el('coparent-password').value);
+      // If THIS account has already joined on THIS device, no code is needed.
+      // (uid match guards against a shared device remembering a different parent.)
+      let fid = (deviceRole() === 'parent' && deviceUid() === user.uid && deviceFamilyId())
+        ? deviceFamilyId() : null;
+      if (!fid) {
+        const code = el('coparent-code').value.trim();
+        if (!code) { el('coparent-note').textContent = 'Ask Mom for an invite code (needed the first time).'; return; }
+        fid = await store.joinFamilyAsParent(user.uid, code, 'Abba');
+      }
+      rememberDeviceRole('parent', fid, 'Abba', user.uid);
+      await enterParent(fid, user, 'Abba');
+    } catch (err) {
+      // Auth errors have a .code; join errors are plain messages we wrote.
+      el('coparent-note').textContent = err && err.code ? friendlyAuthError(err) : (err && err.message) || 'Could not sign in.';
+    }
   });
   el('pair-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -338,12 +371,19 @@ async function makePairingCode() {
   toast('Enter this code on the tablet.');
 }
 
+async function makeCoparentCode() {
+  const code = await store.createParentInviteCode(state.familyId);
+  const disp = el('coparent-code-display'); disp.hidden = false; disp.textContent = code;
+  toast('Give this code to Abba.');
+}
+
 // ---- Role gate + boot -------------------------------------------------------
 function chooseRole(choice) {
   if (choice === 'back') return showGateScreen('gate');
   el('gate-note').textContent = '';
-  if (choice === 'parent') showGateScreen('parent-signin');
-  else showGateScreen('child-pair');
+  if (choice === 'parent') return showGateScreen('parent-signin');
+  if (choice === 'coparent') return showGateScreen('coparent-signin');
+  showGateScreen('child-pair');
 }
 
 async function boot() {
@@ -355,15 +395,28 @@ async function boot() {
     if (user.isAnonymous) {
       const fid = deviceFamilyId();
       if (fid && deviceRole() === 'child') enterChild(fid, user.uid);
-      // otherwise, waiting for the pairing form to complete
-    } else {
+      return; // otherwise, waiting for the pairing form to complete
+    }
+    // A signed-in parent (Mom or Abba). If this device already knows their
+    // family, route them straight in. First-time create/join is handled by the
+    // sign-in forms, so a brand-new account with no device memory falls through
+    // and waits for the form to finish.
+    const fid = deviceFamilyId();
+    const rememberedUid = deviceUid();
+    // Route only if this device's memory belongs to the account signing in.
+    // Legacy installs stored no uid — treat that as a match so Mom isn't logged
+    // out by this update; we backfill the uid below.
+    const sameAccount = !rememberedUid || rememberedUid === user.uid;
+    if (deviceRole() === 'parent' && fid && sameAccount) {
       try {
-        await store.setupFamily(user.uid, { parentName: 'Mom' });
-        rememberDeviceRole('parent', user.uid);
-        await enterParent(user.uid, user);
+        // Only the owner (familyId == their own uid) needs setup; a co-parent
+        // must never create a second family.
+        if (fid === user.uid) await store.setupFamily(user.uid, { parentName: 'Mom' });
+        rememberDeviceRole('parent', fid, deviceParentName(), user.uid);
+        await enterParent(fid, user, deviceParentName());
       } catch (err) {
-        console.error('Parent setup failed', err);
-        el('signin-note').textContent = 'Setup error: ' + (err && err.message || err);
+        console.error('Parent enter failed', err);
+        el('signin-note').textContent = 'Sign-in error: ' + (err && err.message || err);
       }
     }
   });

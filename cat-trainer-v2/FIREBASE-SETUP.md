@@ -41,6 +41,26 @@ to life.
 
 ---
 
+## Publishing / updating the security rules (do this when Claude says so)
+
+The security rules are the real lock on your family's data. They live in the repo
+file `cat-trainer-v2/firestore.rules`, but Firebase only enforces them once you
+**publish** them in the console. Whenever Claude changes that file (for example,
+adding **Abba's co-parent login**), you must re-publish or the new feature is
+blocked.
+
+1. Open **https://console.firebase.google.com** → your project.
+2. Left menu: **Build → Firestore Database**, then the **Rules** tab at the top.
+3. Select all the text in the editor and delete it.
+4. Open `cat-trainer-v2/firestore.rules` (Claude can paste the full contents to
+   you), copy **everything**, and paste it into the editor.
+5. Click **Publish**. It takes effect in a few seconds — no app redeploy needed.
+
+If you ever see "Missing or insufficient permissions" in the app after a new
+feature ships, it almost always means the rules need re-publishing (this step).
+
+---
+
 ### Notes
 - The config values are **not secrets** — they only name your project. Real
   protection comes from the security rules Claude installs.

@@ -7,7 +7,7 @@
   <title>Cat Trainer</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=6e1109c4">
+  <link rel="stylesheet" href="styles/base.css?v=2ccec269">
 </head>
 <body>
   <div id="app">
@@ -20,6 +20,10 @@
         <button class="big-choice mom" data-choose-role="parent">
           <img src="assets/mom.png" alt="Mom" class="choice-art">
           <span><strong>I'm Mom</strong><small>Manage points &amp; quests</small></span>
+        </button>
+        <button class="big-choice dad" data-choose-role="coparent">
+          <img src="assets/abba.png" alt="Abba" class="choice-art">
+          <span><strong>I'm Abba</strong><small>Manage points &amp; quests</small></span>
         </button>
         <button class="big-choice kid" data-choose-role="child">
           <img src="assets/sirus.png" alt="Sirus" class="choice-art">
@@ -45,6 +49,23 @@
       </div>
     </section>
 
+    <!-- ===================== CO-PARENT SIGN-IN ===================== -->
+    <section class="screen" data-screen="coparent-signin">
+      <div class="gate-card">
+        <img src="assets/abba.png" alt="Abba" class="signin-art">
+        <h2>Abba's sign-in</h2>
+        <p class="gate-sub">Use your own email and a password. The first time also needs Mom's invite code (from her phone: Settings → Invite Abba). After that, just your email and password.</p>
+        <form id="coparent-form" class="stack-form">
+          <input id="coparent-email" type="email" required placeholder="you@email.com" autocomplete="email">
+          <input id="coparent-password" type="password" required minlength="6" placeholder="Password (6+ characters)" autocomplete="current-password">
+          <input id="coparent-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Invite code (first time only)" class="code-input">
+          <button class="primary-button" type="submit">Sign in</button>
+        </form>
+        <p class="gate-note" id="coparent-note"></p>
+        <button class="text-button" data-choose-role="back">← Back</button>
+      </div>
+    </section>
+
     <!-- ===================== CHILD PAIRING ===================== -->
     <section class="screen" data-screen="child-pair">
       <div class="gate-card">
@@ -63,7 +84,7 @@
     <!-- ===================== PARENT APP ===================== -->
     <div class="app-shell" data-role-shell="parent" hidden>
       <header class="topbar">
-        <div><p class="eyebrow">MOM'S DASHBOARD</p><h1 class="brand small">Cat Trainer</h1></div>
+        <div><p class="eyebrow" id="p-dash-eyebrow">MOM'S DASHBOARD</p><h1 class="brand small">Cat Trainer</h1></div>
         <div class="balance-chip"><small>AVAILABLE</small><strong id="p-available">0</strong><span>min</span></div>
       </header>
       <main>
@@ -125,6 +146,12 @@
             <p class="muted">Generate a code, then enter it on the tablet.</p>
             <button class="primary-button" id="make-code-btn">Create pairing code</button>
             <div id="pair-code-display" class="code-display" hidden></div>
+          </section>
+          <section class="card">
+            <h3>Invite Abba (co-parent)</h3>
+            <p class="muted">Give Abba his own login with the same powers as you. Generate a code, then on his phone he taps “I'm Abba” and enters it.</p>
+            <button class="primary-button" id="make-coparent-code-btn">Create invite code</button>
+            <div id="coparent-code-display" class="code-display" hidden></div>
           </section>
           <section class="card">
             <h3>Account</h3>
@@ -242,7 +269,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=6e1109c4"></script>
+  <script type="module" src="src/app.js?v=2ccec269"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.
