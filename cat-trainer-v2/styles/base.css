@@ -205,9 +205,18 @@ main { padding: 0 16px; }
   30%     { transform: translateX(-50%) translateY(-6%) scale(1.06); }
   60%     { transform: translateX(-50%) translateY(0) scale(1); }
 }
-.cafe-heart { position: absolute; bottom: 30%; font-size: 1.6rem; pointer-events: none; animation: cafeHeart 1.2s ease forwards; }
-@keyframes cafeHeart { 0%{opacity:0; transform: translateY(0) scale(.6)} 20%{opacity:1} 100%{opacity:0; transform: translateY(-90px) scale(1.1)} }
 .cafe-hint { font-size: .8rem; color: var(--muted); text-align: center; margin: 10px 2px 0; }
+.coin-ico { width: 1em; height: 1em; object-fit: contain; vertical-align: -0.15em; }
+
+/* Effect sprites (sparkle on cat-tap, confetti/starburst on celebrations). */
+.fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+.fx-sprite { position: absolute; pointer-events: none; transform: translate(-50%, -50%); will-change: transform, opacity; }
+.fx-rise { animation: fxRise 1.15s ease forwards; }
+.fx-fall { animation: fxFall 1.4s ease-in forwards; }
+.fx-pop  { animation: fxPop .9s ease-out forwards; }
+@keyframes fxRise { 0%{opacity:0; transform:translate(-50%,-50%) scale(.5)} 20%{opacity:1} 100%{opacity:0; transform:translate(-50%,-125%) scale(1.1)} }
+@keyframes fxFall { 0%{opacity:0; transform:translate(-50%,-120%) scale(.7) rotate(0)} 15%{opacity:1} 100%{opacity:0; transform:translate(-50%,60%) scale(1) rotate(38deg)} }
+@keyframes fxPop  { 0%{opacity:0; transform:translate(-50%,-50%) scale(.3)} 30%{opacity:.9} 100%{opacity:0; transform:translate(-50%,-50%) scale(1.8)} }
 .shop-heading { margin: 16px 0 10px; }
 .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .shop-item { background: var(--paper); border-radius: 16px; box-shadow: var(--shadow); padding: 12px; text-align: center; }
@@ -237,8 +246,9 @@ main { padding: 0 16px; }
 .modal-card { padding: 22px; display: flex; flex-direction: column; gap: 12px; }
 .modal-card label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: .9rem; }
 .reward-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.evo-art { width: 200px; height: 200px; object-fit: contain; margin: 0 auto; }
-.evolution .modal-card { text-align: center; align-items: center; }
+.evo-art { width: 200px; height: 200px; object-fit: contain; margin: 0 auto; position: relative; z-index: 1; }
+.evolution .modal-card .fx-sprite { z-index: 0; }
+.evolution .modal-card { text-align: center; align-items: center; position: relative; overflow: hidden; }
 .toast {
   position: fixed; bottom: 96px; left: 50%; transform: translateX(-50%) translateY(20px);
   background: var(--ink); color: #fff; padding: 12px 20px; border-radius: 14px;

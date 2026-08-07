@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=b91a1d3e';
+import { isConfigured } from './firebase.js?v=ff06d966';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=b91a1d3e';
-import * as store from './store.js?v=b91a1d3e';
-import { CAT_DEFS } from './data/cats.js?v=b91a1d3e';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=b91a1d3e';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=b91a1d3e';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=b91a1d3e';
+} from './auth.js?v=ff06d966';
+import * as store from './store.js?v=ff06d966';
+import { CAT_DEFS } from './data/cats.js?v=ff06d966';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=ff06d966';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=ff06d966';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=ff06d966';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -95,6 +95,9 @@ function showEvolution(catId) {
   el('evo-art').src = d.heroArt;
   el('evo-copy').textContent = `${d.name} balanced Brain and Energy and became ${d.heroTitle}.`;
   el('evolution-dialog').showModal();
+  const card = el('evolution-dialog').querySelector('.modal-card');
+  spawnFx('assets/fx-starburst.png', card, { count: 1, cx: 50, cy: 42, spread: 0, size: 220, life: 900, mode: 'pop' });
+  spawnFx('assets/fx-confetti.png', card, { count: 8, cx: 50, cy: 8, spread: 40, size: 40, life: 1500, mode: 'fall' });
 }
 
 // ---- Rendering --------------------------------------------------------------
@@ -209,20 +212,25 @@ const CAFE_SLOTS = [
   [6,71],          [73,70]
 ];
 function cafeSlot(itemId) {
-  const i = CAFE_ITEM_IDS.indexOf(itemId);
-  return CAFE_SLOTS[(i < 0 ? 0 : i) % CAFE_SLOTS.length];
+  const i = Math.max(0, CAFE_ITEM_IDS.indexOf(itemId));
+  const [bx, by] = CAFE_SLOTS[i % CAFE_SLOTS.length];
+  const wrap = Math.floor(i / CAFE_SLOTS.length); // 0 for the first 11, 1 for 12–17
+  return [Math.min(74, bx + wrap * 7), Math.min(80, by + wrap * 4)];
 }
 function ownedCafeRecord(itemId) { return state.ownedItems.find(o => o.id === itemId); }
 
 // Active drag; also a render guard so a snapshot mid-drag doesn't rebuild the
 // placed layer and yank the item out of Sirus's hand.
 let cafeDrag = null;
+// Café cat idle poses, advanced by tapping the cat (non-evolved cats only).
+const CAFE_POSES = ['sit', 'play', 'eat', 'sleep'];
+let cafePoseIdx = 0;
 
 function renderChildCafe() {
   el('c-coins').textContent = state.child.coins || 0;
-  const id = state.child.activeCatId; const cat = state.cats[id] || {};
+  const id = state.child.activeCatId; const cat = state.cats[id] || {}; const def = CAT_DEFS[id];
   el('c-cafe-room').style.backgroundImage = `url("${CAFE_ROOM_ART}")`;
-  el('c-cafe-cat').src = cat.evolved ? CAT_DEFS[id].heroArt : CAT_DEFS[id].art;
+  el('c-cafe-cat').src = cat.evolved ? def.heroArt : (def.poses ? def.poses[CAFE_POSES[cafePoseIdx]] : def.art);
   if (!cafeDrag) {
     el('c-placed').innerHTML = state.ownedItems.filter(o => o.placed !== false).map(o => {
       const item = CAFE_ITEMS[o.id]; if (!item) return '';
@@ -240,7 +248,7 @@ function renderChildCafe() {
     else if (owned.placed !== false) btn = `<button class="ghost-btn" data-putaway="${item.id}">Put away</button>`;
     else btn = `<button data-place="${item.id}">Place</button>`;
     return `<div class="shop-item"><img src="${item.art}" alt="${esc(item.name)}"><strong>${esc(item.name)}</strong>
-      <small>🪙 ${item.price}</small>${btn}</div>`;
+      <small><img class="coin-ico" src="assets/coin.png" alt=""> ${item.price}</small>${btn}</div>`;
   }).join('');
 }
 
@@ -292,17 +300,39 @@ function initCafeInteractions() {
 }
 
 function reactCat() {
-  const cat = el('c-cafe-cat');
-  cat.classList.remove('bounce'); void cat.offsetWidth; cat.classList.add('bounce');
-  const room = el('c-cafe-room');
-  for (let i = 0; i < 4; i++) {
-    const h = document.createElement('span');
-    h.className = 'cafe-heart'; h.textContent = '💜';
-    h.style.left = (38 + Math.random() * 24) + '%';
-    h.style.animationDelay = (i * 90) + 'ms';
-    room.appendChild(h);
-    setTimeout(() => h.remove(), 1300 + i * 90);
+  const catEl = el('c-cafe-cat');
+  const id = state.child.activeCatId; const cat = state.cats[id] || {}; const def = CAT_DEFS[id];
+  // Tapping a (non-hero) cat cycles it through its idle poses: sit→play→eat→sleep.
+  if (!cat.evolved && def.poses) {
+    cafePoseIdx = (cafePoseIdx + 1) % CAFE_POSES.length;
+    catEl.src = def.poses[CAFE_POSES[cafePoseIdx]];
   }
+  catEl.classList.remove('bounce'); void catEl.offsetWidth; catEl.classList.add('bounce');
+  spawnFx('assets/fx-sparkle.png', el('c-cafe-room'), { count: 3, cx: 50, cy: 52, spread: 22, size: 46 });
+}
+
+// Spawn a few effect sprites inside a positioned container. mode: rise | fall | pop.
+function spawnFx(src, container, { count = 1, cx = 50, cy = 50, spread = 20, size = 42, life = 1150, mode = 'rise' } = {}) {
+  if (!container) return;
+  for (let i = 0; i < count; i++) {
+    const s = document.createElement('img');
+    s.src = src; s.alt = ''; s.className = `fx-sprite fx-${mode}`;
+    s.style.left = (cx + (Math.random() * 2 - 1) * spread) + '%';
+    s.style.top = (cy + (Math.random() * 2 - 1) * spread * 0.4) + '%';
+    s.style.width = size + 'px';
+    s.style.animationDelay = (i * 70) + 'ms';
+    container.appendChild(s);
+    setTimeout(() => s.remove(), life + i * 70);
+  }
+}
+
+// Full-screen confetti burst (for quest completion / celebrations).
+function confettiBurst() {
+  const layer = document.createElement('div');
+  layer.className = 'fx-layer';
+  document.body.appendChild(layer);
+  spawnFx('assets/fx-confetti.png', layer, { count: 12, cx: 50, cy: 6, spread: 46, size: 34, life: 1500, mode: 'fall' });
+  setTimeout(() => layer.remove(), 1900);
 }
 function renderChildLog() {
   el('c-log').innerHTML = state.recentTxns.length ? state.recentTxns.map(ledgerRow).join('') : '<div class="empty">Complete a quest to start your log!</div>';
@@ -426,7 +456,7 @@ function bindEvents() {
 }
 
 async function handleComplete(questId) {
-  try { await store.completeQuest(state.familyId, state.uid, questId); toast('Quest complete! 🎉'); }
+  try { await store.completeQuest(state.familyId, state.uid, questId); confettiBurst(); toast('Quest complete! 🎉'); }
   catch (err) {
     if (err.message === 'already-completed') toast('Already done today!');
     else toast('Could not complete — check connection.');

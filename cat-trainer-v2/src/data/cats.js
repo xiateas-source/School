@@ -12,7 +12,8 @@ export const CAT_DEFS = {
     heroName: 'Nova Hero',
     heroTitle: 'Keeper of Bright Ideas',
     art: 'assets/nova.png',
-    heroArt: 'assets/nova-hero.png'
+    heroArt: 'assets/nova-hero.png',
+    poses: { sit: 'assets/nova-sit.png', play: 'assets/nova-play.png', eat: 'assets/nova-eat.png', sleep: 'assets/nova-sleep.png' }
   },
   ember: {
     id: 'ember',
@@ -21,7 +22,8 @@ export const CAT_DEFS = {
     heroName: 'Ember Hero',
     heroTitle: 'Champion of Big Energy',
     art: 'assets/ember.png',
-    heroArt: 'assets/ember-hero.png'
+    heroArt: 'assets/ember-hero.png',
+    poses: { sit: 'assets/ember-sit.png', play: 'assets/ember-play.png', eat: 'assets/ember-eat.png', sleep: 'assets/ember-sleep.png' }
   },
   moss: {
     id: 'moss',
@@ -30,7 +32,8 @@ export const CAT_DEFS = {
     heroName: 'Moss Hero',
     heroTitle: 'Guardian of Home and Heart',
     art: 'assets/moss.png',
-    heroArt: 'assets/moss-hero.png'
+    heroArt: 'assets/moss-hero.png',
+    poses: { sit: 'assets/moss-sit.png', play: 'assets/moss-play.png', eat: 'assets/moss-eat.png', sleep: 'assets/moss-sleep.png' }
   }
 };
 
