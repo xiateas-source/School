@@ -2,15 +2,15 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=6e1109c4';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=6e1109c4';
-import { seededQuests } from './data/quests.js?v=6e1109c4';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=6e1109c4';
+import { initFirebase, db, dbSdk } from './firebase.js?v=2ccec269';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=2ccec269';
+import { seededQuests } from './data/quests.js?v=2ccec269';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=2ccec269';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, applyBalanceDelta
-} from './shared/rewards.js?v=6e1109c4';
-import { localDate, localTimeLabel } from './shared/dates.js?v=6e1109c4';
+} from './shared/rewards.js?v=2ccec269';
+import { localDate, localTimeLabel } from './shared/dates.js?v=2ccec269';
 
 export const CHILD_ID = 'sirus';
 
@@ -93,12 +93,45 @@ export async function joinWithPairingCode(childUid, code, displayName = 'Sirusâ€
   const { getDoc, setDoc } = sdk;
   const p = paths(sdk, database, code);
   const snap = await getDoc(p.pairing(code));
-  if (!snap.exists() || snap.data().active !== true) {
+  const data = snap.exists() ? snap.data() : null;
+  if (!data || data.active !== true || (data.role && data.role !== 'child')) {
     throw new Error('That pairing code is not valid. Ask Mom for a new one.');
   }
-  const familyId = snap.data().familyId;
+  const familyId = data.familyId;
   const fp = paths(sdk, database, familyId);
   await setDoc(fp.member(childUid), { role: 'child', displayName, pairingCode: code });
+  return familyId;
+}
+
+// --- Co-parent (a second parent, e.g. Abba, joins the SAME family) -----------
+// A parent generates an invite code; the co-parent redeems it to gain their own
+// full 'parent' membership. Same shape as a child pairing code but role
+// 'parent', so the rules grant management access rather than the limited child
+// role. The co-parent keeps their own email+password account (own identity in
+// the ledger); this only adds their membership to the existing family.
+export async function createParentInviteCode(familyId) {
+  const { database, sdk } = await fs();
+  const { setDoc, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+  const code = String(Math.floor(100000 + Math.random() * 900000)); // 6 digits
+  await setDoc(p.pairing(code), {
+    familyId, role: 'parent', active: true, createdAt: serverTimestamp()
+  });
+  return code;
+}
+
+export async function joinFamilyAsParent(uid, code, displayName = 'Abba') {
+  const { database, sdk } = await fs();
+  const { getDoc, setDoc } = sdk;
+  const p = paths(sdk, database, code);
+  const snap = await getDoc(p.pairing(code));
+  const data = snap.exists() ? snap.data() : null;
+  if (!data || data.active !== true || data.role !== 'parent') {
+    throw new Error('That invite code is not valid. Ask Mom for a new one.');
+  }
+  const familyId = data.familyId;
+  const fp = paths(sdk, database, familyId);
+  await setDoc(fp.member(uid), { role: 'parent', displayName, pairingCode: code });
   return familyId;
 }
 

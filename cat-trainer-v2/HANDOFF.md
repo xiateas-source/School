@@ -43,6 +43,10 @@ plain ES modules + the Firebase CDN.
   spent. Caps: Brain 12, Energy 12, Bond 20.
 - **Parent auth: email + password** (first sign-in creates the account). We tried
   passwordless email-link first — unreliable on mobile — and replaced it.
+- **Co-parent (Abba): his own email + password + a one-time invite code.** He joins
+  Mom's *existing* family (never a second family) with the full 'parent' role —
+  identical powers to Mom, own identity in the ledger. Mom generates the invite in
+  Settings → "Invite Abba".
 - **Child device: anonymous auth + 6-digit pairing code.** Limited "child" role.
 - **Negative adjustments never remove** Brain/Energy/Coins/Bond/Hero progress.
 - **Cat Coins** buy café items only; never exchangeable for screen time.
@@ -83,6 +87,8 @@ cat-trainer-v2/
 families/{familyId}                 familyId == parent's auth uid
   ownerUid, name, createdAt, settings{ allowNegative, dailyCap, timezone }
   members/{uid}                     { role:'parent'|'child', displayName, pairingCode? }
+                                    (multiple 'parent' members allowed: Mom is the
+                                     owner; Abba is a co-parent who joined by code)
   childProfiles/{childId='sirus'}   { name, activeCatId, available, coins, childCanSwitchCat }
     cats/{catId}                    { brain, energy, bond, evolved }   (independent per cat)
     ownedCafeItems/{itemId}         { purchasedAt, price }
@@ -91,7 +97,8 @@ families/{familyId}                 familyId == parent's auth uid
                                       bond, coins, brain, energy, catId, questId?,
                                       createdBy, deviceId, createdAt, localDate, timeLabel }
   questCompletions/{childId_questId_localDate}   deterministic id = dedupe key
-pairings/{code}                     top-level { familyId, role:'child', active, createdAt }
+pairings/{code}                     top-level { familyId, role:'child'|'parent', active, createdAt }
+                                    (role:'child' = tablet pairing; role:'parent' = co-parent invite)
 ```
 
 `kind` ∈ `adjust | quest | redeem | correction`. Balance/earned/used-today for the
@@ -107,11 +114,22 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
   adjustments/redemptions, and **deleting ledger entries**.
 - **Child** — may complete a quest once/day (amount validated against the stored
   quest), earn its rewards (monotonic, capped), and buy café items.
+- **Membership joins** — a user can create only their *own* member doc, and only
+  as (1) the family owner bootstrapping their parent membership, (2) a **co-parent**
+  presenting an active `role:'parent'` invite code for the family, or (3) a child
+  device presenting an active `role:'child'` pairing code. Codes are validated by
+  the `validPairing(fid, code, wantRole)` helper. Either parent can now mint codes
+  (`pairings` create/manage gated by `isParent(familyId)`, not just the owner).
 
-> ✅ The rules were updated when the per-entry delete (trashcan) was added
-> (`pointTransactions … allow delete: if isParent(fid)`) and have been
-> **published in the console** (confirmed 2026-08-07). If you change
-> `firestore.rules` again, re-publish it there or the new behavior is denied.
+> ⚠️ **The rules changed for Abba's co-parent login and MUST be re-published in
+> the console** (Firestore Database → Rules → paste `firestore.rules` → Publish).
+> Until Mom does this, the co-parent join is denied with "Missing or insufficient
+> permissions." See `FIREBASE-SETUP.md` → "Publishing / updating the security
+> rules." (The earlier ledger-delete rules were already published on 2026-08-07;
+> this is a *new* change on top.)
+>
+> Co-parents are mutually trusted: any parent can edit/remove another parent's
+> membership (`members` update/delete is `isParent(fid)`). Fine for a household.
 
 **Setup ordering gotcha (already handled):** rules `get()/exists()` can't see
 pending writes in the same batch. `setupFamily` therefore writes family → parent
@@ -143,6 +161,8 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - [x] Sirus's read-only Point Log
 - [x] Ledger with device attribution; America/Chicago day boundary
 - [x] Service worker: offline app shell + installable PWA; cache purged per deploy
+- [x] Co-parent login (Abba): own email+password, joins Mom's family by invite code,
+      full parent powers, own ledger identity; header shows who's signed in
 
 ## 9. Known issues / limitations
 
@@ -169,6 +189,15 @@ evolution won't feel special. Candidate for a fresher Drive asset.
   `node tools/stamp.mjs` before each deploy appends a content-hash `?v=…` query
   to every local import + the entry script + the CSS link (and the SW cache
   name), so any changed file is a fresh URL (see §11).
+- **Co-parent join is device-remembered, not account-discoverable.** After Abba
+  redeems the invite code once on a device, that device keeps him signed in and
+  routed to the family (memory is keyed to his uid, so a shared device won't
+  cross-route parents). But a *new* device — or after he signs out (which clears
+  the memory) — needs a fresh invite code, because there's no server-side
+  "which family is this uid in" index. If credential-only login on any device is
+  wanted later, add a small `userFamilies/{uid}` reverse-lookup doc written at
+  join/setup and read on sign-in. Invite/pairing codes also never expire or get
+  single-used (same as the child codes) — acceptable for one household.
 - **Anti-tamper is rules-based, not Cloud-Functions-based.** A determined user
   with dev tools on the tablet could submit off-spec gameplay writes. Fine for a
   single household; move quest completion into a Cloud Function (Blaze plan) if

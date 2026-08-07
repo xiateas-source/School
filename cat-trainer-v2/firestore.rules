@@ -26,14 +26,6 @@ service cloud.firestore {
     function pairing(code) {
       return get(/databases/$(database)/documents/pairings/$(code)).data;
     }
-
-    // --- Pairing codes (top-level so an un-joined tablet can look one up) -----
-    // familyId == the parent's uid, so only that parent can manage their codes.
-    match /pairings/{code} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.familyId == request.auth.uid;
-      allow update, delete: if signedIn() && resource.data.familyId == request.auth.uid;
-    }
     function memberPath(fid) {
       return /databases/$(database)/documents/families/$(fid)/members/$(request.auth.uid);
     }
@@ -52,6 +44,24 @@ service cloud.firestore {
     function questPoints(fid, questId) {
       return get(/databases/$(database)/documents/families/$(fid)/quests/$(questId)).data.points;
     }
+    // A pairing code is valid for a given family + role if it exists, is active,
+    // and points at that family with that role. Used to gate self-joining as a
+    // child (tablet) or as a co-parent (a second parent, e.g. Abba).
+    function validPairing(fid, code, wantRole) {
+      return exists(/databases/$(database)/documents/pairings/$(code))
+        && pairing(code).active == true
+        && pairing(code).familyId == fid
+        && pairing(code).role == wantRole;
+    }
+
+    // --- Pairing codes (top-level so an un-joined device can look one up) -----
+    // Any parent of the target family can create/manage codes for it (so either
+    // parent can pair the tablet or invite a co-parent).
+    match /pairings/{code} {
+      allow read: if signedIn();
+      allow create: if signedIn() && isParent(request.resource.data.familyId);
+      allow update, delete: if signedIn() && isParent(resource.data.familyId);
+    }
 
     match /families/{fid} {
       // A parent creates their own family; familyId == the parent's uid.
@@ -64,18 +74,19 @@ service cloud.firestore {
       // --- Membership -------------------------------------------------------
       match /members/{uid} {
         allow read: if isMember(fid);
-        // Owner bootstraps their own parent membership at setup.
+        // A user may create only their OWN membership, and only via one of:
         allow create: if signedIn()
           && uid == request.auth.uid
           && (
+            // 1. The family owner bootstraps their own parent membership at setup.
             (request.resource.data.role == 'parent'
               && get(/databases/$(database)/documents/families/$(fid)).data.ownerUid == request.auth.uid)
-            // A device joins as child by presenting an active pairing code that
-            // points at THIS family.
+            // 2. A co-parent joins as parent with an active PARENT invite code.
+            || (request.resource.data.role == 'parent'
+              && validPairing(fid, request.resource.data.pairingCode, 'parent'))
+            // 3. A device joins as child with an active CHILD pairing code.
             || (request.resource.data.role == 'child'
-              && exists(/databases/$(database)/documents/pairings/$(request.resource.data.pairingCode))
-              && pairing(request.resource.data.pairingCode).active == true
-              && pairing(request.resource.data.pairingCode).familyId == fid)
+              && validPairing(fid, request.resource.data.pairingCode, 'child'))
           );
         allow update, delete: if isParent(fid);
       }
