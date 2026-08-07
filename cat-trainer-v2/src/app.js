@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=2ccec269';
+import { isConfigured } from './firebase.js?v=5d43044a';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=2ccec269';
-import * as store from './store.js?v=2ccec269';
-import { CAT_DEFS } from './data/cats.js?v=2ccec269';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=2ccec269';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=2ccec269';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=2ccec269';
+} from './auth.js?v=5d43044a';
+import * as store from './store.js?v=5d43044a';
+import { CAT_DEFS } from './data/cats.js?v=5d43044a';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=5d43044a';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=5d43044a';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=5d43044a';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -200,7 +200,17 @@ function renderChildCafe() {
   const id = state.child.activeCatId; const cat = state.cats[id] || {};
   el('c-cafe-room').style.backgroundImage = `url("${CAFE_ROOM_ART}")`;
   el('c-cafe-cat').src = cat.evolved ? CAT_DEFS[id].heroArt : CAT_DEFS[id].art;
-  const positions = [['12%','20%'],['64%','18%'],['20%','50%'],['66%','48%'],['40%','30%'],['8%','66%'],['72%','66%']];
+  // One slot per café item (11) so a full collection never stacks on itself.
+  // The cat sits center-bottom (~30–70% wide, lower half), so the center column
+  // is kept to the upper area and the bottom row hugs the sides.
+  const positions = [
+    ['5%','5%'],  ['39%','4%'],  ['72%','6%'],
+    ['4%','28%'],                ['72%','28%'],
+                  ['40%','22%'],
+    ['5%','50%'],                ['73%','49%'],
+                  ['40%','48%'],
+    ['6%','71%'],                ['73%','70%']
+  ];
   el('c-placed').innerHTML = state.ownedItems.map((itemId, i) => {
     const item = CAFE_ITEMS[itemId]; if (!item) return '';
     const [l, t] = positions[i % positions.length];
