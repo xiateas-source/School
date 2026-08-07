@@ -130,8 +130,10 @@ service cloud.firestore {
               && request.resource.data.kind == 'quest'
               && request.resource.data.createdBy == request.auth.uid
               && request.resource.data.amount == questPoints(fid, request.resource.data.questId));
-        // Ledger is append-only; corrections are new rows, never edits/deletes.
-        allow update, delete: if false;
+        // Entries are never edited. A parent may delete an entry (the app
+        // reverses its effect on the balance in the same transaction).
+        allow update: if false;
+        allow delete: if isParent(fid);
       }
 
       // --- Quest completions (dedupe: one doc id per child+quest+day) -------
