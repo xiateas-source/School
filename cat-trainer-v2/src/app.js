@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=899f7bba';
+import { isConfigured } from './firebase.js?v=9dbf0b86';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=899f7bba';
-import * as store from './store.js?v=899f7bba';
-import { CAT_DEFS } from './data/cats.js?v=899f7bba';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=899f7bba';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=899f7bba';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=899f7bba';
+} from './auth.js?v=9dbf0b86';
+import * as store from './store.js?v=9dbf0b86';
+import { CAT_DEFS } from './data/cats.js?v=9dbf0b86';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=9dbf0b86';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=9dbf0b86';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=9dbf0b86';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -351,7 +351,10 @@ function confettiBurst() {
   setTimeout(() => layer.remove(), 1900);
 }
 function renderChildLog() {
-  el('c-log').innerHTML = state.recentTxns.length ? state.recentTxns.map(ledgerRow).join('') : '<div class="empty">Complete a quest to start your log!</div>';
+  // Sirus's log is read-only: render without the delete control. Wrap in an
+  // arrow so Array.map's index isn't passed as `deletable` (that leaked the
+  // parent-only 🗑️ onto every row past the newest).
+  el('c-log').innerHTML = state.recentTxns.length ? state.recentTxns.map(t => ledgerRow(t)).join('') : '<div class="empty">Complete a quest to start your log!</div>';
 }
 
 // ---- Events -----------------------------------------------------------------
@@ -382,6 +385,7 @@ function bindEvents() {
 
     const delTxn = e.target.closest('[data-del-txn]');
     if (delTxn) {
+      if (state.role !== 'parent') return; // deleting a ledger entry is parent-only
       const t = state.recentTxns.find(x => x.id === delTxn.dataset.delTxn);
       if (t && confirm('Delete this entry? Its points will be reversed.')) {
         try { await store.deleteTransaction(state.familyId, state.uid, t); toast('Entry deleted.'); }
