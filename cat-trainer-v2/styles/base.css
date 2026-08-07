@@ -188,8 +188,23 @@ main { padding: 0 16px; }
   background-color: #f3e6d0;
   background-size: cover; background-position: center; background-repeat: no-repeat;
 }
-.cafe-cat { position: absolute; bottom: 8%; left: 50%; transform: translateX(-50%); width: 40%; }
+.cafe-cat { position: absolute; bottom: 8%; left: 50%; transform: translateX(-50%); width: 40%; cursor: pointer; }
 #c-placed img, #parent-cafe .placed img { position: absolute; width: 26%; }
+
+/* Interactive décor: draggable to rearrange, tappable for a wiggle. */
+.cafe-decor { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
+.cafe-decor.dragging { cursor: grabbing; z-index: 6; transform: scale(1.06); filter: drop-shadow(0 6px 8px rgba(0,0,0,.25)); }
+.cafe-decor.wiggle { animation: decorWiggle .5s ease; }
+@keyframes decorWiggle { 0%,100%{transform:rotate(0)} 20%{transform:rotate(-9deg)} 40%{transform:rotate(7deg)} 60%{transform:rotate(-5deg)} 80%{transform:rotate(3deg)} }
+.cafe-cat.bounce { animation: catBounce .5s ease; }
+@keyframes catBounce {
+  0%,100% { transform: translateX(-50%) translateY(0) scale(1); }
+  30%     { transform: translateX(-50%) translateY(-6%) scale(1.06); }
+  60%     { transform: translateX(-50%) translateY(0) scale(1); }
+}
+.cafe-heart { position: absolute; bottom: 30%; font-size: 1.6rem; pointer-events: none; animation: cafeHeart 1.2s ease forwards; }
+@keyframes cafeHeart { 0%{opacity:0; transform: translateY(0) scale(.6)} 20%{opacity:1} 100%{opacity:0; transform: translateY(-90px) scale(1.1)} }
+.cafe-hint { font-size: .8rem; color: var(--muted); text-align: center; margin: 10px 2px 0; }
 .shop-heading { margin: 16px 0 10px; }
 .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .shop-item { background: var(--paper); border-radius: 16px; box-shadow: var(--shadow); padding: 12px; text-align: center; }
@@ -198,6 +213,7 @@ main { padding: 0 16px; }
 .shop-item small { color: var(--muted); display: block; margin-bottom: 8px; }
 .shop-item button { width: 100%; border: none; border-radius: 10px; padding: 10px; font: inherit; font-weight: 700; cursor: pointer; background: var(--gold); color: #fff; }
 .shop-item button:disabled { background: #ecd9a8; }
+.shop-item button.ghost-btn { background: var(--cream); color: var(--ink); }
 
 .code-display { font-size: 2.4rem; letter-spacing: .3em; text-align: center; font-weight: 800; color: var(--purple); background: var(--cream); border-radius: 14px; padding: 18px; margin-top: 12px; }
 

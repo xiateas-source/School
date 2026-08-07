@@ -126,7 +126,14 @@ service cloud.firestore {
           allow read: if isMember(fid);
           // Purchases are create-only (can't be un-bought by the child).
           allow create: if isMember(fid);
-          allow update: if isParent(fid);
+          // The child may rearrange / put away their OWN décor (x, y, placed),
+          // but the purchase record is immutable: price + purchasedAt must not
+          // change, and only a parent can delete an item. Café items grant no
+          // points or coins, so this can't be abused for value.
+          allow update: if isParent(fid)
+            || (isChild(fid)
+                && request.resource.data.price == resource.data.price
+                && request.resource.data.purchasedAt == resource.data.purchasedAt);
           allow delete: if isParent(fid);
         }
       }
