@@ -17,7 +17,15 @@ export const CAFE_ITEMS = {
   pinkYarn:   { id: 'pinkYarn',   name: 'Pink Yarn',        price: 4,  art: 'assets/yarn-pink.png',        className: 'decor-yarn-pink' },
   bookshelf:  { id: 'bookshelf',  name: 'Cat Bookshelf',    price: 14, art: 'assets/bookshelf.png',        className: 'decor-bookshelf' },
   toyBasket:  { id: 'toyBasket',  name: 'Toy Basket',       price: 9,  art: 'assets/toy-basket.png',       className: 'decor-toy-basket' },
-  moonCollar: { id: 'moonCollar', name: 'Moon Collar',      price: 10, art: 'assets/collar-moon.png',      className: 'decor-moon-collar' }
+  moonCollar: { id: 'moonCollar', name: 'Moon Collar',      price: 10, art: 'assets/collar-moon.png',      className: 'decor-moon-collar' },
+  // Added 2026-08-07 from the Google Drive "Cat Cafe" art set. New IDs (no legacy
+  // migration to preserve), so names and IDs match.
+  petPillow:  { id: 'petPillow',  name: 'Mint Pillow',      price: 6,  art: 'assets/pet-pillow-mint.png',  className: 'decor-pet-pillow' },
+  greenBed:   { id: 'greenBed',   name: 'Green Paw Bed',    price: 7,  art: 'assets/bed-green-paws.png',   className: 'decor-bed-green' },
+  bunting:    { id: 'bunting',    name: 'Party Bunting',    price: 8,  art: 'assets/bunting-pastel.png',   className: 'decor-bunting' },
+  tealCollar: { id: 'tealCollar', name: 'Teal Heart Collar',price: 10, art: 'assets/collar-teal-heart.png',className: 'decor-teal-collar' },
+  petHouse:   { id: 'petHouse',   name: 'Cat House',        price: 15, art: 'assets/pet-house-green.png',  className: 'decor-pet-house' },
+  goldCrown:  { id: 'goldCrown',  name: 'Gold Crown',       price: 16, art: 'assets/crown-gold-heart.png', className: 'decor-gold-crown' }
 };
 
 export const CAFE_ROOM_ART = 'assets/cafe-room.png';

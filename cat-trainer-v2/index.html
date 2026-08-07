@@ -6,8 +6,9 @@
   <meta name="theme-color" content="#fffaf2">
   <title>Cat Trainer</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=b91a1d3e">
+  <link rel="stylesheet" href="styles/base.css?v=ff06d966">
 </head>
 <body>
   <div id="app">
@@ -209,7 +210,7 @@
         <!-- Cafe -->
         <section class="screen" data-cscreen="cafe">
           <h2 class="page-title">Cat Café</h2>
-          <div class="coin-pill">🪙 <span id="c-coins">0</span> coins</div>
+          <div class="coin-pill"><img class="coin-ico" src="assets/coin.png" alt=""> <span id="c-coins">0</span> coins</div>
           <div class="cafe-room" id="c-cafe-room"><div id="c-placed"></div><img id="c-cafe-cat" class="cafe-cat" alt=""></div>
           <p class="cafe-hint">Tap the cat to say hi · drag your things to move them</p>
           <h3 class="shop-heading">Cozy things</h3>
@@ -271,7 +272,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=b91a1d3e"></script>
+  <script type="module" src="src/app.js?v=ff06d966"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.

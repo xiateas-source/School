@@ -154,11 +154,20 @@ on the first-run family existence check. Keep this ordering if you touch setup.
 
 ## 7. Assets
 
-26 PNGs in `assets/`, transparent except `cafe-room.png` (intentionally opaque).
-Verified correct. Source of truth = Google Drive originals (file IDs are in the
-original project handoff). To replace one, download from Drive, resize to ~150×150
-(the café/cat sprites) with Pillow, and check integrity (PNG IDAT CRC) before
-committing — `yarn-blue.png` shipped corrupt once and had to be re-pulled.
+52 PNGs in `assets/`, transparent except `cafe-room.png` and the app-icon tiles
+(intentionally opaque). Source of truth = Google Drive **"Cat Trainer Artwork"**
+folder (owner `sirusxclass@gmail.com`), with subfolders: Pets, Hero Forms, Cat
+Cafe, Activity Poses, Effects, UI Icons, Family. To replace/add one, download from
+Drive, resize with Pillow (~150 café/fx sprites, ~200 cat sprites, 192/512 icons),
+and check integrity (PNG IDAT CRC) before committing — `yarn-blue.png` shipped
+corrupt once and had to be re-pulled.
+
+Added 2026-08-07 from Drive: 6 café items (`bunting-pastel`, `pet-house-green`,
+`pet-pillow-mint`, `bed-green-paws`, `collar-teal-heart`, `crown-gold-heart`);
+`coin.png`; app icons (`icon-192/512`, `apple-touch-icon`); 12 cat poses
+(`{nova,ember,moss}-{sit,play,eat,sleep}`); 4 effects (`fx-{sparkle,starburst,
+confetti,paw}`). Still unused in Drive if wanted later: `*-celebrating` poses,
+the on-bed poses, extra UI icons (`night-routine`, `tidy-and-help`, `game-time-star`).
 
 Known art nit: **`ember-hero.png` looks almost identical to `ember.png`** — the
 evolution won't feel special. Candidate for a fresher Drive asset.
@@ -182,6 +191,11 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - [x] **Notes on point changes**: Mom/Abba can attach a free-text note to any add,
       subtract, or screen-time redemption from the parent portal; it shows as a
       second line in the ledger. (No rules change.)
+- [x] **Art expansion from Drive** (2026-08-07, no rules change): shop grew 11→17
+      café items; the café cat cycles idle poses (sit/play/eat/sleep) on tap; real
+      effect sprites (sparkle on cat-tap, starburst+confetti on Hero evolution,
+      confetti on quest-complete) replaced the emoji; `coin.png` replaced the 🪙
+      emoji in the child café; and real maskable PNG + Apple-touch app icons ship.
 - [x] Sirus's read-only Point Log
 - [x] Ledger with device attribution; America/Chicago day boundary
 - [x] Service worker: offline app shell + installable PWA; cache purged per deploy
@@ -232,9 +246,8 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 
 ## 10. Future features / backlog
 
-- "Add to Home Screen" art polish — the manifest ships an SVG icon (installs
-  fine); add maskable PNG icons (192/512, `purpose:"maskable"`) + Apple
-  touch-icon for a crisper iOS home-screen tile. (Service worker + offline: done.)
+- "Add to Home Screen" art polish — **done 2026-08-07** (maskable `icon-192/512`
+  + `apple-touch-icon` from Drive's `app-icon-nova`). Service worker + offline: done.
 - Quest reordering UI + enable/disable toggles in the parent Quests screen
   (data already supports `order` and `enabled`).
 - Daily screen-time cap (setting exists as `dailyCap`, not yet enforced/surfaced).
