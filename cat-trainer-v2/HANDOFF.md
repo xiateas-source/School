@@ -21,16 +21,18 @@ system engaging; they never replace it or turn accountability into shame.
 |---|---|
 | Repo | `xiateas-source/School` |
 | New app folder | `cat-trainer-v2/` (the legacy app in `cat-trainer/` is untouched) |
-| Dev branch | `claude/homeschool-project-access-y60nsr` |
+| Latest integrated code | the **Pages/default branch** below — all merged work lives there. **Start new work by branching from it**, not from an old dev branch. |
 | Live/Pages branch (default) | `claude/github-upload-sharing-e67k75` |
+| Retired dev branches | `claude/homeschool-project-access-y60nsr` (early rebuild), `claude/cat-trainer-continuation-wc3zjm` (cache-bust + service worker + co-parent). Both fully merged into Pages — do not branch from these. |
 | Live URL | https://xiateas-source.github.io/School/cat-trainer-v2/ |
 | Legacy live URL | https://xiateas-source.github.io/School/cat-trainer/ |
 | Firebase project | `xiatea-afc59` (Firestore **Standard** + Auth) |
 | Family timezone | America/Chicago |
 
-**Deploy method:** work on the dev branch → open a PR into the Pages branch →
-merge. GitHub Pages redeploys automatically (~1–2 min). No build step; the app is
-plain ES modules + the Firebase CDN.
+**Deploy method:** branch from the Pages/default branch → work → open a PR back
+into the Pages branch → merge. GitHub Pages redeploys automatically (~1–2 min).
+No build step; the app is plain ES modules + the Firebase CDN. Run
+`node cat-trainer-v2/tools/stamp.mjs` before committing a deploy (§11).
 
 ## 3. Locked product decisions (confirmed with Mom)
 
@@ -163,6 +165,8 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - [x] Service worker: offline app shell + installable PWA; cache purged per deploy
 - [x] Co-parent login (Abba): own email+password, joins Mom's family by invite code,
       full parent powers, own ledger identity; header shows who's signed in
+      _(shipped + rules published 2026-08-07; **pending first on-device test with
+      Abba** — Mom generates the code in Settings, Abba redeems it via "I'm Abba")_
 
 ## 9. Known issues / limitations
 
