@@ -34,10 +34,11 @@
       <div class="gate-card">
         <img src="assets/mom.png" alt="Mom" class="signin-art">
         <h2>Mom's sign-in</h2>
-        <p class="gate-sub">Enter your email and we'll send you a one-tap sign-in link. No password to remember.</p>
+        <p class="gate-sub">Enter your email and a password. The first time signs you up; after that it signs you back in.</p>
         <form id="signin-form" class="stack-form">
           <input id="signin-email" type="email" required placeholder="you@email.com" autocomplete="email">
-          <button class="primary-button" type="submit">Send my sign-in link</button>
+          <input id="signin-password" type="password" required minlength="6" placeholder="Password (6+ characters)" autocomplete="current-password">
+          <button class="primary-button" type="submit">Sign in</button>
         </form>
         <p class="gate-note" id="signin-note"></p>
         <button class="text-button" data-choose-role="back">← Back</button>
