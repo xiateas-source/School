@@ -21,7 +21,9 @@ img { max-width: 100%; }
 .screen.active { display: block; }
 
 /* ---------- Gate / sign-in ---------- */
-.gate, .screen[data-screen] {
+/* Only the ACTIVE gate screen is shown and centered full-screen. Using
+   `.active` here keeps the display toggle from being overridden. */
+.screen[data-screen].active {
   min-height: 100vh; padding: 24px;
   display: flex; align-items: center; justify-content: center;
 }
