@@ -1,0 +1,11 @@
+{
+  "name": "Cat Trainer",
+  "short_name": "Cat Trainer",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fffaf2",
+  "theme_color": "#fffaf2",
+  "icons": [
+    { "src": "icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" }
+  ]
+}
