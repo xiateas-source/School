@@ -7,7 +7,7 @@
   <title>Cat Trainer</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/base.css?v=6e1109c4">
 </head>
 <body>
   <div id="app">
@@ -242,6 +242,17 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js"></script>
+  <script type="module" src="src/app.js?v=6e1109c4"></script>
+  <script>
+    // Register the service worker for offline resilience + installability.
+    // updateViaCache:'none' keeps the SW script itself from being served stale.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker
+          .register('sw.js', { updateViaCache: 'none' })
+          .catch((err) => console.warn('Service worker registration failed', err));
+      });
+    }
+  </script>
 </body>
 </html>

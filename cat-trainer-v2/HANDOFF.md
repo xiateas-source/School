@@ -57,9 +57,12 @@ cat-trainer-v2/
 ├── index.html            role gate + parent shell + child shell + dialogs
 ├── firebase-config.js    project config (not secret)
 ├── firestore.rules       security rules (MUST be published in the console)
-├── manifest.webmanifest  installable PWA (no service worker yet — see §9)
+├── manifest.webmanifest  installable PWA
+├── sw.js                 service worker: offline shell + cache purge (§9)
 ├── styles/base.css       cozy storybook UI, responsive phone + tablet
 ├── assets/               26 PNGs (see §7)
+├── tools/
+│   └── stamp.mjs         cache-bust: stamps ?v=<hash> on imports/entry/CSS + sw.js (§11)
 └── src/
     ├── app.js            orchestrator: auth flow, routing, rendering, events
     ├── firebase.js       modular SDK init from CDN + offline persistence
@@ -105,9 +108,10 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
 - **Child** — may complete a quest once/day (amount validated against the stored
   quest), earn its rewards (monotonic, capped), and buy café items.
 
-> ⚠️ The rules were updated when the per-entry delete (trashcan) was added
-> (`pointTransactions … allow delete: if isParent(fid)`). **Re-publish
-> `firestore.rules` after that change** or the trashcan delete will be denied.
+> ✅ The rules were updated when the per-entry delete (trashcan) was added
+> (`pointTransactions … allow delete: if isParent(fid)`) and have been
+> **published in the console** (confirmed 2026-08-07). If you change
+> `firestore.rules` again, re-publish it there or the new behavior is denied.
 
 **Setup ordering gotcha (already handled):** rules `get()/exists()` can't see
 pending writes in the same batch. `setupFamily` therefore writes family → parent
@@ -138,16 +142,33 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - [x] Cat Café: buy items with coins, decorate the room
 - [x] Sirus's read-only Point Log
 - [x] Ledger with device attribution; America/Chicago day boundary
+- [x] Service worker: offline app shell + installable PWA; cache purged per deploy
 
 ## 9. Known issues / limitations
 
-- **Rules re-publish needed** for the ledger-delete feature (see §6).
-- **No service worker yet** — deliberately deferred to avoid stale-cache pain
-  during testing. Add one (with a fresh cache name + old-cache purge on activate)
-  for offline/installability once the app is stable.
-- **Module cache** — because ES modules aren't versioned, a phone can briefly
-  serve an old file after a deploy. Fully closing/reopening the tab fixes it. A
-  future improvement: cache-busting query strings or a build step.
+- **Service worker (`sw.js`) — now shipped, and designed to pair with the cache
+  stamp so it does NOT reintroduce stale modules.** Strategy: version-stamped
+  requests (any `?v=` URL: modules + CSS) are **cache-first** (immutable per URL,
+  so a deploy's new URL is always a fresh fetch); the HTML document is
+  **network-first** with a cache fallback for offline; other same-origin assets
+  are **stale-while-revalidate**. Cross-origin Firebase (CDN + Firestore) is
+  **not intercepted**, so realtime sync and Firebase's own offline persistence
+  are untouched. On `activate` it deletes every old `cat-trainer-v2-*` cache and
+  claims clients, so `skipWaiting` + a new hash = old code gone next load. The
+  SW's cache name is stamped with the same content hash as the modules
+  (`tools/stamp.mjs`), so bumping a version is automatic. It's registered with
+  `updateViaCache:'none'` so the SW script itself is never served stale.
+  - _Caveat:_ `index.html` is network-first, so online users get fresh HTML; if
+    a device is fully offline at deploy time it keeps the last cached shell until
+    it's online again (expected offline behavior).
+  - _Not stamped:_ image assets (a stale image is cosmetic, not app-breaking).
+    Add them to `FILES`/`restampHtml` in the stamp script if art updates ever
+    need instant busting.
+- **Module cache — handled by the cache-bust stamp.** ES modules aren't
+  versioned, so a phone used to serve an old module after a deploy. Running
+  `node tools/stamp.mjs` before each deploy appends a content-hash `?v=…` query
+  to every local import + the entry script + the CSS link (and the SW cache
+  name), so any changed file is a fresh URL (see §11).
 - **Anti-tamper is rules-based, not Cloud-Functions-based.** A determined user
   with dev tools on the tablet could submit off-spec gameplay writes. Fine for a
   single household; move quest completion into a Cloud Function (Blaze plan) if
@@ -156,7 +177,9 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 
 ## 10. Future features / backlog
 
-- Service worker + "Add to Home Screen" polish (installable, offline).
+- "Add to Home Screen" art polish — the manifest ships an SVG icon (installs
+  fine); add maskable PNG icons (192/512, `purpose:"maskable"`) + Apple
+  touch-icon for a crisper iOS home-screen tile. (Service worker + offline: done.)
 - Quest reordering UI + enable/disable toggles in the parent Quests screen
   (data already supports `order` and `enabled`).
 - Daily screen-time cap (setting exists as `dailyCap`, not yet enforced/surfaced).
@@ -171,10 +194,16 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 
 1. Edit files under `cat-trainer-v2/` on the dev branch.
 2. `node --check` each changed ES module (they use import syntax; check as `.mjs`).
-3. Commit, push the dev branch.
-4. Open a PR into `claude/github-upload-sharing-e67k75` and merge → Pages redeploys.
-5. If you changed `firestore.rules`, tell Mom to re-publish them in the console.
-6. Test on device; fully close/reopen the tab to defeat module cache.
+3. Run `node tools/stamp.mjs` to refresh the cache-bust `?v=` stamps. It's
+   idempotent and content-hashed, so it only rewrites files whose content
+   actually changed — always run it before committing a deploy, then commit the
+   stamped result.
+4. Commit, push the dev branch.
+5. Open a PR into `claude/github-upload-sharing-e67k75` and merge → Pages redeploys.
+6. If you changed `firestore.rules`, tell Mom to re-publish them in the console.
+7. Test on device. Thanks to the stamp, changed modules refresh on their own;
+   only `index.html` itself is subject to Pages' ~10-min cache (or one hard
+   refresh) — see §9.
 
 ## 12. Rollback
 
