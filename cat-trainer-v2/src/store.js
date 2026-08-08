@@ -2,15 +2,15 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=52814814';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=52814814';
-import { seededQuests } from './data/quests.js?v=52814814';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=52814814';
+import { initFirebase, db, dbSdk } from './firebase.js?v=fc325c75';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=fc325c75';
+import { seededQuests } from './data/quests.js?v=fc325c75';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=fc325c75';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, applyBalanceDelta
-} from './shared/rewards.js?v=52814814';
-import { localDate, localTimeLabel } from './shared/dates.js?v=52814814';
+} from './shared/rewards.js?v=fc325c75';
+import { localDate, localTimeLabel } from './shared/dates.js?v=fc325c75';
 
 export const CHILD_ID = 'sirus';
 
@@ -335,6 +335,80 @@ export async function approveCompletion(familyId, uid, completion) {
       bond: QUEST_BOND, coins, brain, energy, catId,
       createdBy: uid, deviceId: 'phone', createdAt: serverTimestamp(),
       localDate: localDate(), timeLabel: localTimeLabel()
+    });
+  });
+}
+
+// Parent marks a quest done ON Sirus's behalf from the dashboard → completes AND
+// approves in one step, so the reward (cat progress + minutes + coins + ledger
+// row) lands immediately with no separate approval. Works whether the quest is
+// untouched today (creates the completion already-approved) or already pending
+// from Sirus (approves it). Idempotent: an already-approved quest is a no-op.
+// Rewards come from the live quest (source of truth), falling back to the pending
+// doc's snapshot if the quest was since deleted.
+export async function parentCompleteQuest(familyId, uid, questId) {
+  const { database, sdk } = await fs();
+  const { runTransaction, serverTimestamp, doc, collection } = sdk;
+  const p = paths(sdk, database, familyId);
+  const today = localDate();
+  const completionId = `${CHILD_ID}_${questId}_${today}`;
+
+  await runTransaction(database, async (tx) => {
+    const compSnap = await tx.get(p.completion(completionId));
+    const existing = compSnap.exists() ? compSnap.data() : null;
+    if (existing && existing.status === 'approved') return; // already done today
+
+    const questSnap = await tx.get(p.quest(questId));
+    const quest = questSnap.exists() ? questSnap.data() : null;
+    const snap = (existing && existing.rewards) || {};
+    const title = (quest && quest.title) || (existing && existing.questTitle) || 'Quest';
+    const points = Math.max(0, Number(quest ? quest.points : snap.points) || 0);
+    const brain = Math.max(0, Number(quest ? quest.brain : snap.brain) || 0);
+    const energy = Math.max(0, Number(quest ? quest.energy : snap.energy) || 0);
+    const coins = Math.max(0, Number(quest ? quest.coins : snap.coins) || 0);
+
+    const childSnap = await tx.get(p.child());
+    const child = childSnap.data();
+    const catId = (existing && existing.activeCatId) || child.activeCatId;
+    const catRef = p.cat(catId);
+    const catSnap = await tx.get(catRef);
+    const cat = catSnap.exists() ? catSnap.data() : { brain: 0, energy: 0, bond: 0, evolved: false };
+
+    const nextCat = {
+      brain: clamp((cat.brain || 0) + brain, 0, CAPS.brain),
+      energy: clamp((cat.energy || 0) + energy, 0, CAPS.energy),
+      bond: clamp((cat.bond || 0) + QUEST_BOND, 0, CAPS.bond),
+      evolved: cat.evolved || false
+    };
+    if (!nextCat.evolved && isHeroReady(nextCat)) nextCat.evolved = true;
+
+    tx.update(catRef, nextCat);
+    tx.update(p.child(), {
+      available: (child.available || 0) + points,
+      coins: (child.coins || 0) + coins
+    });
+
+    const rewards = { points, brain, energy, coins, bond: QUEST_BOND };
+    if (existing) {
+      tx.update(p.completion(completionId), {
+        status: 'approved', rewards, approvedBy: uid, approvedAt: serverTimestamp()
+      });
+    } else {
+      tx.set(p.completion(completionId), {
+        childId: CHILD_ID, questId, questTitle: title,
+        localDate: today, status: 'approved', activeCatId: catId, rewards,
+        createdBy: uid, createdAt: serverTimestamp(),
+        approvedBy: uid, approvedAt: serverTimestamp()
+      });
+    }
+
+    const txnRef = doc(collection(database, 'families', familyId, 'pointTransactions'));
+    tx.set(txnRef, {
+      childId: CHILD_ID, amount: points, kind: 'quest', questId,
+      reasonCode: 'quest', reasonLabel: `Quest: ${title}`,
+      bond: QUEST_BOND, coins, brain, energy, catId,
+      createdBy: uid, deviceId: 'phone', createdAt: serverTimestamp(),
+      localDate: today, timeLabel: localTimeLabel()
     });
   });
 }

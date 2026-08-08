@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=52814814';
+import { isConfigured } from './firebase.js?v=fc325c75';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=52814814';
-import * as store from './store.js?v=52814814';
-import { CAT_DEFS } from './data/cats.js?v=52814814';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=52814814';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=52814814';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=52814814';
+} from './auth.js?v=fc325c75';
+import * as store from './store.js?v=fc325c75';
+import { CAT_DEFS } from './data/cats.js?v=fc325c75';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=fc325c75';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=fc325c75';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=fc325c75';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -181,15 +181,16 @@ function renderSirusToday() {
   }
   box.innerHTML = active.map(q => {
     const st = completionStatus(q.id);
-    const chip = st === 'approved'
-      ? '<span class="status-chip done">✓ Done</span>'
-      : st === 'pending'
-        ? '<span class="status-chip waiting">⏳ Waiting</span>'
-        : '<span class="status-chip todo">To do</span>';
     const meta = SECTION_META[q.section] || {};
     const tag = meta.glyph ? `${meta.glyph} ` : '';
+    // Mom can mark a quest done straight from here. Approved → just the chip;
+    // pending (Sirus tapped it) → an Approve button; to-do → a Mark done button.
+    const note = st === 'pending' ? ' · ⏳ waiting for you' : '';
+    const action = st === 'approved'
+      ? '<span class="status-chip done">✓ Done</span>'
+      : `<button class="pill-btn approve" data-sirus-done="${esc(q.id)}">${st === 'pending' ? '✓ Approve' : 'Mark done'}</button>`;
     return `<div class="sirus-today-row"><div class="q-body"><strong>${esc(q.title)}</strong>
-      <br><small>${tag}${esc(q.section)}</small></div>${chip}</div>`;
+      <br><small>${tag}${esc(q.section)}${note}</small></div>${action}</div>`;
   }).join('') || '<div class="empty">Turn on a quest below and it\'ll show here.</div>';
 }
 function parentQuestRow(q) {
@@ -599,6 +600,20 @@ function bindEvents() {
 
     const complete = e.target.closest('[data-complete]');
     if (complete) { await handleComplete(complete.dataset.complete); return; }
+
+    // Parent marks a quest done for Sirus from the "On Sirus's screen now" card.
+    const sirusDone = e.target.closest('[data-sirus-done]');
+    if (sirusDone) {
+      const q = state.quests.find(x => x.id === sirusDone.dataset.sirusDone);
+      if (!q) return;
+      // Approving Sirus's own pending tap is a straight yes (like the approvals
+      // card). Crediting a quest he hasn't tapped grants minutes he didn't
+      // request, so confirm that one.
+      if (!completionStatus(q.id) && !confirm(`Mark “${q.title}” done for Sirus? He’ll get the reward now.`)) return;
+      try { await store.parentCompleteQuest(state.familyId, state.uid, q.id); toast('Marked done ⭐'); }
+      catch (err) { toast('Could not mark done — try again.'); }
+      return;
+    }
 
     const buy = e.target.closest('[data-buy]');
     if (buy) { try { await store.purchaseCafeItem(state.familyId, state.uid, buy.dataset.buy); toast('Added to the café!'); } catch (err) { toast(err.message === 'not-enough-coins' ? 'Not enough coins yet.' : 'Could not buy that.'); } return; }
