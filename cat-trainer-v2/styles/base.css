@@ -266,6 +266,8 @@ main { padding: 0 16px; }
 .quest-section[open] > summary::after { transform: rotate(180deg); }
 .qs-body { padding-top: 2px; }
 
+#add-quest-btn { margin-bottom: 14px; }
+
 /* Parent "On Sirus's screen now" status list */
 .section-label { margin: 20px 0 8px; color: var(--muted); }
 .sirus-today-row { display: flex; align-items: center; gap: 10px; background: var(--cream); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
