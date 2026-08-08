@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=eddb38b9';
+import { isConfigured } from './firebase.js?v=5627c54d';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=eddb38b9';
-import * as store from './store.js?v=eddb38b9';
-import { CAT_DEFS } from './data/cats.js?v=eddb38b9';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=eddb38b9';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=eddb38b9';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=eddb38b9';
+} from './auth.js?v=5627c54d';
+import * as store from './store.js?v=5627c54d';
+import { CAT_DEFS } from './data/cats.js?v=5627c54d';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=5627c54d';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=5627c54d';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=5627c54d';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -130,7 +130,7 @@ function showEvolution(catId) {
 // ---- Rendering --------------------------------------------------------------
 function renderAll() {
   if (!state.child) return;
-  if (state.role === 'parent') { renderApprovals(); renderParentDash(); renderLedger(); renderParentQuests(); renderParentCats(); renderParentCafe(); }
+  if (state.role === 'parent') { renderApprovals(); renderParentDash(); renderLedger(); renderSirusToday(); renderParentQuests(); renderParentCats(); renderParentCafe(); }
   else { renderChildHome(); renderChildQuests(); renderChildCats(); renderChildCafe(); renderChildLog(); }
 }
 
@@ -159,6 +159,38 @@ function renderParentDash() {
 }
 function renderLedger() {
   el('full-ledger').innerHTML = state.recentTxns.length ? state.recentTxns.map(t => ledgerRow(t, true)).join('') : '<div class="empty">No point changes yet.</div>';
+}
+// Live mirror of what's on Sirus's tablet right now, so Mom can see his quest
+// progress without picking up his device. Shows only enabled quests (the ones he
+// actually sees), each with a To do / Waiting / Done status chip.
+function renderSirusToday() {
+  const box = el('sirus-today');
+  if (!box) return;
+  const active = state.quests
+    .filter(q => q.enabled !== false)
+    .slice()
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const done = active.filter(q => completionStatus(q.id) === 'approved').length;
+  const waiting = active.filter(q => completionStatus(q.id) === 'pending').length;
+  const todo = active.length - done - waiting;
+  const summary = el('sirus-today-summary');
+  if (summary) {
+    summary.textContent = active.length
+      ? `${todo} to do · ${waiting} waiting for you · ${done} done`
+      : 'No quests are turned on for Sirus right now.';
+  }
+  box.innerHTML = active.map(q => {
+    const st = completionStatus(q.id);
+    const chip = st === 'approved'
+      ? '<span class="status-chip done">✓ Done</span>'
+      : st === 'pending'
+        ? '<span class="status-chip waiting">⏳ Waiting</span>'
+        : '<span class="status-chip todo">To do</span>';
+    const meta = SECTION_META[q.section] || {};
+    const tag = meta.glyph ? `${meta.glyph} ` : '';
+    return `<div class="sirus-today-row"><div class="q-body"><strong>${esc(q.title)}</strong>
+      <br><small>${tag}${esc(q.section)}</small></div>${chip}</div>`;
+  }).join('') || '<div class="empty">Turn on a quest below and it\'ll show here.</div>';
 }
 function renderParentQuests() {
   el('parent-quests').innerHTML = state.quests.map(q => {
@@ -256,13 +288,31 @@ function childQuestCard(q) {
     ${btn}</div>`;
 }
 function renderChildQuests() {
-  el('c-quests').innerHTML = SECTIONS.map(section => {
-    const qs = state.quests.filter(q => q.section === section && q.enabled !== false);
+  const active = state.quests.filter(q => q.enabled !== false);
+  // "Available" = still actionable today. Anything Sirus has already tapped
+  // (waiting for Mom or approved) drops into the collapsed drawer so he never
+  // has to scroll past finished quests to find what's next.
+  const available = active.filter(q => !completionStatus(q.id));
+  const finished = active.filter(q => completionStatus(q.id));
+
+  const groups = SECTIONS.map(section => {
+    const qs = available.filter(q => q.section === section);
     if (!qs.length) return '';
-    const meta = SECTION_META[section];
-    const icon = meta.icon ? `<img src="${meta.icon}" alt="">` : `<span>${meta.glyph}</span>`;
-    return `<div class="quest-group"><h3>${icon}${section}</h3>${qs.map(childQuestCard).join('')}</div>`;
+    const meta = SECTION_META[section] || { glyph: '•' };
+    const icon = meta.icon ? `<img src="${meta.icon}" alt="">` : `<span class="section-glyph">${meta.glyph}</span>`;
+    return `<div class="quest-group"><h3>${icon}${esc(section)}</h3>${qs.map(childQuestCard).join('')}</div>`;
   }).join('');
+
+  const availableHtml = groups || (finished.length
+    ? '<div class="empty">All done — great job! 🎉</div>'
+    : '<div class="empty">No quests yet.</div>');
+
+  const finishedHtml = finished.length
+    ? `<details class="completed-quests"><summary>✓ Completed today <span class="done-count">${finished.length}</span></summary>
+        <div class="completed-body">${finished.map(childQuestCard).join('')}</div></details>`
+    : '';
+
+  el('c-quests').innerHTML = availableHtml + finishedHtml;
 }
 function renderChildCats() {
   const canSwitch = state.child.childCanSwitchCat !== false;
