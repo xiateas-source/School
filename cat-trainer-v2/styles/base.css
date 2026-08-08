@@ -19,7 +19,7 @@ img { max-width: 100%; }
 /* Pixel-art assets scale crisply (nearest-neighbor). Avatars are still smooth
    illustrations, so they opt back out below. */
 .child-cat-art, .cafe-cat, .cafe-decor, .cat-card img, .shop-item img,
-.coin-ico, .time-star, .quest-group h3 img, .fx-sprite, #evo-art,
+.coin-ico, .time-star, .quest-group h3 img, .quest-section summary img, .fx-sprite, #evo-art,
 .cafe-room { image-rendering: pixelated; }
 .choice-art, .signin-art { image-rendering: auto; }
 
@@ -211,6 +211,46 @@ main { padding: 0 16px; }
 .pill-btn { border: none; border-radius: 999px; cursor: pointer; font: inherit; font-weight: 700; font-size: .84rem; padding: 8px 12px; flex-shrink: 0; }
 .pill-btn.approve { background: var(--green); color: #fff; }
 .pill-btn.reject { background: #fff; border: 2px solid var(--line); color: var(--muted); padding: 6px 12px; }
+
+/* Neutral "General" section header uses a glyph instead of an icon PNG */
+.quest-group h3 .section-glyph { font-size: 1.3rem; line-height: 1; width: 26px; text-align: center; color: var(--gold); }
+
+/* Collapsed "Completed today" drawer on Sirus's Quests tab */
+.completed-quests { margin-top: 6px; border-top: 2px solid var(--line); padding-top: 12px; }
+.completed-quests > summary {
+  cursor: pointer; font-weight: 700; color: var(--muted); list-style: none;
+  display: flex; align-items: center; gap: 8px; padding: 6px 2px;
+}
+.completed-quests > summary::-webkit-details-marker { display: none; }
+.completed-quests > summary::after { content: '▾'; margin-left: auto; transition: transform .2s ease; }
+.completed-quests[open] > summary::after { transform: rotate(180deg); }
+.completed-quests .done-count { background: var(--green); color: #fff; border-radius: 999px; font-size: .72rem; font-weight: 800; padding: 1px 8px; }
+.completed-body { margin-top: 10px; }
+
+/* Collapsible section groups in Mom's quest manager — scan/jump by section */
+.quest-section { margin-bottom: 8px; }
+.quest-section > summary {
+  cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px;
+  font-weight: 800; font-size: 1.02rem; padding: 8px 4px; color: var(--ink);
+}
+.quest-section > summary::-webkit-details-marker { display: none; }
+.quest-section > summary .qs-head { display: flex; align-items: center; gap: 8px; }
+.quest-section > summary .qs-head img { width: 24px; height: 24px; }
+.quest-section > summary .qs-head .section-glyph { font-size: 1.2rem; width: 24px; text-align: center; color: var(--gold); }
+.quest-section > summary .qs-count { margin-left: auto; font-size: .74rem; font-weight: 700; color: var(--muted); }
+.quest-section > summary::after { content: '▾'; color: var(--muted); transition: transform .2s ease; }
+.quest-section[open] > summary::after { transform: rotate(180deg); }
+.qs-body { padding-top: 2px; }
+
+/* Parent "On Sirus's screen now" status list */
+.section-label { margin: 20px 0 8px; color: var(--muted); }
+.sirus-today-row { display: flex; align-items: center; gap: 10px; background: var(--cream); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+.sirus-today-row .q-body { flex: 1; min-width: 0; }
+.sirus-today-row small { color: var(--muted); }
+.status-chip { flex-shrink: 0; border-radius: 999px; font-size: .74rem; font-weight: 800; padding: 5px 10px; white-space: nowrap; }
+.status-chip.todo { background: #fff; border: 2px solid var(--line); color: var(--muted); }
+.status-chip.waiting { background: #fff6dd; border: 2px solid var(--gold); color: #c98f16; }
+.status-chip.done { background: #e7f4e2; color: #4f8442; }
 
 /* Active checkbox row in the quest dialog */
 .check-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-weight: 600; }

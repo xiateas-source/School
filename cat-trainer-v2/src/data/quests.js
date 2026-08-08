@@ -3,14 +3,17 @@
 // (America/Chicago) calendar day. `order` drives display and is reorderable by Mom.
 // `enabled` lets Mom turn a quest off without deleting it.
 
-export const SECTIONS = ['Morning', 'Brain', 'Move', 'Tidy', 'Night'];
+// 'General' is a neutral, anytime bucket for quests that aren't part of a
+// morning/night routine — it has no icon PNG, so it falls back to its glyph.
+export const SECTIONS = ['Morning', 'Brain', 'Move', 'Tidy', 'Night', 'General'];
 
 export const SECTION_META = {
   Morning: { icon: 'assets/morning-icon.png', glyph: '☀', color: 'green' },
   Brain: { icon: 'assets/brain-icon.png', glyph: '★', color: 'purple' },
   Move: { icon: 'assets/move-icon.png', glyph: '⚡', color: 'orange' },
   Tidy: { icon: 'assets/tidy-and-help-icon.png', glyph: '◆', color: 'blue' },
-  Night: { icon: 'assets/night-routine-icon.png', glyph: '☾', color: 'pink' }
+  Night: { icon: 'assets/night-routine-icon.png', glyph: '☾', color: 'pink' },
+  General: { icon: null, glyph: '✦', color: 'gold' }
 };
 
 export const DEFAULT_QUESTS = [

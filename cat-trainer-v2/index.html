@@ -8,7 +8,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=eddb38b9">
+  <link rel="stylesheet" href="styles/base.css?v=3781c7e7">
 </head>
 <body>
   <div id="app">
@@ -129,6 +129,12 @@
         <!-- Quests -->
         <section class="screen" data-pscreen="quests">
           <h2 class="page-title">Quests</h2>
+          <section class="card">
+            <div class="card-head"><h3>On Sirus's screen now</h3></div>
+            <p class="muted" id="sirus-today-summary"></p>
+            <div id="sirus-today"></div>
+          </section>
+          <h3 class="section-label">Manage quests</h3>
           <button class="primary-button wide" id="add-quest-btn">+ Add a quest</button>
           <div id="parent-quests"></div>
         </section>
@@ -197,7 +203,7 @@
             <p class="hero-hint" id="c-hero-hint"></p>
           </section>
           <section class="card soft">
-            <div class="card-head"><h3>Today's quests</h3><button class="text-button" data-cgo="quests">See all</button></div>
+            <div class="card-head"><h3>Available quests</h3><button class="text-button" data-cgo="quests">See all</button></div>
             <div id="c-next-quests"></div>
           </section>
         </section>
@@ -256,7 +262,7 @@
   <dialog id="quest-dialog" class="modal"><form method="dialog" class="modal-card">
     <h2 id="quest-dialog-title">Add quest</h2>
     <label>Name<input id="q-title" maxlength="50" required></label>
-    <label>Section<select id="q-section"><option>Morning</option><option>Brain</option><option>Move</option><option>Tidy</option><option>Night</option></select></label>
+    <label>Section<select id="q-section"><option>Morning</option><option>Brain</option><option>Move</option><option>Tidy</option><option>Night</option><option>General</option></select></label>
     <div class="reward-inputs">
       <label>Points<input id="q-points" type="number" value="1"></label>
       <label>Brain<input id="q-brain" type="number" min="0" value="0"></label>
@@ -280,7 +286,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=eddb38b9"></script>
+  <script type="module" src="src/app.js?v=3781c7e7"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.
