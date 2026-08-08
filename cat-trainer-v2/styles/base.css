@@ -171,9 +171,44 @@ main { padding: 0 16px; }
 }
 .quest-complete:disabled { background: #cfe3c7; }
 .parent-quest-row { display: flex; align-items: center; gap: 10px; background: var(--paper); border-radius: 12px; box-shadow: var(--shadow); padding: 12px; margin-bottom: 8px; }
+.parent-quest-row.quest-off { opacity: .6; }
 .parent-quest-row .q-body { flex: 1; }
 .parent-quest-row small { color: var(--muted); }
 .icon-btn { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--muted); padding: 6px; }
+
+/* Per-task lock toggle (surfaces the quest `enabled` flag) */
+.lock-toggle {
+  flex-shrink: 0; border: 2px solid var(--line); border-radius: 999px; cursor: pointer;
+  font: inherit; font-weight: 700; font-size: .8rem; padding: 6px 12px; background: #fff; color: var(--muted);
+}
+.lock-toggle.on { background: var(--green); border-color: var(--green); color: #fff; }
+.lock-toggle.off { background: var(--cream); }
+
+/* Child three-state quest card: available / pending (waiting) / approved (done) */
+.quest-card.pending { outline: 2px solid var(--gold); background: #fffdf3; }
+.quest-card .q-status { color: var(--gold); font-size: .74rem; font-weight: 700; margin-top: 2px; }
+.quest-pending { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0; }
+
+/* Child "waiting for Mom" pending pile — anticipation builds as quests stack up */
+.pending-tray {
+  margin: 10px auto 0; max-width: max-content; background: #fff6dd; border: 2px solid var(--gold);
+  color: var(--ink); border-radius: 999px; padding: 8px 16px; font-size: .9rem; text-align: center;
+}
+.pending-tray strong { color: #c98f16; }
+
+/* Parent approvals card + rows */
+.approvals-card { border: 2px solid var(--gold); }
+.badge { display: inline-block; min-width: 20px; padding: 1px 7px; border-radius: 999px; background: var(--gold); color: #fff; font-size: .72rem; font-weight: 800; text-align: center; }
+.approval-row { display: flex; align-items: center; gap: 8px; background: var(--cream); border-radius: 12px; padding: 10px 12px; margin-top: 8px; }
+.approval-row .q-body { flex: 1; }
+.approval-row small { color: var(--muted); }
+.pill-btn { border: none; border-radius: 999px; cursor: pointer; font: inherit; font-weight: 700; font-size: .84rem; padding: 8px 12px; flex-shrink: 0; }
+.pill-btn.approve { background: var(--green); color: #fff; }
+.pill-btn.reject { background: #fff; border: 2px solid var(--line); color: var(--muted); padding: 6px 12px; }
+
+/* Active checkbox row in the quest dialog */
+.check-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-weight: 600; }
+.check-row input { width: auto; }
 
 /* ---------- Cats ---------- */
 .cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

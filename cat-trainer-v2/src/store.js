@@ -2,15 +2,15 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=434efbbe';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=434efbbe';
-import { seededQuests } from './data/quests.js?v=434efbbe';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=434efbbe';
+import { initFirebase, db, dbSdk } from './firebase.js?v=7ebbecfb';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=7ebbecfb';
+import { seededQuests } from './data/quests.js?v=7ebbecfb';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=7ebbecfb';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, applyBalanceDelta
-} from './shared/rewards.js?v=434efbbe';
-import { localDate, localTimeLabel } from './shared/dates.js?v=434efbbe';
+} from './shared/rewards.js?v=7ebbecfb';
+import { localDate, localTimeLabel } from './shared/dates.js?v=7ebbecfb';
 
 export const CHILD_ID = 'sirus';
 
@@ -156,7 +156,20 @@ export async function subscribe(familyId, handlers = {}) {
   }));
   if (handlers.onTodayCompletions) unsubs.push(onSnapshot(
     query(p.completions(), where('localDate', '==', today)),
-    s => handlers.onTodayCompletions(s.docs.map(d => d.data().questId))
+    // Carry status so the child UI can tell "waiting for Mom" (pending) apart from
+    // approved. Legacy docs predate the field, so a missing status reads approved.
+    s => handlers.onTodayCompletions(s.docs.map(d => ({ questId: d.data().questId, status: d.data().status || 'approved' })))
+  ));
+  // Pending approvals across all days (a completion could span local midnight
+  // before a parent reviews it). Filter on the status field; sort newest-first in
+  // memory so no composite index is needed.
+  if (handlers.onPendingApprovals) unsubs.push(onSnapshot(
+    query(p.completions(), where('status', '==', 'pending')),
+    s => {
+      const items = s.docs.map(d => ({ id: d.id, ...d.data() }));
+      items.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+      handlers.onPendingApprovals(items);
+    }
   ));
   if (handlers.onRecentTxns) unsubs.push(onSnapshot(
     query(p.txns(), orderBy('createdAt', 'desc'), limit(50)),
@@ -220,11 +233,13 @@ export async function adjustPoints(familyId, uid, { amount, reasonCode, reasonLa
   });
 }
 
-// Complete a quest once per local day. Applies points + cat progress + coins +1
-// Bond, atomically, and refuses a duplicate for the same day.
+// Sirus taps a quest complete → this files a PENDING request. It credits NOTHING
+// spendable yet (no minutes, coins, or cat stats): a parent must approve first
+// (see approveCompletion), at which point the reward lands. Still one-per-day via
+// the deterministic completion id, and refuses a duplicate for the same day.
 export async function completeQuest(familyId, uid, questId, { deviceId = 'tablet' } = {}) {
   const { database, sdk } = await fs();
-  const { runTransaction, serverTimestamp, doc, collection } = sdk;
+  const { runTransaction, serverTimestamp } = sdk;
   const p = paths(sdk, database, familyId);
   const today = localDate();
   const completionId = `${CHILD_ID}_${questId}_${today}`;
@@ -240,14 +255,58 @@ export async function completeQuest(familyId, uid, questId, { deviceId = 'tablet
 
     const childSnap = await tx.get(p.child());
     const child = childSnap.data();
-    const catRef = p.cat(child.activeCatId);
-    const catSnap = await tx.get(catRef);
-    const cat = catSnap.data();
 
     const points = Math.max(0, Number(quest.points) || 0);
     const brain = Math.max(0, Number(quest.brain) || 0);
     const energy = Math.max(0, Number(quest.energy) || 0);
     const coins = Math.max(0, Number(quest.coins) || 0);
+
+    // The rewards snapshot is for display (Sirus's "waiting for Mom" pile) and a
+    // fallback if the quest is later edited/deleted; the real credit is recomputed
+    // from the live quest at approval time. activeCatId is snapshotted so approval
+    // rewards the cat that was active when the quest was done.
+    tx.set(p.completion(completionId), {
+      childId: CHILD_ID, questId, questTitle: quest.title || 'Quest',
+      localDate: today, status: 'pending', activeCatId: child.activeCatId,
+      rewards: { points, brain, energy, coins, bond: QUEST_BOND },
+      createdBy: uid, createdAt: serverTimestamp()
+    });
+  });
+}
+
+// Parent approves a pending completion → NOW the reward lands: cat progress +
+// minutes + coins + a ledger row, atomically. Points/brain/energy/coins are
+// recomputed from the live quest (source of truth, so a tampered pending doc
+// can't inflate the payout), falling back to the snapshot if the quest was since
+// deleted. Idempotent: a completion already resolved is a no-op.
+export async function approveCompletion(familyId, uid, completion) {
+  if (!completion || !completion.id) return;
+  const { database, sdk } = await fs();
+  const { runTransaction, serverTimestamp, doc, collection } = sdk;
+  const p = paths(sdk, database, familyId);
+  const completionId = completion.id;
+
+  await runTransaction(database, async (tx) => {
+    const compSnap = await tx.get(p.completion(completionId));
+    if (!compSnap.exists()) throw new Error('completion-missing');
+    const comp = compSnap.data();
+    if (comp.status && comp.status !== 'pending') return; // already resolved
+
+    const snap = comp.rewards || {};
+    const questSnap = await tx.get(p.quest(comp.questId));
+    const quest = questSnap.exists() ? questSnap.data() : null;
+    const title = (quest && quest.title) || comp.questTitle || 'Quest';
+    const points = Math.max(0, Number(quest ? quest.points : snap.points) || 0);
+    const brain = Math.max(0, Number(quest ? quest.brain : snap.brain) || 0);
+    const energy = Math.max(0, Number(quest ? quest.energy : snap.energy) || 0);
+    const coins = Math.max(0, Number(quest ? quest.coins : snap.coins) || 0);
+
+    const childSnap = await tx.get(p.child());
+    const child = childSnap.data();
+    const catId = comp.activeCatId || child.activeCatId;
+    const catRef = p.cat(catId);
+    const catSnap = await tx.get(catRef);
+    const cat = catSnap.exists() ? catSnap.data() : { brain: 0, energy: 0, bond: 0, evolved: false };
 
     const nextCat = {
       brain: clamp((cat.brain || 0) + brain, 0, CAPS.brain),
@@ -262,21 +321,33 @@ export async function completeQuest(familyId, uid, questId, { deviceId = 'tablet
       available: (child.available || 0) + points,
       coins: (child.coins || 0) + coins
     });
-    tx.set(p.completion(completionId), {
-      childId: CHILD_ID, questId, localDate: today,
-      activeCatId: child.activeCatId,
+    tx.update(p.completion(completionId), {
+      status: 'approved',
       rewards: { points, brain, energy, coins, bond: QUEST_BOND },
-      createdBy: uid, createdAt: serverTimestamp()
+      approvedBy: uid, approvedAt: serverTimestamp()
     });
+    // Ledger row is stamped at approval time — the moment the minutes actually
+    // become available — so the dashboard's "earned today" reflects real credit.
     const txnRef = doc(collection(database, 'families', familyId, 'pointTransactions'));
     tx.set(txnRef, {
-      childId: CHILD_ID, amount: points, kind: 'quest', questId,
-      reasonCode: 'quest', reasonLabel: `Quest: ${quest.title}`,
-      bond: QUEST_BOND, coins, brain, energy, catId: child.activeCatId,
-      createdBy: uid, deviceId, createdAt: serverTimestamp(),
-      localDate: today, timeLabel: localTimeLabel()
+      childId: CHILD_ID, amount: points, kind: 'quest', questId: comp.questId,
+      reasonCode: 'quest', reasonLabel: `Quest: ${title}`,
+      bond: QUEST_BOND, coins, brain, energy, catId,
+      createdBy: uid, deviceId: 'phone', createdAt: serverTimestamp(),
+      localDate: localDate(), timeLabel: localTimeLabel()
     });
   });
+}
+
+// Parent rejects a pending completion → discard it. Nothing was credited, so this
+// just deletes the request; with no completion doc for today, the quest reappears
+// on Sirus's list (re-given) to earn again.
+export async function rejectCompletion(familyId, completionId) {
+  if (!completionId) return;
+  const { database, sdk } = await fs();
+  const { deleteDoc } = sdk;
+  const p = paths(sdk, database, familyId);
+  await deleteDoc(p.completion(completionId));
 }
 
 // Parent records screen time used — draws down the available balance.
@@ -422,6 +493,14 @@ export async function saveQuest(familyId, quest) {
   const { setDoc } = sdk;
   const p = paths(sdk, database, familyId);
   await setDoc(p.quest(quest.id), quest, { merge: true });
+}
+// Lock/unlock a preset: flip a quest's `enabled` flag. A disabled quest is hidden
+// from Sirus's lists and refused server-side, without deleting its definition.
+export async function setQuestEnabled(familyId, questId, enabled) {
+  const { database, sdk } = await fs();
+  const { setDoc } = sdk;
+  const p = paths(sdk, database, familyId);
+  await setDoc(p.quest(questId), { id: questId, enabled: !!enabled }, { merge: true });
 }
 export async function deleteQuest(familyId, questId) {
   const { database, sdk } = await fs();

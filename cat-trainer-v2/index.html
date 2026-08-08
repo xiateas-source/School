@@ -8,7 +8,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=434efbbe">
+  <link rel="stylesheet" href="styles/base.css?v=7ebbecfb">
 </head>
 <body>
   <div id="app">
@@ -91,6 +91,12 @@
       <main>
         <!-- Dashboard -->
         <section class="screen active" data-pscreen="dash">
+          <!-- Quests Sirus finished, waiting to be turned into minutes -->
+          <section class="card approvals-card" id="approvals-card" hidden>
+            <div class="card-head"><h3>Needs approval <span class="badge" id="approvals-count" hidden>0</span></h3></div>
+            <p class="muted">Sirus finished these — approve to turn them into minutes, or reject to give the quest back.</p>
+            <div id="pending-approvals"></div>
+          </section>
           <div class="today-row">
             <div class="stat plus"><strong id="p-earned">0</strong><span>earned today</span></div>
             <div class="stat minus"><strong id="p-spent">0</strong><span>used today</span></div>
@@ -180,6 +186,7 @@
             <img id="c-cat-art" class="child-cat-art" alt="Your cat">
             <p class="earned-note">Earned today: <strong id="c-earned">0</strong></p>
           </div>
+          <div class="pending-tray" id="c-pending-tray" hidden><span id="c-pending"></span></div>
           <section class="card soft">
             <div class="card-head"><h3 id="c-cat-name">Nova</h3><button class="text-button" data-cgo="cats">Choose cat</button></div>
             <div class="meters">
@@ -256,6 +263,7 @@
       <label>Energy<input id="q-energy" type="number" min="0" value="1"></label>
       <label>Coins<input id="q-coins" type="number" min="0" value="1"></label>
     </div>
+    <label class="check-row"><input id="q-enabled" type="checkbox" checked> Active — Sirus can do this task</label>
     <div class="btn-row">
       <button class="text-button" value="cancel">Cancel</button>
       <button class="primary-button" id="quest-save" value="default">Save</button>
@@ -272,7 +280,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=434efbbe"></script>
+  <script type="module" src="src/app.js?v=7ebbecfb"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.

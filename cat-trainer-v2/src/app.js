@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=434efbbe';
+import { isConfigured } from './firebase.js?v=7ebbecfb';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=434efbbe';
-import * as store from './store.js?v=434efbbe';
-import { CAT_DEFS } from './data/cats.js?v=434efbbe';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=434efbbe';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=434efbbe';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=434efbbe';
+} from './auth.js?v=7ebbecfb';
+import * as store from './store.js?v=7ebbecfb';
+import { CAT_DEFS } from './data/cats.js?v=7ebbecfb';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=7ebbecfb';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=7ebbecfb';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=7ebbecfb';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -19,7 +19,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;',
 const state = {
   role: null, familyId: null, uid: null,
   child: null, cats: {}, quests: [], ownedItems: [], todayCompletions: [], recentTxns: [],
-  prevEvolved: {}, unsub: null
+  pendingApprovals: [], prevEvolved: {}, prevCompletions: {}, unsub: null
 };
 
 function toast(msg) {
@@ -76,9 +76,35 @@ async function subscribeAll() {
     onCats: (c) => { detectEvolution(c); state.cats = c; renderAll(); },
     onQuests: (q) => { state.quests = q; renderAll(); },
     onOwnedItems: (o) => { state.ownedItems = o; renderAll(); },
-    onTodayCompletions: (t) => { state.todayCompletions = t; renderAll(); },
+    onTodayCompletions: (t) => { detectApproval(t); state.todayCompletions = t; renderAll(); },
+    onPendingApprovals: (p) => { state.pendingApprovals = p; renderAll(); },
     onRecentTxns: (t) => { state.recentTxns = t; renderAll(); }
   });
+}
+
+// A completion status map keyed by questId, for today. 'pending' | 'approved'.
+function completionStatus(questId) {
+  const c = state.todayCompletions.find(x => x.questId === questId);
+  return c ? c.status : null;
+}
+
+// Second dopamine hit: when a quest Sirus finished flips pending → approved on
+// the parent's device, his tablet celebrates the payoff (mirrors detectEvolution).
+function detectApproval(newCompletions) {
+  if (state.role !== 'child') { state.prevCompletions = {}; return; }
+  const prev = state.prevCompletions;
+  const next = {};
+  for (const c of newCompletions) {
+    next[c.questId] = c.status;
+    if (prev[c.questId] === 'pending' && c.status === 'approved') {
+      const q = state.quests.find(x => x.id === c.questId);
+      const mins = q ? q.points : 0;
+      confettiBurst();
+      if (navigator.vibrate) { try { navigator.vibrate([10, 40, 10]); } catch (_) {} }
+      toast(`Mom said yes! +${mins}m ⭐`);
+    }
+  }
+  state.prevCompletions = next;
 }
 
 function detectEvolution(newCats) {
@@ -103,7 +129,7 @@ function showEvolution(catId) {
 // ---- Rendering --------------------------------------------------------------
 function renderAll() {
   if (!state.child) return;
-  if (state.role === 'parent') { renderParentDash(); renderLedger(); renderParentQuests(); renderParentCats(); renderParentCafe(); }
+  if (state.role === 'parent') { renderApprovals(); renderParentDash(); renderLedger(); renderParentQuests(); renderParentCats(); renderParentCafe(); }
   else { renderChildHome(); renderChildQuests(); renderChildCats(); renderChildCafe(); renderChildLog(); }
 }
 
@@ -134,12 +160,36 @@ function renderLedger() {
   el('full-ledger').innerHTML = state.recentTxns.length ? state.recentTxns.map(t => ledgerRow(t, true)).join('') : '<div class="empty">No point changes yet.</div>';
 }
 function renderParentQuests() {
-  el('parent-quests').innerHTML = state.quests.map(q =>
-    `<div class="parent-quest-row"><div class="q-body"><strong>${esc(q.title)}</strong>
-      <br><small>${esc(q.section)} · +${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''} ${q.enabled===false?'· (off)':''}</small></div>
+  el('parent-quests').innerHTML = state.quests.map(q => {
+    const on = q.enabled !== false;
+    return `<div class="parent-quest-row ${on?'':'quest-off'}"><div class="q-body"><strong>${esc(q.title)}</strong>
+      <br><small>${esc(q.section)} · +${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''}</small></div>
+      <button class="lock-toggle ${on?'on':'off'}" data-toggle-quest="${esc(q.id)}" role="switch" aria-checked="${on}" aria-label="${on?'On — tap to lock off':'Off — tap to turn on'}">${on?'On':'🔒 Off'}</button>
       <button class="icon-btn" data-edit-quest="${esc(q.id)}">✎</button>
-      <button class="icon-btn" data-del-quest="${esc(q.id)}">×</button></div>`
-  ).join('') || '<div class="empty">No quests yet.</div>';
+      <button class="icon-btn" data-del-quest="${esc(q.id)}">×</button></div>`;
+  }).join('') || '<div class="empty">No quests yet.</div>';
+}
+
+// Parent review queue: quests Sirus finished that are waiting to become minutes.
+function renderApprovals() {
+  const box = el('pending-approvals');
+  if (!box) return;
+  const items = state.pendingApprovals || [];
+  const badge = el('approvals-count');
+  if (badge) { badge.textContent = items.length; badge.hidden = items.length === 0; }
+  const card = el('approvals-card');
+  if (card) card.hidden = items.length === 0;
+  box.innerHTML = items.map(c => {
+    const q = state.quests.find(x => x.id === c.questId);
+    const title = (q && q.title) || c.questTitle || 'Quest';
+    const r = c.rewards || {};
+    const pts = q ? q.points : (r.points || 0);
+    const coins = q ? q.coins : (r.coins || 0);
+    const reward = `+${pts}m${q&&q.brain?' · ★'+q.brain:(r.brain?' · ★'+r.brain:'')}${q&&q.energy?' · ⚡'+q.energy:(r.energy?' · ⚡'+r.energy:'')} · ♥${QUEST_BOND}${coins?' · 🪙'+coins:''}`;
+    return `<div class="approval-row"><div class="q-body"><strong>${esc(title)}</strong><br><small>${reward}</small></div>
+      <button class="pill-btn reject" data-reject="${esc(c.id)}" aria-label="Reject ${esc(title)}">✕</button>
+      <button class="pill-btn approve" data-approve="${esc(c.id)}" aria-label="Approve ${esc(title)}">✓ Approve</button></div>`;
+  }).join('') || '<div class="empty">Nothing waiting — all caught up!</div>';
 }
 function catCardHtml(id, canTrain) {
   const def = CAT_DEFS[id]; const cat = state.cats[id] || { brain:0, energy:0, bond:0, evolved:false };
@@ -166,6 +216,16 @@ function renderChildHome() {
   el('c-available').textContent = state.child.available || 0;
   const { earned } = store.todayTotals(state.recentTxns);
   el('c-earned').textContent = earned;
+  // "Waiting for Mom" pile: pending rewards stack up visibly so finishing quests
+  // still feels rewarding even though the minutes are gated on approval.
+  const pend = state.pendingApprovals || [];
+  const pMin = pend.reduce((s, c) => s + ((c.rewards && c.rewards.points) || 0), 0);
+  const pCoins = pend.reduce((s, c) => s + ((c.rewards && c.rewards.coins) || 0), 0);
+  const tray = el('c-pending-tray');
+  if (tray) {
+    tray.hidden = pend.length === 0;
+    el('c-pending').innerHTML = `⭐ <strong>${pMin}m</strong>${pCoins?` · 🪙 <strong>${pCoins}</strong>`:''} waiting for Mom`;
+  }
   el('c-cat-art').src = cat.evolved ? def.heroArt : def.art;
   el('c-cat-name').textContent = cat.evolved ? def.heroName : def.name;
   meter('c-brain-bar','c-brain-val', cat.brain||0, 12);
@@ -177,14 +237,22 @@ function renderChildHome() {
     const ne = Math.max(0, HERO_THRESHOLD.energy - (cat.energy||0));
     el('c-hero-hint').textContent = `Hero Form needs ${nb} more Brain and ${ne} more Energy.`;
   }
-  const next = state.quests.filter(q => q.enabled !== false && !state.todayCompletions.includes(q.id)).slice(0, 3);
+  const next = state.quests.filter(q => q.enabled !== false && !completionStatus(q.id)).slice(0, 3);
   el('c-next-quests').innerHTML = next.length ? next.map(childQuestCard).join('') : '<div class="empty">All done — great job!</div>';
 }
 function childQuestCard(q) {
-  const done = state.todayCompletions.includes(q.id);
-  return `<div class="quest-card ${done?'done':''}"><div class="q-body"><div class="q-title">${esc(q.title)}</div>
-    <div class="q-reward">+${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''}</div></div>
-    <button class="quest-complete" data-complete="${esc(q.id)}" ${done?'disabled':''}>${done?'✓':'+'}</button></div>`;
+  const status = completionStatus(q.id); // null | 'pending' | 'approved'
+  const cls = status === 'approved' ? 'done' : status === 'pending' ? 'pending' : '';
+  const reward = `+${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''}`;
+  const btn = status === 'approved'
+    ? `<button class="quest-complete" disabled>✓</button>`
+    : status === 'pending'
+      ? `<span class="quest-pending" aria-label="Waiting for Mom">⏳</span>`
+      : `<button class="quest-complete" data-complete="${esc(q.id)}">+</button>`;
+  return `<div class="quest-card ${cls}"><div class="q-body"><div class="q-title">${esc(q.title)}</div>
+    <div class="q-reward">${reward}</div>
+    ${status==='pending'?'<div class="q-status">Done! Waiting for Mom ⭐</div>':''}</div>
+    ${btn}</div>`;
 }
 function renderChildQuests() {
   el('c-quests').innerHTML = SECTIONS.map(section => {
@@ -434,6 +502,36 @@ function bindEvents() {
     const del = e.target.closest('[data-del-quest]');
     if (del) { if (confirm('Delete this quest?')) { await store.deleteQuest(state.familyId, del.dataset.delQuest); toast('Quest deleted.'); } return; }
 
+    const toggleQ = e.target.closest('[data-toggle-quest]');
+    if (toggleQ) {
+      const q = state.quests.find(x => x.id === toggleQ.dataset.toggleQuest);
+      if (!q) return;
+      const next = q.enabled === false; // currently off → turn on; currently on → lock off
+      try { await store.setQuestEnabled(state.familyId, q.id, next); toast(next ? 'Task on for Sirus.' : '🔒 Task locked off.'); }
+      catch (err) { toast('Could not update — try again.'); }
+      return;
+    }
+
+    const approve = e.target.closest('[data-approve]');
+    if (approve) {
+      const c = state.pendingApprovals.find(x => x.id === approve.dataset.approve);
+      if (!c) return;
+      try { await store.approveCompletion(state.familyId, state.uid, c); toast('Approved! ⭐'); }
+      catch (err) { toast('Could not approve — try again.'); }
+      return;
+    }
+    const reject = e.target.closest('[data-reject]');
+    if (reject) {
+      const c = state.pendingApprovals.find(x => x.id === reject.dataset.reject);
+      if (!c) return;
+      const title = (c && c.questTitle) || 'this quest';
+      if (confirm(`Reject “${title}”? The points disappear and the quest is given back to Sirus to do again.`)) {
+        try { await store.rejectCompletion(state.familyId, c.id); toast('Sent back to Sirus.'); }
+        catch (err) { toast('Could not reject — try again.'); }
+      }
+      return;
+    }
+
     if (e.target.closest('#add-quest-btn')) return openQuestDialog(null);
     if (e.target.closest('#undo-btn')) {
       const last = state.recentTxns[0];
@@ -512,7 +610,14 @@ function bindEvents() {
 }
 
 async function handleComplete(questId) {
-  try { await store.completeQuest(state.familyId, state.uid, questId); confettiBurst(); toast('Quest complete! 🎉'); }
+  try {
+    await store.completeQuest(state.familyId, state.uid, questId);
+    // Immediate win even though the minutes are gated: celebrate + buzz so the
+    // tap feels great; the reward then stacks in the "waiting for Mom" pile.
+    confettiBurst();
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch (_) {} }
+    toast('Nice one! ⭐ Sent to Mom');
+  }
   catch (err) {
     if (err.message === 'already-completed') toast('Already done today!');
     else toast('Could not complete — check connection.');
@@ -530,6 +635,7 @@ function openQuestDialog(id) {
   el('q-brain').value = q ? q.brain : 0;
   el('q-energy').value = q ? q.energy : 1;
   el('q-coins').value = q ? q.coins : 1;
+  el('q-enabled').checked = q ? q.enabled !== false : true;
   el('quest-dialog').showModal();
 }
 async function saveQuestFromDialog() {
@@ -542,7 +648,7 @@ async function saveQuestFromDialog() {
     brain: Math.max(0, Number(el('q-brain').value) || 0),
     energy: Math.max(0, Number(el('q-energy').value) || 0),
     coins: Math.max(0, Number(el('q-coins').value) || 0),
-    enabled: existing ? existing.enabled !== false : true,
+    enabled: el('q-enabled').checked,
     order: existing ? existing.order : state.quests.length
   };
   await store.saveQuest(state.familyId, quest);
