@@ -1,3 +1,24 @@
+/* ---------- Pixel type system ----------
+   A display/text pairing (classic hierarchy): Press Start 2P — chunky 8-bit — is
+   reserved for short HUD accents (eyebrow labels, the big "score" numbers, the
+   pairing code), while Pixelify Sans, a readable pixel face, carries all the
+   body/UI text. So the whole game reads as pixel-art without becoming an eye
+   chart. Both are self-hosted (assets/*.woff2) so the offline PWA still works. */
+@font-face {
+  font-family: 'Pixelify Sans';
+  font-style: normal;
+  font-weight: 400 700;        /* single variable file covers the weight axis */
+  font-display: swap;
+  src: url('../assets/pixelify-sans.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/press-start-2p.woff2') format('woff2');
+}
+
 :root {
   --cream: #fffaf2;
   --paper: #fffdf9;
@@ -8,11 +29,14 @@
   --blue: #6fb0d6; --pink: #e58fb0; --gold: #f4c95d;
   --shadow: 0 6px 18px rgba(120, 96, 64, .12);
   --radius: 20px;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-body: 'Pixelify Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: 'Press Start 2P', 'Pixelify Sans', monospace;
+  font-family: var(--font-body);
 }
 * { box-sizing: border-box; }
 body {
   margin: 0; background: var(--cream); color: var(--ink);
+  font-family: var(--font-body); line-height: 1.5;
   -webkit-tap-highlight-color: transparent;
 }
 img { max-width: 100%; }
@@ -37,7 +61,7 @@ img { max-width: 100%; }
   background: var(--paper); border-radius: var(--radius); box-shadow: var(--shadow);
   padding: 28px 22px; width: 100%; max-width: 420px; text-align: center;
 }
-.eyebrow { letter-spacing: .12em; font-size: .68rem; color: var(--muted); font-weight: 700; margin: 0 0 4px; }
+.eyebrow { font-family: var(--font-display); font-weight: 400; letter-spacing: .03em; font-size: .58rem; line-height: 1.7; color: var(--muted); margin: 0 0 6px; }
 .eyebrow.purple { color: var(--purple); }
 .brand { font-size: 2rem; margin: 0 0 6px; color: var(--ink); }
 .brand.small { font-size: 1.2rem; }
@@ -90,7 +114,7 @@ input:focus, select:focus { outline: none; border-color: var(--purple); }
   padding: 8px 14px; text-align: center; line-height: 1.1;
 }
 .balance-chip small { display: block; font-size: .6rem; color: var(--muted); letter-spacing: .1em; }
-.balance-chip strong { font-size: 1.5rem; color: var(--green); }
+.balance-chip strong { font-family: var(--font-display); font-size: 1.25rem; line-height: 1.3; color: var(--green); }
 .balance-chip span { font-size: .7rem; color: var(--muted); }
 main { padding: 0 16px; }
 .page-title { margin: 8px 0 14px; }
@@ -105,7 +129,7 @@ main { padding: 0 16px; }
 
 .today-row { display: flex; gap: 12px; margin: 4px 0 14px; }
 .stat { flex: 1; background: var(--paper); border-radius: 16px; box-shadow: var(--shadow); padding: 14px; text-align: center; }
-.stat strong { display: block; font-size: 1.8rem; }
+.stat strong { display: block; font-family: var(--font-display); font-size: 1.4rem; line-height: 1.3; }
 .stat span { color: var(--muted); font-size: .8rem; }
 .stat.plus strong { color: var(--green); }
 .stat.minus strong { color: var(--orange); }
@@ -154,7 +178,7 @@ main { padding: 0 16px; }
 .time-badge { background: var(--paper); border-radius: 18px; box-shadow: var(--shadow); display: inline-block; padding: 10px 22px; line-height: 1.1; }
 .time-star { display: block; width: 36px; height: 36px; object-fit: contain; margin: 0 auto 2px; }
 .time-badge small { display: block; font-size: .62rem; color: var(--muted); letter-spacing: .12em; }
-.time-badge strong { font-size: 2.4rem; color: var(--gold); }
+.time-badge strong { display: block; font-family: var(--font-display); font-size: 1.9rem; line-height: 1.35; color: var(--gold); }
 .time-badge span { color: var(--muted); font-size: .8rem; }
 .child-cat-art { width: 180px; height: 180px; object-fit: contain; margin: 6px auto -6px; display: block; }
 .earned-note { color: var(--muted); }
@@ -319,7 +343,7 @@ main { padding: 0 16px; }
 .shop-item button:disabled { background: #ecd9a8; }
 .shop-item button.ghost-btn { background: var(--cream); color: var(--ink); }
 
-.code-display { font-size: 2.4rem; letter-spacing: .3em; text-align: center; font-weight: 800; color: var(--purple); background: var(--cream); border-radius: 14px; padding: 18px; margin-top: 12px; }
+.code-display { font-family: var(--font-display); font-size: 1.5rem; line-height: 1.4; letter-spacing: .12em; text-align: center; color: var(--purple); background: var(--cream); border-radius: 14px; padding: 18px; margin-top: 12px; word-break: break-all; }
 
 /* ---------- Nav ---------- */
 .bottom-nav {
