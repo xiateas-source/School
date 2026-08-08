@@ -19,7 +19,7 @@ img { max-width: 100%; }
 /* Pixel-art assets scale crisply (nearest-neighbor). Avatars are still smooth
    illustrations, so they opt back out below. */
 .child-cat-art, .cafe-cat, .cafe-decor, .cat-card img, .shop-item img,
-.coin-ico, .time-star, .quest-group h3 img, .fx-sprite, #evo-art,
+.coin-ico, .time-star, .quest-group h3 img, .quest-section summary img, .fx-sprite, #evo-art,
 .cafe-room { image-rendering: pixelated; }
 .choice-art, .signin-art { image-rendering: auto; }
 
@@ -226,6 +226,21 @@ main { padding: 0 16px; }
 .completed-quests[open] > summary::after { transform: rotate(180deg); }
 .completed-quests .done-count { background: var(--green); color: #fff; border-radius: 999px; font-size: .72rem; font-weight: 800; padding: 1px 8px; }
 .completed-body { margin-top: 10px; }
+
+/* Collapsible section groups in Mom's quest manager — scan/jump by section */
+.quest-section { margin-bottom: 8px; }
+.quest-section > summary {
+  cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px;
+  font-weight: 800; font-size: 1.02rem; padding: 8px 4px; color: var(--ink);
+}
+.quest-section > summary::-webkit-details-marker { display: none; }
+.quest-section > summary .qs-head { display: flex; align-items: center; gap: 8px; }
+.quest-section > summary .qs-head img { width: 24px; height: 24px; }
+.quest-section > summary .qs-head .section-glyph { font-size: 1.2rem; width: 24px; text-align: center; color: var(--gold); }
+.quest-section > summary .qs-count { margin-left: auto; font-size: .74rem; font-weight: 700; color: var(--muted); }
+.quest-section > summary::after { content: '▾'; color: var(--muted); transition: transform .2s ease; }
+.quest-section[open] > summary::after { transform: rotate(180deg); }
+.qs-body { padding-top: 2px; }
 
 /* Parent "On Sirus's screen now" status list */
 .section-label { margin: 20px 0 8px; color: var(--muted); }

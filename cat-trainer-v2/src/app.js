@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=5627c54d';
+import { isConfigured } from './firebase.js?v=3781c7e7';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=5627c54d';
-import * as store from './store.js?v=5627c54d';
-import { CAT_DEFS } from './data/cats.js?v=5627c54d';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=5627c54d';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=5627c54d';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=5627c54d';
+} from './auth.js?v=3781c7e7';
+import * as store from './store.js?v=3781c7e7';
+import { CAT_DEFS } from './data/cats.js?v=3781c7e7';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=3781c7e7';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=3781c7e7';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=3781c7e7';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -192,15 +192,35 @@ function renderSirusToday() {
       <br><small>${tag}${esc(q.section)}</small></div>${chip}</div>`;
   }).join('') || '<div class="empty">Turn on a quest below and it\'ll show here.</div>';
 }
+function parentQuestRow(q) {
+  const on = q.enabled !== false;
+  // Section is now the group header, so the row's small line drops it and just
+  // shows the reward breakdown.
+  return `<div class="parent-quest-row ${on?'':'quest-off'}"><div class="q-body"><strong>${esc(q.title)}</strong>
+    <br><small>+${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''}</small></div>
+    <button class="lock-toggle ${on?'on':'off'}" data-toggle-quest="${esc(q.id)}" role="switch" aria-checked="${on}" aria-label="${on?'On — tap to lock off':'Off — tap to turn on'}">${on?'On':'🔒 Off'}</button>
+    <button class="icon-btn" data-edit-quest="${esc(q.id)}">✎</button>
+    <button class="icon-btn" data-del-quest="${esc(q.id)}">×</button></div>`;
+}
 function renderParentQuests() {
-  el('parent-quests').innerHTML = state.quests.map(q => {
-    const on = q.enabled !== false;
-    return `<div class="parent-quest-row ${on?'':'quest-off'}"><div class="q-body"><strong>${esc(q.title)}</strong>
-      <br><small>${esc(q.section)} · +${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''}</small></div>
-      <button class="lock-toggle ${on?'on':'off'}" data-toggle-quest="${esc(q.id)}" role="switch" aria-checked="${on}" aria-label="${on?'On — tap to lock off':'Off — tap to turn on'}">${on?'On':'🔒 Off'}</button>
-      <button class="icon-btn" data-edit-quest="${esc(q.id)}">✎</button>
-      <button class="icon-btn" data-del-quest="${esc(q.id)}">×</button></div>`;
-  }).join('') || '<div class="empty">No quests yet.</div>';
+  const quests = state.quests.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  // Group the management list under collapsible section headers so Mom can scan
+  // (and collapse) Morning / Tidy / etc. instead of reading the section tag on
+  // every flat row. Known sections keep their canonical order; any custom
+  // section falls in after them.
+  const known = SECTIONS.filter(s => quests.some(q => q.section === s));
+  const custom = [...new Set(quests.map(q => q.section))].filter(s => !SECTIONS.includes(s));
+  const html = [...known, ...custom].map(section => {
+    const qs = quests.filter(q => q.section === section);
+    const meta = SECTION_META[section] || { glyph: '•' };
+    const icon = meta.icon ? `<img src="${meta.icon}" alt="">` : `<span class="section-glyph">${meta.glyph}</span>`;
+    const onCount = qs.filter(q => q.enabled !== false).length;
+    return `<details class="quest-section" open><summary>
+      <span class="qs-head">${icon}${esc(section)}</span>
+      <span class="qs-count">${onCount}/${qs.length} on</span></summary>
+      <div class="qs-body">${qs.map(parentQuestRow).join('')}</div></details>`;
+  }).join('');
+  el('parent-quests').innerHTML = html || '<div class="empty">No quests yet.</div>';
 }
 
 // Parent review queue: quests Sirus finished that are waiting to become minutes.
