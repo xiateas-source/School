@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=9dbf0b86';
+import { isConfigured } from './firebase.js?v=434efbbe';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=9dbf0b86';
-import * as store from './store.js?v=9dbf0b86';
-import { CAT_DEFS } from './data/cats.js?v=9dbf0b86';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=9dbf0b86';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=9dbf0b86';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=9dbf0b86';
+} from './auth.js?v=434efbbe';
+import * as store from './store.js?v=434efbbe';
+import { CAT_DEFS } from './data/cats.js?v=434efbbe';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=434efbbe';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=434efbbe';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=434efbbe';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -222,9 +222,19 @@ function ownedCafeRecord(itemId) { return state.ownedItems.find(o => o.id === it
 // Active drag; also a render guard so a snapshot mid-drag doesn't rebuild the
 // placed layer and yank the item out of Sirus's hand.
 let cafeDrag = null;
-// Café cat idle poses, advanced by tapping the cat (non-evolved cats only).
-const CAFE_POSES = ['sit', 'play', 'eat', 'sleep', 'celebrate'];
-let cafePoseIdx = 0;
+// The café cat's resting look reflects real progress, so tapping and earning
+// visibly change it: sleepy when Energy is low, bright and bouncy after a quest.
+function catMood() {
+  const id = state.child.activeCatId; const cat = state.cats[id] || {};
+  if (cat.evolved) return { pose: null, cls: 'mood-happy' };
+  const energy = cat.energy || 0;
+  const happyToday = (state.todayCompletions && state.todayCompletions.length > 0) || (cat.bond || 0) >= 12;
+  if (energy <= 3) return { pose: 'sleep', cls: 'mood-sleepy' };
+  if (happyToday)  return { pose: 'sit',   cls: 'mood-happy' };
+  return { pose: 'sit', cls: 'mood-calm' };
+}
+let catTapCount = 0;
+let catSettleTimer = null;
 // Art for a café pose. If the cat is "sleeping" and owns + placed its own bed,
 // it naps ON that bed (the cat-on-bed art) instead of the plain curled pose.
 function cafePoseArt(def, poseKey) {
@@ -240,7 +250,10 @@ function renderChildCafe() {
   el('c-coins').textContent = state.child.coins || 0;
   const id = state.child.activeCatId; const cat = state.cats[id] || {}; const def = CAT_DEFS[id];
   el('c-cafe-room').style.backgroundImage = `url("${CAFE_ROOM_ART}")`;
-  el('c-cafe-cat').src = cat.evolved ? def.heroArt : cafePoseArt(def, CAFE_POSES[cafePoseIdx]);
+  const mood = catMood();
+  const wrap = el('c-cafe-cat-wrap');
+  if (wrap) wrap.className = `cafe-cat-wrap ${mood.cls}`;
+  el('c-cafe-cat').src = cat.evolved ? def.heroArt : cafePoseArt(def, mood.pose || 'sit');
   if (!cafeDrag) {
     el('c-placed').innerHTML = state.ownedItems.filter(o => o.placed !== false).map(o => {
       const item = CAFE_ITEMS[o.id]; if (!item) return '';
@@ -315,16 +328,39 @@ function initCafeInteractions() {
   room.addEventListener('pointercancel', endDrag);
 }
 
-function reactCat() {
+function reactCat(e) {
   const catEl = el('c-cafe-cat');
   const id = state.child.activeCatId; const cat = state.cats[id] || {}; const def = CAT_DEFS[id];
-  // Tapping a (non-hero) cat cycles it through its idle poses: sit→play→eat→sleep.
-  if (!cat.evolved && def.poses) {
-    cafePoseIdx = (cafePoseIdx + 1) % CAFE_POSES.length;
-    catEl.src = cafePoseArt(def, CAFE_POSES[cafePoseIdx]);
+  catTapCount++;
+
+  // Physical feedback: a springy squash-stretch (alternating with a wiggle) and a
+  // haptic tick, so a tap feels like touching a creature, not clicking "next".
+  const anim = (catTapCount % 2) ? 'react' : 'react-wiggle';
+  catEl.classList.remove('react', 'react-wiggle'); void catEl.offsetWidth; catEl.classList.add(anim);
+  if (navigator.vibrate) { try { navigator.vibrate(8); } catch (_) {} }
+
+  // Burst right where the finger landed, not dead-center.
+  const room = el('c-cafe-room');
+  let cx = 50, cy = 46;
+  const px = e && (e.clientX ?? e.touches?.[0]?.clientX);
+  const py = e && (e.clientY ?? e.touches?.[0]?.clientY);
+  if (room && px != null && py != null) {
+    const r = room.getBoundingClientRect();
+    cx = ((px - r.left) / r.width) * 100; cy = ((py - r.top) / r.height) * 100;
   }
-  catEl.classList.remove('bounce'); void catEl.offsetWidth; catEl.classList.add('bounce');
-  spawnFx('assets/fx-sparkle.png', el('c-cafe-room'), { count: 3, cx: 50, cy: 52, spread: 22, size: 46 });
+  spawnFx('assets/fx-sparkle.png', room, { count: 3, cx, cy, spread: 16, size: 40 });
+  if (catTapCount % 3 === 0) spawnFx('assets/fx-paw.png', room, { count: 1, cx, cy: cy + 6, spread: 0, size: 30, life: 700, mode: 'trail' });
+
+  // Flash a happy pose, then settle back to the mood-resting look — a tap is a
+  // reaction now, not a march through a slideshow.
+  if (!cat.evolved && def.poses) {
+    catEl.src = cafePoseArt(def, (catTapCount % 2) ? 'play' : 'celebrate');
+    clearTimeout(catSettleTimer);
+    catSettleTimer = setTimeout(() => {
+      const m = catMood();
+      catEl.src = cat.evolved ? def.heroArt : cafePoseArt(def, m.pose || 'sit');
+    }, 900);
+  }
 }
 
 // Spawn a few effect sprites inside a positioned container. mode: rise | fall | pop.
@@ -377,7 +413,7 @@ function bindEvents() {
     const buy = e.target.closest('[data-buy]');
     if (buy) { try { await store.purchaseCafeItem(state.familyId, state.uid, buy.dataset.buy); toast('Added to the café!'); } catch (err) { toast(err.message === 'not-enough-coins' ? 'Not enough coins yet.' : 'Could not buy that.'); } return; }
 
-    if (e.target.closest('#c-cafe-cat')) return reactCat();
+    if (e.target.closest('#c-cafe-cat')) return reactCat(e);
     const putaway = e.target.closest('[data-putaway]');
     if (putaway) { try { await store.setCafeItemPlaced(state.familyId, putaway.dataset.putaway, false); toast('Put away.'); } catch (err) { toast('Could not update the café.'); } return; }
     const place = e.target.closest('[data-place]');
