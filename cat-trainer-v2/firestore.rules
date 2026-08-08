@@ -5,13 +5,14 @@ rules_version = '2';
 // Guarantees enforced here (server-side, not just hidden UI):
 //  1. Family isolation — only signed-in members of a family can read/write its data.
 //  2. Parent-only control — only a parent can change settings, quests (reward
-//     definitions), members, pairing codes, and can create arbitrary point
-//     adjustments / redemptions.
-//  3. The child role is limited to its legitimate actions: completing a quest
-//     (once per local day, amount validated against the stored quest), earning
-//     the quest's rewards, and buying café items with coins.
+//     definitions), members, pairing codes, apply point/cat rewards, and create
+//     point transactions (adjustments, redemptions, and approved quest earnings).
+//  3. The child role is limited to its legitimate actions: REQUESTING a quest
+//     completion (once per local day, always status 'pending' — it grants nothing
+//     until a parent approves), switching the active cat, and buying café items
+//     with coins. The child can never raise its own minutes/coins or cat stats.
 //  4. Duplicate quest completions can't double-count (deterministic doc id +
-//     create-only).
+//     create-only). Rewards are applied only by the parent's approval.
 //
 // Note: for a single-household app this covers the realistic threat (a child
 // poking the tablet). Fully tamper-proof reward math would move quest completion
@@ -40,9 +41,6 @@ service cloud.firestore {
     }
     function isChild(fid) {
       return isMember(fid) && role(fid) == 'child';
-    }
-    function questPoints(fid, questId) {
-      return get(/databases/$(database)/documents/families/$(fid)/quests/$(questId)).data.points;
     }
     // A pairing code is valid for a given family + role if it exists, is active,
     // and points at that family with that role. Used to gate self-joining as a
@@ -101,24 +99,20 @@ service cloud.firestore {
       match /childProfiles/{childId} {
         allow read: if isMember(fid);
         allow create, delete: if isParent(fid);
-        // Parent can set anything. Child may only RAISE the available balance
-        // (quest points) and change coins/activeCat — never spend screen time.
+        // Parent can set anything. The child may change only its active cat — its
+        // minutes (available) and coins are frozen for a child write, so rewards
+        // land solely through a parent's quest approval, never self-credited.
         allow update: if isParent(fid)
           || (isChild(fid)
-              && request.resource.data.available >= resource.data.available);
+              && request.resource.data.available == resource.data.available
+              && request.resource.data.coins == resource.data.coins);
 
         match /cats/{catId} {
           allow read: if isMember(fid);
           allow create: if isParent(fid);
-          // Child gains are monotonic and capped; parent (undo) may adjust freely.
-          allow update: if isParent(fid)
-            || (isChild(fid)
-                && request.resource.data.brain >= resource.data.brain
-                && request.resource.data.energy >= resource.data.energy
-                && request.resource.data.bond >= resource.data.bond
-                && request.resource.data.brain <= 12
-                && request.resource.data.energy <= 12
-                && request.resource.data.bond <= 20);
+          // Cat progress is a reward — applied only by a parent (quest approval or
+          // undo). The child never writes cat stats directly.
+          allow update: if isParent(fid);
           allow delete: if isParent(fid);
         }
 
@@ -141,13 +135,10 @@ service cloud.firestore {
       // --- Point ledger ----------------------------------------------------
       match /pointTransactions/{txnId} {
         allow read: if isMember(fid);
-        // Parent: any transaction (adjust / redeem / correction / quest).
-        // Child: only quest-earned points, and the amount must match the quest.
-        allow create: if isParent(fid)
-          || (isChild(fid)
-              && request.resource.data.kind == 'quest'
-              && request.resource.data.createdBy == request.auth.uid
-              && request.resource.data.amount == questPoints(fid, request.resource.data.questId));
+        // Parent-only: every ledger row (adjust / redeem / correction, and the
+        // quest-earned row written when the parent approves a completion). The
+        // child no longer writes the ledger — earning flows through approval.
+        allow create: if isParent(fid);
         // Entries are never edited. A parent may delete an entry (the app
         // reverses its effect on the balance in the same transaction).
         allow update: if false;
@@ -157,8 +148,13 @@ service cloud.firestore {
       // --- Quest completions (dedupe: one doc id per child+quest+day) -------
       match /questCompletions/{completionId} {
         allow read: if isMember(fid);
-        // Create-only: a second completion for the same id is an update -> denied.
-        allow create: if isMember(fid);
+        // The child may only FILE a pending request (status 'pending'); it grants
+        // nothing until approved. A parent may create/approve/reject freely.
+        // Create-only for the child: a second completion for the same id is an
+        // update -> denied.
+        allow create: if isParent(fid)
+          || (isChild(fid) && request.resource.data.status == 'pending');
+        // Parent approves (update to 'approved') or rejects (delete).
         allow update, delete: if isParent(fid);
       }
     }
