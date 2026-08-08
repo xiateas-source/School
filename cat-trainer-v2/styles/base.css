@@ -299,18 +299,25 @@ main { padding: 0 16px; }
 }
 /* The café cat lives in a wrapper so a continuous "breathing" idle (on the wrap)
    and a springy tap reaction (on the img) never fight over the same transform. */
-.cafe-cat-wrap { position: absolute; bottom: 8%; left: 30%; width: 40%; transform-origin: bottom center; animation: catBreathe 3.4s ease-in-out infinite; transition: left .9s ease-in-out; }
+.cafe-cat-wrap { position: absolute; bottom: 8%; left: 30%; width: 40%; z-index: 1; transform-origin: bottom center; animation: catBreathe 3.4s ease-in-out infinite; transition: left .9s ease-in-out; }
 .cafe-cat-wrap.mood-sleepy { animation: catSleep 5.5s ease-in-out infinite; }
 .cafe-cat-wrap.mood-happy  { animation: catHappy 2.6s ease-in-out infinite; }
-.cafe-cat { display: block; width: 100%; cursor: pointer; transform-origin: bottom center; }
+.cafe-cat { display: block; width: 100%; cursor: pointer; transform-origin: bottom center;
+  -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
 /* When the art becomes pixel-art sprites, add here: image-rendering: pixelated; */
 @keyframes catBreathe { 0%,100%{transform:translateY(0) scale(1,1)} 50%{transform:translateY(-1.5%) scale(1.006,1.03)} }
 @keyframes catSleep   { 0%,100%{transform:translateY(0) scale(1,1) rotate(0)} 50%{transform:translateY(-1%) scale(1.004,1.02) rotate(-1.5deg)} }
 @keyframes catHappy   { 0%,100%{transform:translateY(0) scale(1,1)} 25%{transform:translateY(-3.5%) scale(1.01,1.02)} 50%{transform:translateY(0) scale(1,1)} 75%{transform:translateY(-1.5%) scale(1.006,1.01)} }
 #c-placed img, #parent-cafe .placed img { position: absolute; width: 26%; }
+/* Placed décor sits ABOVE the café cat (z-index: 1) so items in the cat's
+   column can still be grabbed instead of being trapped behind it. */
+#c-placed img { z-index: 2; }
 
-/* Interactive décor: draggable to rearrange, tappable for a wiggle. */
-.cafe-decor { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
+/* Interactive décor: draggable to rearrange, tappable for a wiggle. The soft
+   drop-shadow makes each item read as a liftable object (a "grab me" cue on
+   touch, where there's no grab cursor). */
+.cafe-decor { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none;
+  -webkit-tap-highlight-color: transparent; filter: drop-shadow(0 3px 4px rgba(0,0,0,.18)); transition: filter .15s ease, transform .15s ease; }
 .cafe-decor.dragging { cursor: grabbing; z-index: 6; transform: scale(1.06); filter: drop-shadow(0 6px 8px rgba(0,0,0,.25)); }
 .cafe-decor.wiggle { animation: decorWiggle .5s ease; }
 @keyframes decorWiggle { 0%,100%{transform:rotate(0)} 20%{transform:rotate(-9deg)} 40%{transform:rotate(7deg)} 60%{transform:rotate(-5deg)} 80%{transform:rotate(3deg)} }

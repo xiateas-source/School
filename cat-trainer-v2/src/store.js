@@ -2,15 +2,15 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=16e2ae7d';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=16e2ae7d';
-import { seededQuests } from './data/quests.js?v=16e2ae7d';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=16e2ae7d';
+import { initFirebase, db, dbSdk } from './firebase.js?v=f2a0017e';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=f2a0017e';
+import { seededQuests } from './data/quests.js?v=f2a0017e';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=f2a0017e';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, applyBalanceDelta
-} from './shared/rewards.js?v=16e2ae7d';
-import { localDate, localTimeLabel } from './shared/dates.js?v=16e2ae7d';
+} from './shared/rewards.js?v=f2a0017e';
+import { localDate, localTimeLabel } from './shared/dates.js?v=f2a0017e';
 
 export const CHILD_ID = 'sirus';
 
