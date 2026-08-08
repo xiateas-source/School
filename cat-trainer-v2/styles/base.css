@@ -1,16 +1,9 @@
 /* ---------- Pixel type system ----------
-   A display/text pairing (classic hierarchy): Press Start 2P — chunky 8-bit — is
-   reserved for short HUD accents (eyebrow labels, the big "score" numbers, the
-   pairing code), while Pixelify Sans, a readable pixel face, carries all the
-   body/UI text. So the whole game reads as pixel-art without becoming an eye
-   chart. Both are self-hosted (assets/*.woff2) so the offline PWA still works. */
-@font-face {
-  font-family: 'Pixelify Sans';
-  font-style: normal;
-  font-weight: 400 700;        /* single variable file covers the weight axis */
-  font-display: swap;
-  src: url('../assets/pixelify-sans.woff2') format('woff2');
-}
+   Press Start 2P (chunky 8-bit, self-hosted) is the pixel accent — reserved for
+   short, unambiguous display strings: the "Cat Trainer" wordmark, the eyebrow
+   labels, the big "score" numbers, and the pairing code. All body/UI text uses a
+   clean system sans (var(--font-body)) for legibility — a pixel body face made
+   ordinary words hard to read. Self-hosted so the offline PWA still works. */
 @font-face {
   font-family: 'Press Start 2P';
   font-style: normal;
@@ -29,8 +22,11 @@
   --blue: #6fb0d6; --pink: #e58fb0; --gold: #f4c95d;
   --shadow: 0 6px 18px rgba(120, 96, 64, .12);
   --radius: 20px;
-  --font-body: 'Pixelify Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  --font-display: 'Press Start 2P', 'Pixelify Sans', monospace;
+  /* Body text is a clean, highly legible system sans — a pixel body face
+     (Pixelify Sans) made capitals/zeros ambiguous (Bathroom→"Gathroom",
+     0→"U"). The pixel identity lives in --font-display instead. */
+  --font-body: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Press Start 2P', monospace;
   font-family: var(--font-body);
 }
 * { box-sizing: border-box; }
