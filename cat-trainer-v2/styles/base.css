@@ -16,6 +16,12 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 img { max-width: 100%; }
+/* Pixel-art assets scale crisply (nearest-neighbor). Avatars are still smooth
+   illustrations, so they opt back out below. */
+.child-cat-art, .cafe-cat, .cafe-decor, .cat-card img, .shop-item img,
+.coin-ico, .time-star, .quest-group h3 img, .fx-sprite, #evo-art,
+.cafe-room { image-rendering: pixelated; }
+.choice-art, .signin-art { image-rendering: auto; }
 
 .screen { display: none; }
 .screen.active { display: block; }

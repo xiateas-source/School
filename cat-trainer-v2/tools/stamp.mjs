@@ -33,6 +33,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // fixed so the concatenated hash is stable regardless of filesystem ordering.
 const FILES = [
   'index.html',
+  'styles/base.css',
   'sw.js',
   'firebase-config.js',
   'src/app.js',
