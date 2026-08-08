@@ -16,6 +16,12 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 img { max-width: 100%; }
+/* Pixel-art assets scale crisply (nearest-neighbor). Avatars are still smooth
+   illustrations, so they opt back out below. */
+.child-cat-art, .cafe-cat, .cafe-decor, .cat-card img, .shop-item img,
+.coin-ico, .time-star, .quest-group h3 img, .fx-sprite, #evo-art,
+.cafe-room { image-rendering: pixelated; }
+.choice-art, .signin-art { image-rendering: auto; }
 
 .screen { display: none; }
 .screen.active { display: block; }
@@ -229,7 +235,7 @@ main { padding: 0 16px; }
 }
 /* The café cat lives in a wrapper so a continuous "breathing" idle (on the wrap)
    and a springy tap reaction (on the img) never fight over the same transform. */
-.cafe-cat-wrap { position: absolute; bottom: 8%; left: 30%; width: 40%; transform-origin: bottom center; animation: catBreathe 3.4s ease-in-out infinite; }
+.cafe-cat-wrap { position: absolute; bottom: 8%; left: 30%; width: 40%; transform-origin: bottom center; animation: catBreathe 3.4s ease-in-out infinite; transition: left .9s ease-in-out; }
 .cafe-cat-wrap.mood-sleepy { animation: catSleep 5.5s ease-in-out infinite; }
 .cafe-cat-wrap.mood-happy  { animation: catHappy 2.6s ease-in-out infinite; }
 .cafe-cat { display: block; width: 100%; cursor: pointer; transform-origin: bottom center; }

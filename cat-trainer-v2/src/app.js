@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=7ebbecfb';
+import { isConfigured } from './firebase.js?v=eddb38b9';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=7ebbecfb';
-import * as store from './store.js?v=7ebbecfb';
-import { CAT_DEFS } from './data/cats.js?v=7ebbecfb';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=7ebbecfb';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=7ebbecfb';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=7ebbecfb';
+} from './auth.js?v=eddb38b9';
+import * as store from './store.js?v=eddb38b9';
+import { CAT_DEFS } from './data/cats.js?v=eddb38b9';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=eddb38b9';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=eddb38b9';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=eddb38b9';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -67,6 +67,7 @@ async function enterChild(familyId, uid) {
   state.role = 'child'; state.familyId = familyId; state.uid = uid;
   showShell('child'); navChild('home');
   await subscribeAll();
+  scheduleCatIdle(); // the café cat ambles/glances on its own while Sirus watches
 }
 
 async function subscribeAll() {
@@ -303,6 +304,8 @@ function catMood() {
 }
 let catTapCount = 0;
 let catSettleTimer = null;
+let catIdleTimer = null;
+let catStrollBack = null;
 // Art for a café pose. If the cat is "sleeping" and owns + placed its own bed,
 // it naps ON that bed (the cat-on-bed art) instead of the plain curled pose.
 function cafePoseArt(def, poseKey) {
@@ -429,6 +432,55 @@ function reactCat(e) {
       catEl.src = cat.evolved ? def.heroArt : cafePoseArt(def, m.pose || 'sit');
     }, 900);
   }
+}
+
+// ---- Autonomous idle: the cat lives on its own between taps -----------------
+// A randomized, mood-paced timer gives the resting cat little "beats" — a
+// stroll, a glance at a toy, a hop — so the café never looks frozen. Sleepy cats
+// stir rarely; happy cats are livelier. (The behavior half of the Tamagotchi
+// idea, driven by real stats, on the single-frame sprites.)
+function catStroll() {
+  const wrap = el('c-cafe-cat-wrap');
+  if (!wrap) return;
+  const dir = Math.random() < 0.5 ? -1 : 1;
+  const dest = 30 + dir * (5 + Math.random() * 8); // wander within the room (base left:30%)
+  wrap.style.left = dest.toFixed(1) + '%';
+  clearTimeout(catStrollBack);
+  catStrollBack = setTimeout(() => { const w = el('c-cafe-cat-wrap'); if (w) w.style.left = '30%'; }, 1400 + Math.random() * 1200);
+}
+
+function catIdleBeat() {
+  // Respect reduced-motion: skip the beat entirely (but keep the loop alive).
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { scheduleCatIdle(); return; }
+  const onCafe = state.role === 'child' && state.child
+    && document.querySelector('[data-cscreen="cafe"]')?.classList.contains('active');
+  if (onCafe && !cafeDrag) {
+    const id = state.child.activeCatId; const cat = state.cats[id] || {}; const def = CAT_DEFS[id];
+    const catEl = el('c-cafe-cat');
+    const mood = catMood();
+    const roll = Math.random();
+    if (mood.cls === 'mood-sleepy') {
+      // barely stirs — a slow little sway, then keeps napping
+      catEl.classList.remove('react-wiggle'); void catEl.offsetWidth; catEl.classList.add('react-wiggle');
+    } else if (roll < 0.45) {
+      catStroll();                                    // amble left or right
+    } else if (!cat.evolved && def.poses && roll < 0.8) {
+      catEl.src = cafePoseArt(def, 'play');           // glance/play, then settle back
+      clearTimeout(catSettleTimer);
+      catSettleTimer = setTimeout(() => { catEl.src = cat.evolved ? def.heroArt : cafePoseArt(def, catMood().pose || 'sit'); }, 800);
+    } else {
+      catEl.classList.remove('react'); void catEl.offsetWidth; catEl.classList.add('react');  // a happy hop
+    }
+  }
+  scheduleCatIdle();
+}
+
+// Next beat sooner when the cat's lively, later when it's sleepy.
+function scheduleCatIdle() {
+  clearTimeout(catIdleTimer);
+  const moodCls = state.child ? catMood().cls : 'mood-calm';
+  const base = moodCls === 'mood-sleepy' ? 9000 : moodCls === 'mood-happy' ? 4500 : 6500;
+  catIdleTimer = setTimeout(catIdleBeat, base + Math.random() * 4000);
 }
 
 // Spawn a few effect sprites inside a positioned container. mode: rise | fall | pop.
