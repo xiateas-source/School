@@ -63,8 +63,10 @@ img { max-width: 100%; }
 }
 .eyebrow { font-family: var(--font-display); font-weight: 400; letter-spacing: .03em; font-size: .58rem; line-height: 1.7; color: var(--muted); margin: 0 0 6px; }
 .eyebrow.purple { color: var(--purple); }
-.brand { font-size: 2rem; margin: 0 0 6px; color: var(--ink); }
-.brand.small { font-size: 1.2rem; }
+/* Wordmark in Press Start 2P — its open, blocky C reads clearly as "Cat" (the
+   softer Pixelify Sans C looked like an O at this size). */
+.brand { font-family: var(--font-display); font-size: 1.4rem; line-height: 1.4; letter-spacing: .01em; margin: 0 0 10px; color: var(--ink); }
+.brand.small { font-size: .82rem; line-height: 1.35; margin: 2px 0 0; }
 .gate-sub { color: var(--muted); margin: 0 0 18px; }
 .big-choice {
   display: flex; align-items: center; gap: 14px; width: 100%;
