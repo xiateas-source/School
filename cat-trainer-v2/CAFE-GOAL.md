@@ -88,8 +88,8 @@ they do not repeat release history.
 | **Autonomous travel wandering** | Two-frame walk art and directed travel are available, but random room travel is deliberately disabled; autonomous life currently happens in place | Implement bounded destination choice, enable `WANDER`, then phone-test pacing and interruptions. |
 | **Daily care and UI** | Hunger, Rest, Happiness, timestamp decay, Care Charges, functional need cue, food/rest/play spending, full-need protection, and fixed menu layering | All three meters and matching actions passed phone testing, including play's 5-Rest cost. A displayed-full action with a spare charge may be confirmed organically; automated coverage already protects the charge. |
 | **Hero progression** | Brain 12 + Energy 12 + 14 distinct healthy-care days, with atomic once-per-day writes and sticky existing Heroes; matching rules are published | Regression coverage passes. The full 14-day path remains a natural-use validation, not a blocker for the next slice. |
-| **Offline/reconnect** | The service worker caches the app shell, Firestore uses persistent local cache, and timestamp decay works after time away | No separate device pass is recorded. Complete the scoped offline/reconnect test in §16.3. |
-| **Other open MVP play** | Ordinary yarn taps play and refill Happiness | Direct drag-the-yarn and cat-follow behavior remains open (§16.1). |
+| **Offline/reconnect** | The service worker caches the app shell, Firestore uses persistent local cache, and timestamp decay works after time away | No separate device pass is recorded. Complete the scoped offline/reconnect test in §16.2. |
+| **Yarn interaction** | In Play mode, tapping yarn makes the cat approach and play; in Decorate mode, dragging yarn repositions it | Both released paths passed device testing. Play-mode drag-and-follow is optional polish (§8.4), not an MVP blocker. |
 
 ### 0.6 Released behavior architecture (§7)
 
@@ -140,6 +140,7 @@ decisions; the sections below keep the fuller reasoning.
 | **Sound** (§12.1) | **Off by default**, saved preference respected | Least intrusive |
 | **Room snapshot** (§9.4) | **Preview with Save/Cancel**, not an instant download | A beat to confirm the shot |
 | **Attention-cue wording & family visits** (§13, §18) | **Deferred** to their own slices; not MVP-blocking | Later polish |
+| **Yarn interaction scope** (§8.4) | Keep tap-to-play in Play mode and drag-to-reposition in Decorate mode as the MVP; Play-mode drag-and-follow is optional polish | Preserves clear mode boundaries while retaining direct play and decoration controls |
 
 ---
 
@@ -601,9 +602,12 @@ need changed when it did not. Reuse `fx-sparkle.png`, `fx-starburst.png`,
 > take priority through a cat sprite's transparent area, and transparent curled
 > cat frames layer over every rest object. Collars and the crown remain décor.
 
-### 8.4 Drag-the-yarn play
+### 8.4 Optional Play-mode drag-the-yarn polish
 
-Yarn supports one direct toy interaction in addition to ordinary tap-to-play:
+For the MVP, tapping yarn in Play mode makes the cat approach and play, while
+dragging yarn in Decorate mode repositions it.
+
+A later enhancement may add a separate direct toy interaction in Play mode:
 
 - In Play mode, Sirus can press and drag a placed yarn ball.
 - If the cat is available, it turns toward or follows the yarn within the
@@ -973,20 +977,18 @@ The MVP is complete when all of the following work together:
 7. Tapping a food/water bowl, sleep object, or toy makes the cat travel there
    and perform the correct lasting pose; Water and Toy Basket are explicitly
    covered, and sleep presentation is consistent across cats and furniture.
-8. Dragging yarn makes the cat visibly follow and play without turning screen
-   play into an unlimited Happiness refill.
-9. A low need produces one functional icon cue that guides Sirus to a compatible
+8. A low need produces one functional icon cue that guides Sirus to a compatible
    object.
-10. A completed care action visibly changes the correct meter and Care Charge
-    count.
-11. Decorate mode includes at least one-step Undo.
-12. Hunger, Rest, and Happiness decay from real elapsed time.
-13. Real quest completion supplies limited care; screen tapping alone cannot keep
-   every need full.
-14. Low needs change behavior and prompt attention without removing progress or
+9. A completed care action visibly changes the correct meter and Care Charge
+   count.
+10. Decorate mode includes at least one-step Undo.
+11. Hunger, Rest, and Happiness decay from real elapsed time.
+12. Real quest completion supplies limited care; screen tapping alone cannot keep
+    every need full.
+13. Low needs change behavior and prompt attention without removing progress or
     using guilt.
-15. Care and approved quests contribute to Hero evolution without devolution.
-16. The cached room opens offline after a prior online load; offline-safe room
+14. Care and approved quests contribute to Hero evolution without devolution.
+15. The cached room opens offline after a prior online load; offline-safe room
     changes sync after reconnect; connection-required transactions fail clearly
     without losing confirmed state.
 
@@ -996,15 +998,7 @@ The former audit, room, object, and care-loop slices are released; their durable
 contracts live in the sections above and their verification status lives only in
 §0.5. Keep this section limited to unfinished work.
 
-### 16.1 Drag-the-yarn play
-
-- Let Sirus drag a placed yarn ball in Play mode.
-- Make the cat follow with the existing walk loop and play on release.
-- Do not grant unlimited Happiness from repeated dragging; only a valid
-  Care-Charge action changes the meter.
-- Phone-test touch targeting, follow distance, interruption, and menu layering.
-
-### 16.2 Autonomous travel wander
+### 16.1 Autonomous travel wander
 
 - Choose bounded, uncluttered destinations inside the visible room.
 - Use the existing walk loop and state-controller cancellation rules.
@@ -1016,7 +1010,7 @@ The released saved-position hello remains the welcome-back baseline. Richer
 need-based opening choices in §7.4 are optional polish and are not part of this
 slice.
 
-### 16.3 Offline/reconnect device validation
+### 16.2 Offline/reconnect device validation
 
 After one successful online load:
 
@@ -1030,7 +1024,7 @@ After one successful online load:
 
 If any step fails, fix only that bounded persistence path and repeat this test.
 
-### 16.4 Natural-use validation — does not block other slices
+### 16.3 Natural-use validation — does not block other slices
 
 - When it occurs naturally, confirm a displayed-full need leaves a nonzero Care
   Charge untouched.
@@ -1038,9 +1032,10 @@ If any step fails, fix only that bounded persistence path and repeat this test.
 - After a normal week, decide whether 35/25/20 decay, six charges, +20 refills,
   and symmetric Rest feel balanced.
 
-### 16.5 Later expansion
+### 16.4 Later expansion
 
-- Cat-specific timing, optional sound, room snapshot, and richer object reactions.
+- Optional Play-mode yarn drag-and-follow (§8.4), cat-specific timing, optional
+  sound, room snapshot, and richer object reactions.
 - Deterministic family-feedback speech bubbles and returned-quest messages.
 - Selectable Mom, Abba, Sirus, and Arlo visitors.
 
