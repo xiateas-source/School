@@ -2,18 +2,20 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=e3b3c5da';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=e3b3c5da';
-import { seededQuests } from './data/quests.js?v=e3b3c5da';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=e3b3c5da';
+import { initFirebase, db, dbSdk } from './firebase.js?v=19997e6a';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=19997e6a';
+import { seededQuests } from './data/quests.js?v=19997e6a';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=19997e6a';
 import {
-  CARE_NEEDS, careCharges, freshCatNeeds, grantCareCharge, needsAt, refillNeed
-} from './care.js?v=e3b3c5da';
+  CARE_NEEDS, areCareNeedsOkay, careCharges, freshCatNeeds, grantCareCharge,
+  needsAt, refillNeed
+} from './care.js?v=19997e6a';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
-  clamp, isHeroReady, applyBalanceDelta
-} from './shared/rewards.js?v=e3b3c5da';
-import { localDate, localTimeLabel } from './shared/dates.js?v=e3b3c5da';
+  clamp, isHeroReady, applyBalanceDelta, recordHeroCareActivity,
+  resumeHeroCareActivity
+} from './shared/rewards.js?v=19997e6a';
+import { localDate, localTimeLabel } from './shared/dates.js?v=19997e6a';
 
 export const CHILD_ID = 'sirus';
 
@@ -303,6 +305,8 @@ export async function approveCompletion(familyId, uid, completion) {
   const { runTransaction, serverTimestamp, doc, collection } = sdk;
   const p = paths(sdk, database, familyId);
   const completionId = completion.id;
+  const nowMs = Date.now();
+  const approvalDate = localDate(new Date(nowMs));
 
   await runTransaction(database, async (tx) => {
     const compSnap = await tx.get(p.completion(completionId));
@@ -331,12 +335,20 @@ export async function approveCompletion(familyId, uid, completion) {
     const catRef = p.cat(catId);
     const catSnap = await tx.get(catRef);
     const cat = catSnap.exists() ? catSnap.data() : { brain: 0, energy: 0, bond: 0, evolved: false };
+    const care = needsAt(cat.catNeeds, nowMs);
+    const heroCare = recordHeroCareActivity(
+      cat.heroCareProgress,
+      approvalDate,
+      areCareNeedsOkay(care),
+      serverTimestamp()
+    );
 
     const nextCat = {
       brain: clamp((cat.brain || 0) + brain, 0, CAPS.brain),
       energy: clamp((cat.energy || 0) + energy, 0, CAPS.energy),
       bond: clamp((cat.bond || 0) + QUEST_BOND, 0, CAPS.bond),
-      evolved: cat.evolved || false
+      evolved: cat.evolved || false,
+      heroCareProgress: heroCare.progress
     };
     if (!nextCat.evolved && isHeroReady(nextCat)) nextCat.evolved = true;
 
@@ -364,7 +376,7 @@ export async function approveCompletion(familyId, uid, completion) {
       reasonCode: 'quest', reasonLabel: `Quest: ${title}`,
       bond: QUEST_BOND, coins, brain, energy, catId,
       createdBy: uid, deviceId: 'phone', createdAt: serverTimestamp(),
-      localDate: localDate(), timeLabel: localTimeLabel()
+      localDate: approvalDate, timeLabel: localTimeLabel(new Date(nowMs))
     });
   });
 }
@@ -380,7 +392,8 @@ export async function parentCompleteQuest(familyId, uid, questId) {
   const { database, sdk } = await fs();
   const { runTransaction, serverTimestamp, doc, collection } = sdk;
   const p = paths(sdk, database, familyId);
-  const today = localDate();
+  const nowMs = Date.now();
+  const today = localDate(new Date(nowMs));
   const completionId = `${CHILD_ID}_${questId}_${today}`;
 
   await runTransaction(database, async (tx) => {
@@ -407,12 +420,20 @@ export async function parentCompleteQuest(familyId, uid, questId) {
     const catRef = p.cat(catId);
     const catSnap = await tx.get(catRef);
     const cat = catSnap.exists() ? catSnap.data() : { brain: 0, energy: 0, bond: 0, evolved: false };
+    const care = needsAt(cat.catNeeds, nowMs);
+    const heroCare = recordHeroCareActivity(
+      cat.heroCareProgress,
+      today,
+      areCareNeedsOkay(care),
+      serverTimestamp()
+    );
 
     const nextCat = {
       brain: clamp((cat.brain || 0) + brain, 0, CAPS.brain),
       energy: clamp((cat.energy || 0) + energy, 0, CAPS.energy),
       bond: clamp((cat.bond || 0) + QUEST_BOND, 0, CAPS.bond),
-      evolved: cat.evolved || false
+      evolved: cat.evolved || false,
+      heroCareProgress: heroCare.progress
     };
     if (!nextCat.evolved && isHeroReady(nextCat)) nextCat.evolved = true;
 
@@ -513,7 +534,7 @@ async function reverseEntry(tx, p, familyId, sdk, txn) {
       energy: clamp((cat.energy || 0) - Number(txn.energy || 0), 0, CAPS.energy),
       bond: clamp((cat.bond || 0) - Number(txn.bond || 0), 0, CAPS.bond)
     };
-    next.evolved = isHeroReady(next);
+    next.evolved = cat.evolved || isHeroReady({ ...cat, ...next });
     tx.update(catRef, next);
   }
   // If reversing a quest, clear its completion so it can be earned again today.
@@ -606,17 +627,30 @@ export async function spendCare(familyId, catId, need) {
     const cat = catSnap.data();
     const result = refillNeed(cat.catNeeds, need, child.careCharges, nowMs);
     if (!result.ok) throw new Error(result.reason);
+    const today = localDate(new Date(nowMs));
+    const heroCare = resumeHeroCareActivity(
+      cat.heroCareProgress,
+      today,
+      areCareNeedsOkay(result.needsAfter)
+    );
 
     tx.update(p.child(), {
       careCharges: result.chargesAfter,
       lastCareSpend: { catId, need, at: serverTimestamp() }
     });
-    tx.update(catRef, {
+    const catUpdate = {
       catNeeds: {
         ...result.needsAfter,
         lastUpdatedAt: serverTimestamp()
       }
-    });
+    };
+    if (heroCare.advanced) {
+      catUpdate.heroCareProgress = heroCare.progress;
+      if (!cat.evolved && isHeroReady({ ...cat, heroCareProgress: heroCare.progress })) {
+        catUpdate.evolved = true;
+      }
+    }
+    tx.update(catRef, catUpdate);
     return result;
   });
 }

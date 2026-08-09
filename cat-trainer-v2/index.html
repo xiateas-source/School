@@ -8,7 +8,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=e3b3c5da">
+  <link rel="stylesheet" href="styles/base.css?v=19997e6a">
 </head>
 <body>
   <div id="app">
@@ -198,6 +198,7 @@
             <div class="meters">
               <div class="meter-row"><span>★ Brain</span><div class="meter"><i id="c-brain-bar"></i></div><b id="c-brain-val">0/12</b></div>
               <div class="meter-row"><span>⚡ Energy</span><div class="meter"><i id="c-energy-bar"></i></div><b id="c-energy-val">0/12</b></div>
+              <div class="meter-row" id="c-care-days-row"><span>☀ Care days</span><div class="meter"><i id="c-care-days-bar"></i></div><b id="c-care-days-val">0/14</b></div>
               <div class="meter-row"><span>♥ Bond</span><div class="meter"><i id="c-bond-bar"></i></div><b id="c-bond-val">0/20</b></div>
             </div>
             <p class="hero-hint" id="c-hero-hint"></p>
@@ -332,7 +333,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=e3b3c5da"></script>
+  <script type="module" src="src/app.js?v=19997e6a"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.

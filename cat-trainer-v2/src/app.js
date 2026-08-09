@@ -1,24 +1,26 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=e3b3c5da';
+import { isConfigured } from './firebase.js?v=19997e6a';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=e3b3c5da';
-import * as store from './store.js?v=e3b3c5da';
-import { CAT_DEFS } from './data/cats.js?v=e3b3c5da';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=e3b3c5da';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=e3b3c5da';
+} from './auth.js?v=19997e6a';
+import * as store from './store.js?v=19997e6a';
+import { CAT_DEFS } from './data/cats.js?v=19997e6a';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=19997e6a';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=19997e6a';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=e3b3c5da';
+} from './cafe-interactions.js?v=19997e6a';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=e3b3c5da';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=e3b3c5da';
+} from './care.js?v=19997e6a';
+import {
+  QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
+} from './shared/rewards.js?v=19997e6a';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -136,7 +138,7 @@ function showEvolution(catId) {
   const d = CAT_DEFS[catId];
   el('evo-title').textContent = `${d.heroName} unlocked!`;
   el('evo-art').src = d.heroArt;
-  el('evo-copy').textContent = `${d.name} balanced Brain and Energy and became ${d.heroTitle}.`;
+  el('evo-copy').textContent = `${d.name} balanced Brain, Energy, and 14 active care days and became ${d.heroTitle}.`;
   el('evolution-dialog').showModal();
   const card = el('evolution-dialog').querySelector('.modal-card');
   spawnFx('assets/fx-starburst.png', card, { count: 1, cx: 50, cy: 42, spread: 0, size: 220, life: 900, mode: 'pop' });
@@ -264,10 +266,12 @@ function renderApprovals() {
 function catCardHtml(id, canTrain) {
   const def = CAT_DEFS[id]; const cat = state.cats[id] || { brain:0, energy:0, bond:0, evolved:false };
   const active = state.child.activeCatId === id;
+  const careDays = heroCareDays(cat);
+  const careLabel = cat.evolved ? '☀ Hero' : `☀${careDays}/${HERO_CARE_REQUIRED_DAYS}`;
   return `<article class="cat-card ${active?'active':''}">${cat.evolved?'<span class="hero-badge">HERO</span>':''}
     <img src="${cat.evolved?def.heroArt:def.art}" alt="${esc(def.name)}">
     <h3>${esc(cat.evolved?def.heroName:def.name)}</h3>
-    <p class="sub">★${cat.brain||0}/12 · ⚡${cat.energy||0}/12 · ♥${cat.bond||0}/20</p>
+    <p class="sub">★${cat.brain||0}/12 · ⚡${cat.energy||0}/12 · ${careLabel} · ♥${cat.bond||0}/20</p>
     ${canTrain?`<button class="wide-button" data-train="${id}" ${active?'disabled':''}>${active?'Training':'Train this cat'}</button>`:''}</article>`;
 }
 function renderParentCats() { el('parent-cats').innerHTML = Object.keys(CAT_DEFS).map(id => catCardHtml(id, false)).join(''); }
@@ -279,6 +283,21 @@ function renderParentCafe() {
 function meter(barId, valId, value, max) {
   el(barId).style.width = `${Math.min(100, (value / max) * 100)}%`;
   el(valId).textContent = `${value}/${max}`;
+}
+function naturalList(items) {
+  if (items.length < 2) return items[0] || '';
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
+}
+function heroNeedsText(cat) {
+  const brain = Math.max(0, HERO_THRESHOLD.brain - (cat.brain || 0));
+  const energy = Math.max(0, HERO_THRESHOLD.energy - (cat.energy || 0));
+  const care = Math.max(0, HERO_CARE_REQUIRED_DAYS - heroCareDays(cat));
+  const needs = [];
+  if (brain) needs.push(`${brain} more Brain`);
+  if (energy) needs.push(`${energy} more Energy`);
+  if (care) needs.push(`${care} more active care ${care === 1 ? 'day' : 'days'}`);
+  return needs.length ? `Hero Form needs ${naturalList(needs)}.` : 'Hero Form is ready!';
 }
 function renderChildHome() {
   const id = state.child.activeCatId; const def = CAT_DEFS[id];
@@ -301,12 +320,10 @@ function renderChildHome() {
   meter('c-brain-bar','c-brain-val', cat.brain||0, 12);
   meter('c-energy-bar','c-energy-val', cat.energy||0, 12);
   meter('c-bond-bar','c-bond-val', cat.bond||0, 20);
+  meter('c-care-days-bar','c-care-days-val', heroCareDays(cat), HERO_CARE_REQUIRED_DAYS);
+  el('c-care-days-row').hidden = !!cat.evolved;
   if (cat.evolved) el('c-hero-hint').textContent = `${def.heroName} — Hero Form!`;
-  else {
-    const nb = Math.max(0, HERO_THRESHOLD.brain - (cat.brain||0));
-    const ne = Math.max(0, HERO_THRESHOLD.energy - (cat.energy||0));
-    el('c-hero-hint').textContent = `Hero Form needs ${nb} more Brain and ${ne} more Energy.`;
-  }
+  else el('c-hero-hint').textContent = heroNeedsText(cat);
   const next = state.quests.filter(q => q.enabled !== false && !completionStatus(q.id)).slice(0, 3);
   el('c-next-quests').innerHTML = next.length ? next.map(childQuestCard).join('') : '<div class="empty">All done — great job!</div>';
 }

@@ -1,12 +1,12 @@
 # Cat Trainer — Interactive Café Goal
 
-> **Status:** Active product spec and roadmap, reconciled through the live
-> three-need care release (PR #36, August 9, 2026). Hunger, Rest, Happiness,
-> their matching object interactions, and room/menu layering have passed device
-> testing. The full-meter feedback correction is implemented locally: any need
-> displayed as 100/100 is treated as full and cannot request or spend a Care
-> Charge. A spare-charge device confirmation can happen organically and does not
-> block Hero-care progression.
+> **Status:** Active product spec and roadmap, reconciled through the merged
+> three-need care and full-meter correction (PRs #36–37, August 9, 2026).
+> Hunger, Rest, Happiness, their matching object interactions, and room/menu
+> layering have passed device testing. Any need displayed as 100/100 is treated
+> as full and cannot request or spend a Care Charge; a spare-charge confirmation
+> can happen organically. The locked Hero-care gate is implemented in application
+> code and awaits rules publication and device validation.
 >
 > **This is the combined spec.** It merges the product/experience spec (the
 > "Interactive Café Goal") with a **code-grounded audit** of the current app, so
@@ -17,8 +17,7 @@
 
 > **Observed calibration (August 2026):** Sirus has earned about **15–20 existing
 > app points per active day**. Ember reached Hero form on the first day. These are
-> real-use baselines for tuning; the current Hero threshold must not be copied
-> unchanged into the Interactive Café progression model.
+> the real-use baselines behind the 14-distinct-active-care-day Hero gate.
 
 ---
 
@@ -39,13 +38,14 @@ in §0.8.
 | Café render + interactions | `src/app.js` | `renderChildCafe`, `initCafeInteractions`, `reactCat`, `catMood`, `catIdleBeat`, `catStroll`, `cafePoseArt`, `cafeSlot`/`CAFE_SLOTS` |
 | Persistence / transactions | `src/store.js` | `purchaseCafeItem`, `moveCafeItem`, `setCafeItemPlaced`, quest-approval reward writes |
 
-### 0.2 The current progression model (unchanged, keep it)
+### 0.2 The current progression model (keep its two layers separate)
 
-- **▸ From the code:** each cat carries `{ brain, energy, bond, evolved }`.
-  `CAPS = { brain: 12, energy: 12, bond: 20 }`.
-- **▸ From the code:** `isHeroReady(cat) = cat.brain >= 12 && cat.energy >= 12`.
-  **Bond is *not* part of the Hero gate** — it is cosmetic/mood only. Coins are a
-  café-only currency, never spent on progression.
+- **▸ From the code:** each cat carries `{ brain, energy, bond, evolved,
+  heroCareProgress }`. `CAPS = { brain: 12, energy: 12, bond: 20 }`.
+- **▸ From the code:** `isHeroReady(cat)` now requires Brain ≥ 12, Energy ≥ 12,
+  and 14 distinct dates in `heroCareProgress.activeDates`. **Bond is *not* part
+  of the Hero gate** — it is cosmetic/mood only. Coins are a café-only currency,
+  never spent on progression.
 - **▸ From the code:** every quest completion also grants `QUEST_BOND = 1`.
   Progression is cumulative and never spent (`applyCatProgress` just clamps).
 
@@ -61,11 +61,11 @@ The new care layer must **never** read or write Brain/Energy/Bond values. It onl
 
 ### 0.3 Why Ember evolved on day one (§5.4 / §11.2, confirmed)
 
-- **▸ From the code:** the Brain quest (`b-read`) grants +2 brain and the Move
-  quest (`v-move`) grants +2 energy, every day. With `HERO_THRESHOLD` at 12/12,
-  a handful of active days — or one very busy day — clears it. The instinct to
-  **not reuse the current threshold** is correct; the new rule needs a
-  multi-active-day requirement (§11.2).
+- **▸ Historical released behavior:** the Brain quest (`b-read`) grants +2 brain
+  and the Move quest (`v-move`) grants +2 energy. The former 12/12-only gate
+  could be cleared in a very busy first day. The new gate keeps that existing
+  progress but adds the multi-active-day requirement in §11.2; Ember's already
+  unlocked Hero form remains permanent.
 
 ### 0.4 Points ↔ quest completions
 
@@ -370,8 +370,8 @@ Known behavior from the current app:
 
 Implications:
 
-- The current Hero threshold produces an early-session unlock, not the sustained
-  care payoff described in this spec.
+- The former 12/12-only Hero threshold produced an early-session unlock, not the
+  sustained care payoff described in this spec.
 - Care is awarded once per completed quest, never multiplied by the quest's
   point value.
 - Decay and refill tuning should be tested against a normal week of activity,
@@ -733,7 +733,7 @@ childProfiles/{childId}
 childProfiles/{childId}/cats/{catId}
   brain, energy, bond, evolved
   catNeeds { hunger, rest, happiness, lastUpdatedAt }
-  heroCareProgress  # next progression slice; not implemented yet
+  heroCareProgress { activeDates, lastQuestDate, lastQuestAt }
 
 childProfiles/{childId}/ownedCafeItems/{itemId}
   purchasedAt
@@ -757,6 +757,11 @@ Requirements:
 - Position writes occur at the end of a drag or placement action, not every
   animation frame.
 - Existing users receive safe defaults through migration/fallback logic.
+- `heroCareProgress.activeDates` is the capped set of distinct qualifying
+  family-local dates; the UI derives its 0–14 total instead of accepting a
+  caller-supplied counter.
+- `lastQuestDate` and server-stamped `lastQuestAt` mark parent-approved activity
+  so a low-care day may resume through valid care later that same date.
 - The app remains usable offline and syncs when connectivity returns.
 - Firestore rules explicitly limit child writes to the released Café fields and
   validate care grants, care spends, and purchases atomically. The matching rules
@@ -785,13 +790,11 @@ Hero form represents sustained real-world effort and care—not a perfect streak
 - Existing progress for Nova or Moss must be migrated without subtracting what
   Sirus has already earned.
 
-> **▸ From the code:** `evolved` is a sticky boolean on the cat and
-> `applyCatProgress` only ever sets `evolved ||= isHeroReady(...)` — it can never
-> flip back to false. So "never devolve" is already guaranteed by the current
-> data model; the new care-gate must preserve that (gate *new* progress, never
-> clear `evolved`).
+> **▸ From the code:** `evolved` is a sticky boolean across quest rewards and
+> ledger reversal. Existing Heroes with no historical care-date records remain
+> Heroes; the care gate controls only future false→true evolution.
 
-### 11.2 Locked Hero-care gate — NOT YET IMPLEMENTED
+### 11.2 Locked Hero-care gate — IMPLEMENTED, RELEASE VALIDATION PENDING
 
 At the observed pace of 15–20 points per active day, a points-only threshold
 would roughly correspond to:
@@ -823,9 +826,29 @@ Locked rule:
 - Existing evolved cats remain evolved; the new gate applies only to future
   evolutions.
 
-Implementation is the next progression slice after Rest and Happiness pass
-device testing. It must define an atomic once-per-local-day advance and cannot
-trust a client-supplied counter.
+Implemented transaction contract:
+
+- The source of truth is `heroCareProgress.activeDates`, capped at 14 unique
+  `YYYY-MM-DD` values. The 0–14 total is derived from that set; no write API
+  accepts a replacement counter.
+- Parent approval marks the current `America/Chicago` date and a server
+  timestamp on the cat. The transaction recomputes all three decayed needs and
+  appends that date only if every whole-number meter is in the Okay band
+  (displayed 40/100 or higher).
+- Multiple approvals on one date reuse the same entry. Transaction retries read
+  the stored date set, so concurrent approvals cannot double-count.
+- If care is low at approval, the activity marker remains pending for that date.
+  A valid care transaction that restores all three displayed needs to Okay may
+  append only that same parent-marked date. It cannot backfill after the local
+  date changes.
+- Child Firestore rules preserve every prior date and validate exactly one new
+  parent-marked date, healthy post-care values, unchanged Brain/Energy/Bond, and
+  a false→true Hero change only at 12 Brain, 12 Energy, and 14 dates.
+- Missing progress is a zero-day fallback for unevolved cats. Existing evolved
+  cats remain evolved without invented historical dates.
+
+The application code and regression coverage are complete. The updated Firestore
+rules must be published before device testing or release.
 
 ## 12. Character identity
 
@@ -1021,11 +1044,11 @@ The MVP is complete when all of the following work together:
 - Tune decay/refill values from actual use.
 - Connect care to Hero progress.
 
-> **▸ Status: released; device tuning in progress.** Hunger, Rest, and Happiness
-> are implemented end-to-end with the locked starting values: a healthy/testable
-> 80 start, 100 maximum, 35/25/20-per-day timestamp decay, a 48-hour return cap,
-> Care Charges
-> capped at 6, and up to +20 per matching food/rest/play object use. Existing
+> **▸ Status: core care released; Hero gate pending release validation.** Hunger,
+> Rest, and Happiness are implemented end-to-end with the locked starting values:
+> a healthy/testable 80 start, 100 maximum, 35/25/20-per-day timestamp decay, a
+> 48-hour return cap, Care Charges capped at 6, and up to +20 per matching
+> food/rest/play object use. Existing
 > Hunger-only cats migrate with fresh 80 Rest/Happiness values rather than taking
 > retroactive decay. Water remains a free neutral interaction. One lowest-need
 > cue highlights a useful placed object (or the stored-item tray) without spending
@@ -1035,8 +1058,9 @@ The MVP is complete when all of the following work together:
 > testing, including play's 5-Rest cost. Displayed-full needs now preserve Care
 > Charges in the shared rules and UI, including when real-time decay has moved the
 > stored value just below 100. A nonzero-balance phone confirmation remains useful
-> but can happen organically. `heroCareProgress` is the next separate progression
-> slice.
+> but can happen organically. `heroCareProgress` now uses the atomic distinct-date
+> contract in §11.2; its rules publication and device validation remain before
+> release.
 
 ### Slice 5 — animation polish
 

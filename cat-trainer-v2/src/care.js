@@ -13,7 +13,8 @@ export const CARE_CONFIG = Object.freeze({
   offlineDecayCapHours: 48,
   chargeCap: 6,
   refillPerCharge: 20,
-  playRestCost: 5
+  playRestCost: 5,
+  okayMin: 40
 });
 
 export const CARE_NEEDS = Object.freeze(['hunger', 'rest', 'happiness']);
@@ -58,6 +59,13 @@ export function displayNeedValue(value) {
 
 export function isNeedFull(value) {
   return displayNeedValue(value) >= CARE_CONFIG.maxNeed;
+}
+
+// Hero-care eligibility follows the same whole-number values Sirus sees. A
+// decayed 39.5 displays as 40/100 and therefore belongs to the Okay band in both
+// the interface and the progression transaction.
+export function areCareNeedsOkay(needs) {
+  return CARE_NEEDS.every(need => displayNeedValue(needs && needs[need]) >= CARE_CONFIG.okayMin);
 }
 
 // Missing values are migration-safe healthy defaults. In particular, cats from
