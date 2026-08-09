@@ -57,4 +57,11 @@ for (const item of Object.values(CAFE_ITEMS)) {
 }
 assert.match(rules, /pairedCafePurchase\(childId, itemId\)/);
 
+// Café sprites have positive z-index values for in-room layering. Keep them in
+// a local stacking context, and keep the fixed app navigation above page
+// content, so a scrolled cat or décor sprite can never float over the menu.
+const css = readFileSync(new URL('../styles/base.css', import.meta.url), 'utf8');
+assert.match(css, /\.cafe-room\s*\{[^}]*\bisolation:\s*isolate\s*;/s);
+assert.match(css, /\.bottom-nav\s*\{[^}]*\bz-index:\s*(?:[1-9]|[1-9]\d+)\s*;/s);
+
 console.log('Café interaction helpers: all checks passed.');
