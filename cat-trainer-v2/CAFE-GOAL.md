@@ -1,13 +1,16 @@
 # Cat Trainer — Interactive Café Goal
 
-> **Status:** Working draft for discussion. This file defines the intended
-> experience before implementation. Values marked **TUNING DRAFT** are proposals,
-> not final balance decisions.
+> **Status:** Active product spec and roadmap, reconciled through the live
+> three-need care release (PR #36, August 9, 2026). Hunger has passed device
+> testing. Rest and Happiness are live and awaiting Sirus's device test before
+> Hero-care progression begins.
 >
 > **This is the combined spec.** It merges the product/experience spec (the
 > "Interactive Café Goal") with a **code-grounded audit** of the current app, so
-> the "audit the code first" items are answered inline instead of deferred. Notes
-> that come from reading the shipped source are marked **▸ From the code**.
+> the roadmap stays tied to shipped behavior. It records durable requirements,
+> locked decisions, current verification, and remaining work—not a changelog of
+> one-off fixes. Values marked **TUNING ACTIVE** are implemented starting values
+> that may change after real use.
 
 > **Observed calibration (August 2026):** Sirus has earned about **15–20 existing
 > app points per active day**. Ember reached Hero form on the first day. These are
@@ -19,8 +22,8 @@
 ## 0. Codebase reality — grounded audit (Aug 2026)
 
 Everything in this section is read from the current `cat-trainer-v2/` source, so
-**Slice 0's "audit the code" is effectively complete.** Build against these
-facts; they resolve several "must be audited" and "DECISION NEEDED" flags below.
+**Slice 0's audit is complete.** Build against these facts and the locked calls
+in §0.8.
 
 ### 0.1 Where things live
 
@@ -43,8 +46,7 @@ facts; they resolve several "must be audited" and "DECISION NEEDED" flags below.
 - **▸ From the code:** every quest completion also grants `QUEST_BOND = 1`.
   Progression is cumulative and never spent (`applyCatProgress` just clamps).
 
-This directly answers **§18 Q9** and **§11**'s "how do the current meters relate"
-concern: keep two clearly separate layers, no duplicate meaning —
+Keep two clearly separate layers with no duplicate meaning:
 
 | Layer | Fields | Meaning | Behavior |
 | --- | --- | --- | --- |
@@ -62,7 +64,7 @@ The new care layer must **never** read or write Brain/Energy/Bond values. It onl
   **not reuse the current threshold** is correct; the new rule needs a
   multi-active-day requirement (§11.2).
 
-### 0.4 Points ↔ quest completions (answers §18 Q1)
+### 0.4 Points ↔ quest completions
 
 - **▸ From the code:** there are **13 default quests, each worth `points: 1`**
   (`quests.js`). So points and completions are ~**1:1** — the observed 15–20
@@ -75,102 +77,71 @@ The new care layer must **never** read or write Brain/Energy/Bond values. It onl
   but it confirms §6.1's worry that per-quest is "generous": the design lever is
   the **cap and refill size**, not the earn rate.
 
-### 0.5 What's already shipped on this branch (Phase 0 papercuts)
+### 0.5 Released room baseline
 
-Committed on `claude/cat-cafe-design-sbz2n9` (before this spec), clearing the
-"broken-feeling" surface Sirus complained about:
+- Play and Decorate are separate modes. Cat and décor movement persist as
+  normalized room coordinates.
+- Cat taps, object taps, blank-room calls, and décor dragging have distinct
+  input paths and readable feedback.
+- One-step Decorate Undo, stored-item placement, and room bounds are implemented.
 
-- **Tap-highlight "white lines" fixed** — `.cafe-cat` now carries
-  `-webkit-tap-highlight-color: transparent` + `user-select: none` (the décor
-  already had these; the cat was the only tappable element missing them).
-- **Placed décor is grabbable** — it was painting *behind* the cat; `#c-placed
-  img` now sits at `z-index: 2` above the cat wrap (`z-index: 1`).
-- **Grab affordance** — a soft drop-shadow so items read as liftable on touch.
+### 0.6 Released behavior baseline (§7)
 
-> **Note:** the z-index change is a *stopgap*. **Decorate mode (Slice 1)
-> supersedes it** — once Play/Decorate are separated, layering is handled by the
-> mode, not by forcing décor above the cat. Don't build the stopgap twice.
+- Cat actions run through one interruption-safe state controller; a stale action
+  timer cannot reset a newer interaction.
+- Idle, walk, eat, play, sleep, pet, celebrate, drag, and object-approach states
+  use the mapped art and leave the cat at its saved destination.
+- Autonomous wandering remains disabled until its destination choice and pacing
+  pass a dedicated device test.
 
-### 0.6 The "snap-back" bug, precisely (§7.2)
+### 0.7 Décor persistence & shop
 
-- **▸ From the code:** `reactCat()` plays a springy `catPop` squash-stretch
-  ("the float"), flashes a `play`/`celebrate` pose, then a 900 ms
-  `catSettleTimer` reverts to the resting pose. That is the exact "change
-  picture, then immediately snap back" behavior §7.2 rules out. The state machine
-  (§7) replaces this settle-timer pattern.
-- **▸ From the code — the smoking gun:** every cat already has an **`eat` pose
-  drawn** (`cats.js`), but `cafePoseArt` is only ever called with
-  `sit`/`play`/`sleep`/`celebrate`. **The `eat` pose is dead art — defined,
-  never rendered.** Slice 3 finally uses it.
-
-### 0.7 Décor persistence & shop, today (partial answer to §18 Q10)
-
-- **▸ From the code:** owned décor records are `{ id, x, y, placed }`;
-  `moveCafeItem` saves position, `setCafeItemPlaced` toggles stored/placed. The
-  new `roomLayout[]` schema (§10) is a superset — migrate the old shape into it.
-- **▸ From the code:** all 17 items in `CAFE_ITEMS` are **shop-purchasable with
-  coins**; a fresh child starts `coins: 0` with nothing owned. So "initially
-  owned" = **none**; everything is shop-unlocked. Food bowl and water bowl are
-  ordinary shop items today.
-- **▸ Device-test correction:** the prior child-profile rule froze `coins` on
-  every child write, so the UI could show “Buy” while Firestore denied the
-  purchase (for example, 14 coins could not buy the 12-coin Cat Tree). The
-  testing branch pairs the exact catalog-price debit with the new owned-item
-  record in one validated transaction.
-- **▸ From the art:** each cat has one signature cat-on-bed composite
-  (Nova→blue, Ember→green, Moss→pink). Device testing showed that selecting those
-  composites makes one matching pair look inside the furniture while the other
-  cats look beside it. The runtime now layers the ordinary transparent sleep
-  frames over the rest object actually tapped; signature composites remain
-  archived art unless complete, consistent coverage is intentionally added.
+- **▸ From the code:** each owned item is a document in `ownedCafeItems` with its
+  purchase record plus `x`, `y`, and `placed`; `moveCafeItem` saves position and
+  `setCafeItemPlaced` toggles storage.
+- **▸ From the code:** all 17 items in `CAFE_ITEMS` are shop-purchasable with
+  coins. A fresh child starts with zero coins and no owned décor. Food and water
+  bowls are ordinary shop items.
+- A child purchase is one atomic, rules-validated transaction: a known item is
+  created and coins fall by that item's exact catalog price.
+- Each cat's transparent sleep frames layer over whichever rest object is used.
+  The three signature cat-on-bed composites remain archived art unless complete,
+  consistent cat × furniture coverage is deliberately added.
 
 ### 0.8 Decisions locked (Aug 2026)
 
 Per the family's go-ahead, the open forks are decided here so building can
 proceed. **All remain tunable in testing** — this locks a starting point, not a
-final balance sheet. This table is the authoritative resolution of §18's design
-forks; the sections below keep the fuller reasoning.
+final balance sheet. This table is the authoritative record of the starting
+decisions; the sections below keep the fuller reasoning.
 
 | Fork | Locked call | Why |
 | --- | --- | --- |
-| **Hero unlock rule** (§11.2, §18 Q2) | Keep the 12/12 Brain+Energy caps **and** require **14 distinct active care days** (`heroCareProgress`, advances only on days the cat is at least "Okay") | Can't be rushed in one session; ~2 weeks of real habit, not a grind |
-| **Rest model** (§5.3, §5.5, §18 Q17) | **Symmetric decay** (§5.3); `play` also nudges Rest down. Self-recovery (§5.5) is the documented fallback if Rest feels like busywork | Simplest to teach Sirus first |
-| **Care Charge grant** (§6.1, §18 Q4) | On the **child's quest completion** (immediate); coins + progression still gated on **parent approval** | Responsive without waiting on an adult |
-| **Care Charge type** (§6.2, §18 Q3) | **Flexible** — spend on any need; typed-by-section care deferred | Fewer choices for a young kid |
-| **Decay rates** (§5.3, §18 Q5) | Accept the §5.3 draft (Hunger 35 / Rest 25 / Happiness 20 per 24 h) as the starting point | Conservative; retune from a real week |
-| **Offline-decay cap** (§18 Q6) | Keep **48 h** | Gentle homecoming |
-| **Rest-action end** (§7.2, §18 Q7) | A Care-Charge rest **auto-ends** after the sleep animation; a low-Rest *self-nap* persists until Rest recovers or Sirus moves the cat | Predictable and cozy |
-| **Room scope** (§18 Q8) | **One shared room per child** (matches current per-child décor) | Simplest; per-cat rooms can come later |
-| **Furniture overlap** (§18 Q11) | Cat may **freely overlap** furniture (no collision) for MVP | Matches the "no collision physics" non-goal |
-| **Sound** (§12.1, §18 Q15) | **Off by default**, saved preference respected | Least intrusive |
-| **Room snapshot** (§9.4, §18 Q16) | **Preview with Save/Cancel**, not an instant download | A beat to confirm the shot |
-| **Attention-cue wording & family visits** (§18 Q12–Q14) | **Deferred** to their own slices; not MVP-blocking | Later polish |
+| **Hero unlock rule** (§11.2) | Keep the 12/12 Brain+Energy caps **and** require **14 distinct active care days** (`heroCareProgress`, advances only on days the cat is at least "Okay") | Can't be rushed in one session; ~2 weeks of real habit, not a grind |
+| **Rest model** (§5.3, §5.5) | **Symmetric decay** (§5.3); `play` also nudges Rest down. Self-recovery (§5.5) is the documented fallback if Rest feels like busywork | Simplest to teach Sirus first |
+| **Care Charge grant** (§6.1) | On the **child's quest completion** (immediate); coins + progression still gated on **parent approval** | Responsive without waiting on an adult |
+| **Care Charge type** (§6.2) | **Flexible** — spend on any need; typed-by-section care deferred | Fewer choices for a young kid |
+| **Decay rates** (§5.3) | Hunger 35 / Rest 25 / Happiness 20 per 24 h as the starting point | Conservative; retune from a real week |
+| **Offline-decay cap** (§5.3) | Keep **48 h** | Gentle homecoming |
+| **Rest-action end** (§7.2) | A Care-Charge rest **auto-ends** after the sleep animation; a low-Rest *self-nap* persists until Rest recovers or Sirus moves the cat | Predictable and cozy |
+| **Room scope** (§10) | **One shared room per child** (matches current per-child décor) | Simplest; per-cat rooms can come later |
+| **Furniture overlap** (§9.1) | Cat may **freely overlap** furniture (no collision) for MVP | Matches the "no collision physics" non-goal |
+| **Sound** (§12.1) | **Off by default**, saved preference respected | Least intrusive |
+| **Room snapshot** (§9.4) | **Preview with Save/Cancel**, not an instant download | A beat to confirm the shot |
+| **Attention-cue wording & family visits** (§13, §18) | **Deferred** to their own slices; not MVP-blocking | Later polish |
 
-### 0.9 Device-test corrections and animation follow-up (Aug 2026)
+### 0.9 Current animation and interaction ground truth (Aug 2026)
 
-Ground truth from Sirus's device after Slices 1–2 shipped — these override earlier
-assumptions:
-
-- **The first device-tested build had only single-frame sprites.** Sliding the
-  sitting pose read as gliding, so Slice 2.1 correctly removed autonomous travel
-  and the unsupported "glance up" welcome. The follow-up animation pass has now
-  added and mapped two-frame idle, play, eat, walk, and sleep art for all three
-  cats. Idle blinks and autonomous play use it; Slice 3 now uses walk/eat/play/
-  sleep for object-directed actions. Autonomous wandering remains disabled until
-  its destination choice and pacing receive their own device-test pass.
-- **Resting pose must NOT key off the training `energy` stat.** It made the cat
-  look asleep almost always (Energy is near zero early). The café cat now defaults
-  to **awake/sitting**, bouncier after a quest. An explicit bed tap may start a
-  nap, and low daily Rest now selects the quiet sleep mood. The long-term Energy
-  stat remains completely separate. *(The training-stat bug was fixed in Slice
-  2.1.)*
-- Implication for **Slice 3**: object interactions now use the completed
-  front-3/4 walk loop while translating to the selected object. Reduced-motion
-  mode moves directly to the destination and shows the action's meaningful still.
-- **Latest device notes:** blank-room taps now call the cat to that location;
-  water has a distinct neutral bob without swapping in food-bowl art; Toy Basket
-  is explicitly mapped/tested as play; and every cat uses the same cat-only sleep
-  layering path on every rest object.
+- Two-frame idle, play, eat, walk, and sleep art is mapped for all three cats.
+  Object-directed actions use it; reduced-motion mode moves directly to the
+  destination and shows the meaningful action still.
+- The resting look is driven by daily care, never the long-term training Energy
+  stat. Low Rest selects quiet sleep; otherwise the cat is awake by default.
+- Blank-room taps call the cat to that saved location. Water has a distinct
+  neutral action, Toy Basket is a play object, and every cat uses the same
+  cat-only sleep layering path on every rest object.
+- Hunger and the core object-interaction loop passed device testing. Rest and
+  Happiness still need their post-release device pass.
 
 **Animation plan:** **`ART-ANIMATION.md`** records the frame manifest, generation
 prompts, and frame-swapper wiring. All three tiers are present and mapped; object
@@ -342,16 +313,16 @@ Rules:
 - Text can supplement the icon for clarity, but the icon must remain
   understandable without reading a speech bubble.
 
-> **▸ From the code:** today `catMood()` already picks a coarse resting look
-> (`sleepy` when `energy <= 3`, `happy` after a completion or `bond >= 12`, else
-> `calm`). Replace that stat-driven mood with one driven by the **lowest care
-> need**, and reuse the existing `spawnFx` sprites for the cue.
+> **▸ From the code:** `catMood()` now uses the **lowest daily care need**, never
+> the long-term Energy stat. The functional cue selects that same lowest need and
+> highlights a compatible placed object—or the matching stored-item tray—without
+> spending care.
 
-### 5.3 Decay proposal — TUNING DRAFT
+### 5.3 Implemented decay — TUNING ACTIVE
 
-Initial conservative target:
+Current starting values:
 
-| Need | Proposed decay per 24 real hours | Approximate full-to-low time |
+| Need | Decay per 24 real hours | Approximate full-to-low time |
 | --- | ---: | ---: |
 | Hunger | 35 points | about 2 days |
 | Rest | 25 points | about 3 days |
@@ -362,24 +333,24 @@ Rules:
 - Decay is calculated from timestamps, so it continues while the app is closed.
 - Decay is deterministic, not tied to timers remaining alive in the browser.
 - Need values never fall below 0 or exceed 100.
-- The first implementation caps offline decay at **48 hours per return**. Longer
+- Offline decay is capped at **48 hours per return**. Longer
   absences do not create a more severe homecoming.
 - Newly adopted cats begin at healthy levels so the first session is play, not
   repair.
 - Hero form does not remove needs; it changes presentation and may make decay a
   little more forgiving later.
 
-These rates should be tested against Sirus's actual quest rhythm before being
-treated as final.
+These rates are live but should be tuned against Sirus's normal week before
+being treated as final.
 
 > **▸ From the code / feasibility:** this is a static Pages app with a Firestore
 > backend — **there is no server cron and no background job.** That is fine: the
-> timestamp model needs none. Store `care.lastUpdatedAt`; on render compute
+> timestamp model needs none. Store `catNeeds.lastUpdatedAt`; on render compute
 > `display = clamp(stored − rate × hoursSince(lastUpdatedAt), 0, 100)` (read-only,
 > no write); on any care action recompute all needs to *now*, apply the refill,
-> then write values + a fresh timestamp. Because it is derived from a timestamp,
-> every device agrees without syncing a clock, and the existing Firestore
-> snapshot flow propagates it. The 48 h cap is just a clamp on the elapsed term.
+> then write values plus a fresh server timestamp. The existing Firestore
+> snapshot flow propagates that shared baseline. The 48 h cap is a clamp on the
+> elapsed term.
 
 ### 5.4 Real-use calibration
 
@@ -387,40 +358,34 @@ Known behavior from the current app:
 
 - Sirus earns roughly **15–20 points on an active day**.
 - Ember reached Hero form during the **first day** of use.
-- Existing points and individual quest completions are not assumed to be the
-  same unit. The number of quests and their point values must be audited before
-  Care Charges are balanced.
+- The 13 default quests each award one point, so observed points and quest
+  completions run roughly **1:1**.
 
 Implications:
 
 - The current Hero threshold produces an early-session unlock, not the sustained
   care payoff described in this spec.
-- Care must not be awarded once per point. The draft Care Charge is awarded per
-  completed quest, regardless of that quest's point value.
+- Care is awarded once per completed quest, never multiplied by the quest's
+  point value.
 - Decay and refill tuning should be tested against a normal week of activity,
   including quieter days, rather than against the highest observed day.
 - The existing first-day evolution is preserved. Rebalancing must never devolve
   Ember or require Sirus to re-earn an achievement already granted.
 
-> **▸ Resolved (see §0.4):** the audit is done — 13 quests × 1 point = points and
-> completions run ~1:1, so "15–20 points" ≈ "15–20 completions." Tune the Care
-> Charge **cap and refill**, not the earn rate.
+### 5.5 Rest fallback if testing shows busywork
 
-### 5.5 Alternative Rest model to consider — TUNING DRAFT
-
-An option worth recording before Slice 4 locks: instead of Rest decaying like the
-other two needs, **Rest could recover on its own over time** (the cat naps) and
-be *spent by play* (each play costs some Rest). Rest then becomes a natural
+If the live symmetric model feels like a third chore, **Rest could recover on its
+own over time** (the cat naps) and be *spent by play* (each play costs some
+Rest). Rest then becomes a natural
 rhythm limiter — a couple of plays, then the cat wants a nap — rather than a
 third chore. This keeps play from being spammable without adding a care burden,
 and it leans on the existing sleep/cat-on-bed art.
 
 Trade-off: it makes Rest asymmetric with Hunger/Happiness (one recovers, two
-decay), which is slightly harder to explain to Sirus. The symmetric model in §5.3
-is simpler to teach. **Recommendation:** ship the symmetric model first; if Rest
-feels like busywork in testing, switch Rest to self-recovery + play-cost. Either
-way, `play` nudging Rest down a little gives back-to-back play a natural "let the
-cat rest" beat.
+decay), which is slightly harder to explain to Sirus. Keep the implemented
+symmetric model unless device use shows Rest feels like busywork. The current
+5-Rest play cost already gives back-to-back play a natural "let the cat rest"
+beat.
 
 ### 5.6 Advanced pet health and medicine — LOCKED LATER DIRECTION
 
@@ -447,12 +412,12 @@ The later design must satisfy all of these boundaries:
 - A return after time away is framed as “let’s help” and celebrates recovery; it
   never says Sirus caused suffering or failed the cat.
 
-This feature needs its own tuning and device test after the full Café goal is
-complete. It is not part of the Hunger prove-the-loop PR.
+This feature needs its own tuning and device test after the core Café goal is
+complete. It is not part of the three-needs care release.
 
 ## 6. Care Charges and quest mapping
 
-### 6.1 Proposed rule — TUNING DRAFT
+### 6.1 Implemented starting rule — TUNING ACTIVE
 
 - Marking a quest complete grants one immediate Care Charge.
 - A Care Charge is tied to the quest completion, **not each point** the quest is
@@ -464,31 +429,21 @@ complete. It is not part of the Hunger prove-the-loop PR.
 - Care Charges may be stored up to a small cap so Sirus can choose when to visit
   the Café, but cannot stockpile enough to make needs irrelevant.
 
-Proposed initial cap: **6 charges**.
+Current cap: **6 charges**.
 
-Proposed refill per charge: **+20** to the chosen need.
+Current refill per charge: **up to +20** to the chosen need.
 
-The cap and refill amount remain provisional until the repo confirms how many
-individual quest completions usually make up Sirus's observed 15–20 points per
-day. If he completes many small quests, one charge per quest may still be too
-generous even though it is not one charge per point.
+At roughly 15–20 completions on an active day, Sirus can readily reach the cap,
+so the **cap and refill size** are the tuning levers. With 6 × +20, a returning
+Sirus can restore about 1.2 full meters per visit. Retune only after observing a
+normal week, including quiet days.
 
-> **▸ Resolved (see §0.4):** confirmed ~15–20 completions/day, so per-quest
-> charges overflow any small cap — **the cap is the binding constraint.** With
-> cap 6 × +20, a returning Sirus can top up ~1.2 needs' worth per visit, which
-> comfortably offsets the §5.3 daily decay. That is intentionally easy-if-you-do-
-> your-chores; tighten by lowering the cap or refill if testing shows needs never
-> meaningfully dip.
+> **▸ From the code:** quest completion and parent approval use transactional
+> writes in `src/store.js`. The child's completion grants the Care Charge;
+> approval applies Brain/Energy/Bond/coins. Firestore rules validate each grant
+> and each paired one-charge care spend rather than trusting child-supplied math.
 
-> **▸ From the code — where to hook:** quest completion and parent approval both
-> run through transactional writes in `src/store.js` (the approval path applies
-> `brain/energy/bond/coins`). Grant the Care Charge on the **child's completion**
-> write (immediate feedback), and keep coins/progression on the **approval**
-> write, exactly as §6.1 intends. Amounts must be server-authoritative — never
-> trust a charge count sent from the child device (same rule the reward code
-> already follows).
-
-### 6.2 Alternative to consider
+### 6.2 Deferred typed-care alternative
 
 Quest categories could award typed care instead:
 
@@ -496,8 +451,8 @@ Quest categories could award typed care instead:
 - Night routine → Rest;
 - Move / Brain / Tidy-and-Help → Play or flexible care.
 
-This is more thematic but less flexible. The first build should use flexible
-charges unless testing shows that choosing among care types is confusing.
+This is more thematic but less flexible. The live build uses flexible charges;
+typed care should stay deferred unless testing shows a clear reason to add it.
 
 > **▸ From the code:** the section taxonomy already exists
 > (`Morning / Brain / Move / Tidy / Night / General` in `quests.js`), so typed
@@ -521,13 +476,9 @@ The cat has exactly one primary state at a time.
 | `HERO_EVENT` | Evolution milestone | Hero pose overrides normal activity | Event completes |
 | `DRAGGED` | Sirus drags the cat | Follow pointer/finger | Drop at valid position, then idle |
 
-> **▸ From the code:** the ingredients already exist but are scattered across ad
-> hoc timers — `catStroll` (WANDER), `catIdleBeat`/`scheduleCatIdle` (IDLE),
-> `reactCat` (PET_REACTION), `cafePoseArt` (shared pose lookup for IDLE/EAT/PLAY/
-> SLEEP), and the evolution flow (HERO_EVENT). The work is **consolidating these
-> into one state variable with the priority rules below**, not writing behavior
-> from scratch. `EAT` and `APPROACH_OBJECT` are the genuinely new states (and
-> `EAT` finally renders the dead `eat` pose from §0.6).
+> **▸ From the code:** `catState`, one cancelable state timer, and the shared pose
+> lookup now coordinate idle, pet, approach, eat, play, sleep, celebrate, and drag
+> behavior. Autonomous wandering remains the one deliberately disabled state.
 
 ### 7.1 State priority
 
@@ -545,13 +496,10 @@ Highest to lowest:
 High-priority states cancel or pause lower-priority ones. A stale timer may never
 reset a newer action.
 
-> **▸ From the code:** the current bug §0.6 describes is exactly a *stale timer
-> resetting a newer action* — `catSettleTimer` fires 900 ms later and overwrites
-> whatever the cat is doing now. The new machine must cancel pending timers on
-> every state transition (a single `currentState` + one cancelable timer, not the
-> several free-running timers today).
+> **▸ From the code:** each state transition cancels pending state work before it
+> starts the new action, preserving this priority rule.
 
-### 7.2 Minimum readable durations — TUNING DRAFT
+### 7.2 Minimum readable durations — TUNING ACTIVE
 
 - Tap/pet reaction: 2.5–4 seconds
 - Eat: 6–10 seconds
@@ -562,9 +510,8 @@ reset a newer action.
   a sub-second sprite swap
 - Wander: travel time depends on distance; the cat remains at its destination
 
-The current “change picture, then immediately snap back” behavior is explicitly
-out of spec. (**▸ From the code:** that is the 900 ms `catSettleTimer` in
-`reactCat`; removing it is part of this slice.)
+An action may not be reset by an older timer. The released state controller
+cancels pending state work before starting a newer interaction.
 
 ### 7.3 Autonomous behavior
 
@@ -579,13 +526,10 @@ While the Café is open and the cat is not busy:
 - reduce wandering when Rest is low;
 - increase playful idle choices when Happiness and Rest are high.
 
-Existing single-frame poses are sufficient for the first version. Two-frame idle
-or walk art is later polish, not an MVP blocker.
-
-> **▸ From the code:** `catStroll` currently wanders and then **snaps back to
-> `left: 30%`** after ~1.4–2.6 s — the exact "snap back to center" this section
-> forbids. The state machine keeps the cat where it wandered instead of scheduling
-> a return.
+Two-frame idle, walk, eat, play, and sleep poses are already mapped. Autonomous
+wandering remains disabled until its pacing and destination selection pass on
+Sirus's device; when enabled, it must keep the cat at the destination rather than
+scheduling a return to center.
 
 ### 7.4 Welcome-back behavior
 
@@ -615,9 +559,8 @@ he interacts.
   spend a Care Charge without a clear tap/confirmation.
 - The cat's last location persists across normal reloads.
 
-> **▸ From the code:** décor drag already works via pointer capture in
-> `initCafeInteractions` (grab → move → `moveCafeItem` save). Cat-drag can reuse
-> that exact plumbing; today the cat has no drag handler (taps go to `reactCat`).
+> **▸ From the code:** cat drag and blank-room call-to-walk now reuse the room's
+> pointer plumbing and persist normalized coordinates through `moveCafeCat`.
 
 ### 8.2 Tapping the cat
 
@@ -627,11 +570,9 @@ he interacts.
   indefinitely or replace real quests.
 - Repeated taps should not restart the animation so rapidly that it flickers.
 
-> **▸ From the code:** `reactCat` already does haptics + a squash-stretch + a
-> finger-positioned sparkle burst — keep that *feel*, just (a) drop the 900 ms
-> settle-timer revert and (b) route it through `PET_REACTION` so a newer state
-> can't be clobbered. A tiny per-day Bond nudge on petting is fine (Bond is
-> cosmetic, §0.2) but cap it so it can't be farmed.
+> **▸ From the code:** petting runs through `PET_REACTION` with haptics, a
+> squash-stretch, and finger-positioned sparkles. It does not refill a care meter
+> or overwrite a newer higher-priority action.
 
 ### 8.3 Tapping objects
 
@@ -653,22 +594,11 @@ paw effect, or the cat briefly looking toward it. Feedback must not imply that a
 need changed when it did not. Reuse `fx-sparkle.png`, `fx-starburst.png`,
 `fx-confetti.png`, and `fx-paw.png` before requesting new effects.
 
-> **▸ From the code:** the object→need mapping keys off item IDs already in
-> `CAFE_ITEMS` — food/water bowls (`foodBowl`, `waterBowl`), beds (`bed`,
-> `pinkBed`, `greenBed`, `petPillow`, `petHouse`), toys (`rug`/`pinkYarn` yarn,
-> `toyBasket`, `tower` cat-tree). Tag each item in `cafe-items.js` with a
-> `role: 'food' | 'water' | 'rest' | 'play' | 'decor'` so the Café doesn't hardcode ID
-> lists. Collars/crown are `decor` (see §9.2). The décor `wiggle` acknowledgment
-> already exists in `initCafeInteractions`.
-
-> **▸ Device-test correction (2026-08-09):** water is now its own `water` role,
-> rather than borrowing food art that contains the wrong bowl. The Toy Basket is
-> explicitly covered as a `play` action. A bowl/toy/bed beneath the cat's large
-> transparent PNG rectangle is resolved as the visible object tap instead of an
-> accidental cat tap. Sleep uses each cat's transparent curled
-> frames layered over the selected bed/pillow/house; the three signature-bed
-> composites are not selected because they made only the matching cat/bed pair
-> appear to be inside the furniture.
+> **▸ From the code:** every `CAFE_ITEMS` entry carries a
+> `role: 'food' | 'water' | 'rest' | 'play' | 'decor'` and care objects also name
+> their need. Water has a neutral action, Toy Basket is play, visible object taps
+> take priority through a cat sprite's transparent area, and transparent curled
+> cat frames layer over every rest object. Collars and the crown remain décor.
 
 ### 8.4 Drag-the-yarn play
 
@@ -708,10 +638,9 @@ The Café has two explicit modes:
 - **Play:** interact with the cat and placed objects.
 - **Decorate:** arrange the room without accidentally triggering cat actions.
 
-> **▸ From the code:** today there is only one mode — décor drag and cat tap
-> coexist in the same view, which is why placed items and the cat fight for the
-> same taps (the Phase-0 z-index stopgap, §0.5). Splitting into Play/Decorate is
-> the real fix and lets §0.5's stopgap be removed.
+> **▸ From the code:** the released Café implements both modes. Play routes taps
+> to cat/object actions; Decorate owns furniture drag, storage, placement, and
+> one-step Undo.
 
 ### 9.1 Decorate-mode requirements
 
@@ -786,45 +715,53 @@ First version boundaries:
 
 ## 10. Persistence model
 
-Minimum persisted state per child/profile:
+Current Firestore state is intentionally split by ownership and write boundary:
 
 ```text
-cafeState
-  selectedCatId
-  catPosition { x, y }
-  catNeeds { hunger, rest, happiness, lastUpdatedAt }
+childProfiles/{childId}
+  activeCatId
+  cafeCat { x, y }
   careCharges
-  heroCareProgress
-  roomLayout[]
-    instanceId
-    assetId
-    x
-    y
-    z
-    stored
-  schemaVersion
+
+childProfiles/{childId}/cats/{catId}
+  brain, energy, bond, evolved
+  catNeeds { hunger, rest, happiness, lastUpdatedAt }
+  heroCareProgress  # next progression slice; not implemented yet
+
+childProfiles/{childId}/ownedCafeItems/{itemId}
+  purchasedAt
+  price
+  placed
+  x
+  y
+```
+
+Conceptually, those documents form one shared Café state:
+
+```text
+selected cat + cat position + per-cat needs/progression + care charges
++ owned room layout
 ```
 
 Requirements:
 
 - Coordinates are normalized to the room, not saved as device-specific pixels.
 - Need decay is derived from `lastUpdatedAt`; it is not written every minute.
-- State writes are debounced during dragging and flushed when Decorate mode ends.
+- Position writes occur at the end of a drag or placement action, not every
+  animation frame.
 - Existing users receive safe defaults through migration/fallback logic.
 - The app remains usable offline and syncs when connectivity returns.
-- Firestore/security rules must explicitly allow only the intended child/profile
-  Café fields and must be deployed and verified before the feature is considered
-  complete.
+- Firestore rules explicitly limit child writes to the released Café fields and
+  validate care grants, care spends, and purchases atomically. The matching rules
+  for Hunger, Rest, and Happiness are deployed.
 - Conflicting writes should preserve owned items and the most recent intentional
   room arrangement.
 
-> **▸ From the code — migration:** today décor lives as `ownedItems: [{ id, x, y,
-> placed }]` on the child, and needs would live on each cat doc (`cats/{id}`).
-> Map old records into `roomLayout[]` (`id → assetId`, keep `x`/`y`, derive `z`
-> from `y`, `placed:false → stored:true`); default `catNeeds` to healthy and
-> `careCharges: 0` for existing users so no one is punished at rollout.
-> Normalized 0–100 % coords are already what `moveCafeItem` stores, so this is a
-> rename/superset, not a data rewrite.
+> **▸ From the code — migration:** a cat with no care data receives a healthy 80
+> baseline on first use. A Hunger-only cat keeps its Hunger and receives fresh 80
+> Rest/Happiness values, so new meters do not retroactively decay. Existing
+> `ownedCafeItems` documents and normalized positions require no room-layout
+> rewrite.
 
 ## 11. Hero evolution relationship
 
@@ -847,7 +784,7 @@ Hero form represents sustained real-world effort and care—not a perfect streak
 > data model; the new care-gate must preserve that (gate *new* progress, never
 > clear `evolved`).
 
-### 11.2 Timeline calibration — DECISION NEEDED
+### 11.2 Locked Hero-care gate — NOT YET IMPLEMENTED
 
 At the observed pace of 15–20 points per active day, a points-only threshold
 would roughly correspond to:
@@ -859,36 +796,29 @@ would roughly correspond to:
 | 21 days | 315–420 points |
 | 30 days | 450–600 points |
 
-These ranges are reference math, not recommended thresholds. Because Hero form
-is meant to represent sustained care, the final rule should include activity
-across multiple distinct days rather than a point total that can be rushed in
-one session. The intended number of active days is still a product decision.
+These ranges are reference math, not point thresholds. The locked gate uses
+distinct active days so Hero form cannot be rushed in one session.
 
-Draft rule:
+Locked rule:
 
 - Approved quests continue to build the existing long-term progression.
-- A quest contributes its full Hero value when the cat is receiving adequate
-  care.
-- Low needs **pause or reduce new Hero-care progress**; they never subtract
-  earned progress.
+- Brain ≥ 12 and Energy ≥ 12 remain one requirement; Bond is not a gate.
+- The cat must also accumulate **14 distinct active care days** in
+  `heroCareProgress`.
+- A day advances at most once and only while the cat's three daily needs are at
+  least in the **Okay** band.
+- Low needs pause new Hero-care days; they never subtract earned days or
+  long-term stats.
 - Restoring care resumes progress immediately.
 - Hero progress never decays and the cat never devolves.
 - Evolution uses the existing Nova, Ember, and Moss Hero assets and a clear
   celebratory event.
-- Do not reuse the current threshold that allowed a first-day evolution.
+- Existing evolved cats remain evolved; the new gate applies only to future
+  evolutions.
 
-The exact relationship among current Brain, Energy, Bond, and the new three
-needs must be audited before implementation so the app does not show duplicate
-or contradictory meters.
-
-> **▸ Resolved (see §0.2 / §0.3):** the audit is done. Current gate is
-> `brain ≥ 12 && energy ≥ 12` (Bond excluded), and the +2 brain / +2 energy daily
-> quests are why day-1 evolution happens. Recommended new rule: keep the 12/12
-> caps as *one* requirement **and** add a distinct-active-days counter
-> (`heroCareProgress`) that only advances on days the cat is at least "Okay"
-> (§5.1). Evolve when both are satisfied. This reuses the existing stats as the
-> "effort" axis and adds "sustained care over N days" as the second axis — no
-> duplicate meter, and it answers **§18 Q2** once you pick N (recommend ~14).
+Implementation is the next progression slice after Rest and Happiness pass
+device testing. It must define an atomic once-per-local-day advance and cannot
+trust a client-supplied counter.
 
 ## 12. Character identity
 
@@ -1038,9 +968,8 @@ The MVP is complete when all of the following work together:
 - Verify existing décor writes actually save and reload.
 - Add migration-safe Café state defaults.
 
-> **▸ Status:** the **code audit is done — see §0.** Remaining Slice 0 work is
-> the *Firestore rules* review + the migration defaults (§10 note). The Phase-0
-> papercuts (§0.5) are already merged on this branch.
+> **▸ Status: complete.** The audit, migration-safe care defaults, and matching
+> Firestore rules are implemented; the current three-need rules are deployed.
 
 ### Slice 1 — the room becomes Sirus's
 
@@ -1049,12 +978,21 @@ The MVP is complete when all of the following work together:
 - Add one-step Undo for the current decorating session.
 - Make the cat draggable and persist its position.
 
+> **▸ Status: complete for the current room model.** Play/Decorate, the owned-item
+> tray, placement/storage, one-step Undo, room bounds, and cat position persistence
+> are released.
+
 ### Slice 2 — the cat becomes alive
 
 - Replace reset timers with the explicit behavior state machine.
 - Add lasting tap response, idle, wander, and attention states.
 - Add state-aware welcome-back presentation and the functional need cue.
 - Prevent stale timers and center snapping.
+
+> **▸ Status: core released.** The interruption-safe controller, lasting tap and
+> object actions, saved cat movement, idle animation, and functional low-need cue
+> are present. Autonomous wandering and richer welcome-back choices remain
+> pending their own device-tested pacing pass.
 
 ### Slice 3 — objects become playable
 
@@ -1065,17 +1003,10 @@ The MVP is complete when all of the following work together:
   partial signature-bed composites optional until coverage is consistent.
 - Add clear no-charge feedback without guilt.
 
-> **▸ Current sub-slice:** placed food/rest/play objects now run the interruption-
-> safe walk → eat/sleep/play loop, including Hero cats;
-> decorative objects acknowledge taps without implying a refill. The care loop
-> now includes all three real meters, timestamp decay, immediate quest-earned
-> Care Charges, food/rest/play spending, and clear full/no-charge/save-failure
-> feedback. The current implementation also closes the reported gaps:
-> blank-room tap-to-walk, a distinct water action, explicit Toy Basket coverage,
-> object taps through the cat sprite's transparent box, consistent cat-only sleep
-> layered over any rest object, and the Firestore coin-
-> purchase pairing that previously denied a 12-coin Cat Tree at 14 coins.
-> Drag-the-yarn remains a follow-up; ordinary yarn taps already refill Happiness.
+> **▸ Status: released except drag-the-yarn.** Food, water, rest, play, and décor
+> taps have distinct readable actions; care meters and charges resolve visibly;
+> full/no-charge/save-failure states are explicit. Ordinary yarn taps refill
+> Happiness, but direct yarn dragging and cat-follow behavior remain open.
 
 ### Slice 4 — real-life care loop
 
@@ -1083,17 +1014,19 @@ The MVP is complete when all of the following work together:
 - Tune decay/refill values from actual use.
 - Connect care to Hero progress.
 
-> **▸ Current vertical slice:** Hunger, Rest, and Happiness are implemented end-
-> to-end with the locked starting values: a healthy/testable 80 start, 100
-> maximum, 35/25/20-per-day timestamp decay, a 48-hour return cap, Care Charges
+> **▸ Status: released; device tuning in progress.** Hunger, Rest, and Happiness
+> are implemented end-to-end with the locked starting values: a healthy/testable
+> 80 start, 100 maximum, 35/25/20-per-day timestamp decay, a 48-hour return cap,
+> Care Charges
 > capped at 6, and up to +20 per matching food/rest/play object use. Existing
 > Hunger-only cats migrate with fresh 80 Rest/Happiness values rather than taking
 > retroactive decay. Water remains a free neutral interaction. One lowest-need
 > cue highlights a useful placed object (or the stored-item tray) without spending
 > care automatically. A paid play refill also uses 5 Rest, making the locked
 > play→rest rhythm visible without allowing repeated screen taps to drain it.
-> `heroCareProgress` intentionally remains the next separate
-> progression slice so the three-needs interaction can be device-tested first.
+> Hunger passed device testing. Rest and Happiness are the current phone-test
+> checkpoint. After they pass, `heroCareProgress` is the next separate progression
+> slice.
 
 ### Slice 5 — animation polish
 
@@ -1122,14 +1055,6 @@ The MVP is complete when all of the following work together:
 - Preserve room ownership and spending permissions.
 - Treat real-time multiplayer or shared decorating as a separate later choice.
 
-> **▸ Sequencing note (from mine):** a smaller "prove-the-loop" step can sit
-> between Slices 3 and 4 — **one need (Hunger) end-to-end**: `catNeeds.hunger` +
-> timestamp decay + a Care Charge earned on quest completion + tap-the-bowl →
-> `EAT` pose → meter rises. It exercises the whole vertical (store → decay → state
-> machine → visible resolution) on one need before the full three-need system,
-> and it's the fastest way to put a *doing something* cat in front of Sirus.
-> **Implemented; awaiting device testing.**
-
 ## 17. Non-goals for the first build
 
 - AI chat or open-ended cat dialogue (short deterministic speech bubbles are in scope)
@@ -1147,56 +1072,26 @@ The MVP is complete when all of the following work together:
 - Large minigames added to compensate for an unresponsive core room
 - Unique code architecture for each cat
 
-## 18. Decisions to refine next
+## 18. Remaining tuning and later decisions
 
-These questions should be answered before Slice 4 is finalized. Items marked
-**▸ Answered** are resolved by the §0 audit. The remaining design **forks are now
-locked in §0.8** (starting points, still tunable); anything below without a §0.8
-entry is ordinary tuning to confirm during testing.
+Locked starting calls live in §0.8 and are not repeated here. The actual open
+questions are:
 
-1. Roughly how many individual quest completions make up Sirus's observed
-   15–20 points on a typical day? — **▸ Answered (§0.4): ~1:1, so ~15–20
-   completions.**
-2. How many **active care days** should a new cat usually take to reach Hero
-   form: about 7, 14, 21, 30, or another target? *(Recommend ~14; see §11.2.)*
-3. Are flexible Care Charges the right bridge from quests to care, or should
-   quest categories earn Food/Rest/Play separately? *(Section taxonomy already
-   exists in code if you later want typed care — §6.2.)*
-4. Should a Care Charge be granted when Sirus marks a quest complete, when Mom
-   approves it, or in two stages? *(Code supports either hook — §6.1 note.)*
-5. Are the proposed decay rates slow enough for the household's real rhythm?
-6. Is a 48-hour offline-decay cap appropriate, or should the cat effectively
-   “pause” after one day away?
-7. Should sleep remain active until Sirus wakes the cat, or end automatically
-   after a fixed rest animation?
-8. Should each child have one shared room across cats, or a separate saved room
-   for each cat? *(Today décor is per-child, not per-cat — §0.7.)*
-9. How should the current Energy, Brain, Bond, and coin systems relate to
-   Hunger, Rest, Happiness, and Hero progress without duplicate meanings? —
-   **▸ Answered (§0.2): two separate layers; Bond isn't in the Hero gate; coins
-   stay décor-only; Care Charges are new.**
-10. Which existing objects are initially owned, shop-unlocked, or cat-specific? —
-    **▸ Answered (§0.7): none owned by default; all shop-unlocked. Signature-bed
-    art exists, but the current interaction layers each cat's transparent sleep
-    frames over whichever rest object Sirus actually taps.**
-11. Can the cat freely overlap furniture, or should only major objects reserve
-   space?
-12. What exact attention cue feels clear to Sirus without becoming nagging?
-13. Does Sirus choose family visitors freely, or should visits sometimes follow
-    events such as a parent approving a quest?
-14. When family visits are built, may visitors only interact, or can Sirus grant
-    selected people permission to help decorate?
-15. Should sound begin on or off by default, while always preserving Sirus's
-    saved mute choice?
-16. Should a room snapshot download immediately or first show a simple preview
-    with Save/Cancel?
-17. **New — Rest model:** symmetric decay (§5.3) or self-recovery + play-cost
-    (§5.5)? *(Recommend symmetric first, switch if it feels like busywork.)*
-18. **Later health model:** how long must a need remain urgent before a temporary
-    unwell state is possible, and should balanced over-care ever do more than a
-    polite refusal? Decide with Sirus only after the three core needs are tested.
-19. Should point/returned-quest bubbles wait in a small inbox when the tablet was
-    closed, or show only for live events? Either way, each event displays once.
+1. After a normal week, do the 35/25/20 decay rates and 6 × +20 Care Charge
+   balance let needs matter without making care feel constant?
+2. Does symmetric Rest feel understandable, or does it feel enough like busywork
+   to justify the self-recovery fallback in §5.5?
+3. What exact attention-cue wording feels clear to Sirus without becoming
+   nagging?
+4. Should family visits be freely selected, event-triggered, or both?
+5. When family visits are built, may visitors only interact, or can Sirus grant
+   selected people permission to help decorate?
+6. For the later health model, how long must a need remain urgent before a
+   temporary unwell state is possible, and should balanced over-care ever do
+   more than a polite refusal? Decide with Sirus only after the three core needs
+   are tested.
+7. Should point/returned-quest bubbles wait in a small inbox when the tablet was
+   closed, or show only for live events? Either way, each event displays once.
 
 ---
 
@@ -1228,6 +1123,6 @@ Documentation-only changes (like this file) don't need the stamp.
 ## Provenance
 
 This combined spec = the product/experience "Interactive Café Goal" (v2) + a
-code-grounded audit of `cat-trainer-v2/` (Aug 2026). **▸ From the code** notes and
-§0 come from reading the shipped source; the product direction, guardrails, and
-slice plan are unchanged from v2.
+code-grounded audit of `cat-trainer-v2/` (Aug 2026), reconciled through the live
+three-need care release. Historical one-off fixes are intentionally omitted;
+current behavior, durable requirements, decisions, and remaining work are kept.
