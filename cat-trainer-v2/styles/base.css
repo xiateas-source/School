@@ -290,7 +290,30 @@ main { padding: 0 16px; }
 .hero-badge { position: absolute; top: 10px; left: 10px; background: var(--gold); color: #fff; font-size: .62rem; font-weight: 800; padding: 3px 8px; border-radius: 8px; }
 
 /* ---------- Cafe ---------- */
-.coin-pill { display: inline-block; background: var(--paper); border-radius: 12px; box-shadow: var(--shadow); padding: 8px 14px; font-weight: 700; margin-bottom: 12px; }
+.cafe-wallets { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.coin-pill, .care-charge-pill { background: var(--paper); border-radius: 12px; box-shadow: var(--shadow); padding: 8px 12px; font-weight: 700; }
+.care-charge-pill { display: inline-flex; align-items: center; gap: 5px; color: #6d5a27; }
+.care-charge-pill > span:last-child { font-size: .76rem; color: var(--muted); }
+#c-care-charges { font-family: var(--font-display); font-size: .88rem; color: var(--purple); }
+#c-care-charges.spent { animation: chargeSpend .55s ease; }
+@keyframes chargeSpend { 0%{transform:scale(1);opacity:1} 45%{transform:scale(.72);opacity:.55} 100%{transform:scale(1);opacity:1} }
+
+.care-panel { background: var(--paper); border-radius: 14px; box-shadow: var(--shadow); padding: 10px 12px; margin: 0 2px 10px; }
+.care-need { position: relative; }
+.care-need-label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: .82rem; margin-bottom: 6px; }
+.care-need-label > span { display: inline-flex; align-items: center; gap: 5px; }
+.care-need-label img { width: 24px; height: 24px; object-fit: contain; image-rendering: pixelated; }
+.care-need-label small { color: var(--muted); font-weight: 600; }
+.care-need-label b { min-width: 52px; text-align: right; }
+.care-meter { height: 13px; background: var(--line); border-radius: 8px; overflow: hidden; }
+.care-meter i { display: block; height: 100%; width: 80%; border-radius: inherit; background: var(--green); transition: width .65s ease, background-color .25s ease; }
+.care-need.okay .care-meter i { background: var(--gold); }
+.care-need.needs-care .care-meter i { background: var(--orange); }
+.care-need.urgent-safe .care-meter i { background: var(--pink); }
+.care-need.is-saving { opacity: .72; }
+.care-delta { position: absolute; right: 2px; bottom: 10px; color: var(--green); font-family: var(--font-display); font-size: .7rem; opacity: 0; pointer-events: none; }
+.care-delta.show { animation: careDelta 1.8s ease forwards; }
+@keyframes careDelta { 0%{opacity:0;transform:translateY(5px)} 20%,65%{opacity:1;transform:translateY(-8px)} 100%{opacity:0;transform:translateY(-18px)} }
 .cafe-room {
   position: relative; width: 100%; aspect-ratio: 3/4; max-height: 420px;
   border-radius: 18px; overflow: hidden; box-shadow: var(--shadow);
@@ -304,6 +327,7 @@ main { padding: 0 16px; }
 .cafe-cat-wrap.mood-happy  { animation: catHappy 2.6s ease-in-out infinite; }
 .cafe-cat-wrap[data-cat-state="approach"],
 .cafe-cat-wrap[data-cat-state="eat"],
+.cafe-cat-wrap[data-cat-state="drink"],
 .cafe-cat-wrap[data-cat-state="play"],
 .cafe-cat-wrap[data-cat-state="sleep"],
 .cafe-cat-wrap[data-cat-state="dragged"] { animation: none; }
@@ -313,6 +337,8 @@ main { padding: 0 16px; }
 @keyframes catBreathe { 0%,100%{transform:translateY(0) scale(1,1)} 50%{transform:translateY(-1.5%) scale(1.006,1.03)} }
 @keyframes catSleep   { 0%,100%{transform:translateY(0) scale(1,1) rotate(0)} 50%{transform:translateY(-1%) scale(1.004,1.02) rotate(-1.5deg)} }
 @keyframes catHappy   { 0%,100%{transform:translateY(0) scale(1,1)} 25%{transform:translateY(-3.5%) scale(1.01,1.02)} 50%{transform:translateY(0) scale(1,1)} 75%{transform:translateY(-1.5%) scale(1.006,1.01)} }
+.cafe-cat-wrap[data-cat-state="drink"] .cafe-cat { animation: catDrink .72s ease-in-out infinite; }
+@keyframes catDrink { 0%,100%{transform:translateY(0) rotate(0)} 45%{transform:translateY(5%) rotate(-2deg)} 70%{transform:translateY(2%) rotate(1deg)} }
 #c-placed img, #parent-cafe .placed img { position: absolute; width: 26%; }
 /* Layering follows the mode: in Play the cat is the star, in front of the
    furniture; in Decorate the furniture comes forward to be arranged (and the cat
@@ -336,8 +362,12 @@ main { padding: 0 16px; }
 @keyframes catPop    { 0%{transform:scale(1,1)} 25%{transform:scale(1.12,.9)} 50%{transform:scale(.94,1.08)} 75%{transform:scale(1.04,.98)} 100%{transform:scale(1,1)} }
 @keyframes catWiggle { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-6deg)} 50%{transform:rotate(5deg)} 75%{transform:rotate(-3deg)} }
 @media (prefers-reduced-motion: reduce) {
-  .cafe-cat-wrap, .cafe-cat.react, .cafe-cat.react-wiggle, .cafe-decor.wiggle { animation: none; }
+  .cafe-cat-wrap, .cafe-cat.react, .cafe-cat.react-wiggle, .cafe-decor.wiggle,
+  .cafe-cat-wrap[data-cat-state="drink"] .cafe-cat,
+  #c-care-charges.spent, .care-delta.show { animation: none; }
   .cafe-cat-wrap { transition: none !important; }
+  .care-meter i { transition: none; }
+  .care-delta.show { opacity: 1; }
 }
 .cafe-hint { font-size: .8rem; color: var(--muted); text-align: center; margin: 10px 2px 0; }
 .coin-ico { width: 1em; height: 1em; object-fit: contain; vertical-align: -0.15em; }

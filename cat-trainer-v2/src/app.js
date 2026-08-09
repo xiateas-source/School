@@ -1,17 +1,21 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=80d56a9c';
+import { isConfigured } from './firebase.js?v=9bf62112';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=80d56a9c';
-import * as store from './store.js?v=80d56a9c';
-import { CAT_DEFS } from './data/cats.js?v=80d56a9c';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=80d56a9c';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=80d56a9c';
-import { cafeActionFor, catDestinationForObject, catWalkDuration } from './cafe-interactions.js?v=80d56a9c';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=80d56a9c';
+} from './auth.js?v=9bf62112';
+import * as store from './store.js?v=9bf62112';
+import { CAT_DEFS } from './data/cats.js?v=9bf62112';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=9bf62112';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=9bf62112';
+import {
+  cafeActionFor, catDestinationForObject, catDestinationForTap,
+  firstCafeDecorElement, catWalkDuration
+} from './cafe-interactions.js?v=9bf62112';
+import { CARE_CONFIG, careCharges, hungerAt } from './care.js?v=9bf62112';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=9bf62112';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -58,6 +62,7 @@ function navChild(name) {
 
 // ---- Entering an app --------------------------------------------------------
 async function enterParent(familyId, user, name) {
+  stopCareClock();
   const label = name || deviceParentName() || (familyId === user.uid ? 'Mom' : 'Parent');
   const eyebrow = el('p-dash-eyebrow');
   if (eyebrow) eyebrow.textContent = `${label.toUpperCase()}’S DASHBOARD`;
@@ -74,6 +79,7 @@ async function enterChild(familyId, uid) {
   state.role = 'child'; state.familyId = familyId; state.uid = uid;
   showShell('child'); navChild('home');
   await subscribeAll();
+  startCareClock();
   scheduleCatBeat(); // the café cat ambles/glances on its own while Sirus watches
 }
 
@@ -304,7 +310,10 @@ function renderChildHome() {
 function childQuestCard(q) {
   const status = completionStatus(q.id); // null | 'pending' | 'approved'
   const cls = status === 'approved' ? 'done' : status === 'pending' ? 'pending' : '';
-  const reward = `+${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''}`;
+  const careReward = careCharges(state.child && state.child.careCharges) >= CARE_CONFIG.chargeCap
+    ? '· ✦ care full'
+    : '· ✦1 care';
+  const reward = `+${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''} ${careReward}`;
   const btn = status === 'approved'
     ? `<button class="quest-complete" disabled>✓</button>`
     : status === 'pending'
@@ -390,7 +399,7 @@ function setCafeMode(mode) {
 function cafeDefaultHint() {
   return cafeMode === 'decorate'
     ? 'Drag things to arrange · use the tray to add or store · Undo fixes a mistake'
-    : 'Tap a bowl, bed, or toy · tap or drag the cat to interrupt';
+    : 'Tap anywhere to call the cat · bowls, beds, and toys are playable';
 }
 function setCafeHint(message) {
   const hint = el('c-cafe-hint');
@@ -428,13 +437,82 @@ function catMood() {
   const happyToday = (state.todayCompletions && state.todayCompletions.length > 0) || (cat.bond || 0) >= 12;
   return happyToday ? { pose: 'sit', cls: 'mood-happy' } : { pose: 'sit', cls: 'mood-calm' };
 }
+
+// ---- Daily care: Hunger vertical slice -------------------------------------
+// Hunger is the first end-to-end need. Existing cats are lazily stamped at a
+// healthy 80 on their first post-launch visit; a Set prevents duplicate writes
+// while the realtime snapshot catches up.
+const careInitPending = new Set();
+let careSpendPending = false;
+let careLockedView = null;
+let careFeedbackTimer = null;
+let careClockTimer = null;
+
+function stopCareClock() {
+  clearInterval(careClockTimer);
+  careClockTimer = null;
+}
+
+function startCareClock() {
+  stopCareClock();
+  careClockTimer = setInterval(() => {
+    const onCafe = document.querySelector('[data-cscreen="cafe"]')?.classList.contains('active');
+    if (state.role === 'child' && onCafe && !careSpendPending) renderCafeCareStatus();
+  }, 60 * 1000);
+}
+
+function careBand(hunger) {
+  if (hunger >= 70) return { label: 'Thriving', cls: 'thriving' };
+  if (hunger >= 40) return { label: 'Okay', cls: 'okay' };
+  if (hunger >= 15) return { label: 'Needs care', cls: 'needs-care' };
+  return { label: 'Ready for care', cls: 'urgent-safe' };
+}
+
+function activeHunger() {
+  const cat = state.cats[state.child.activeCatId] || {};
+  return hungerAt(cat.catNeeds);
+}
+
+function renderCafeCareStatus({ hungerOverride = null, chargesOverride = null } = {}) {
+  const bar = el('c-hunger-bar');
+  const meterEl = el('c-hunger-meter');
+  if (!bar || !meterEl || !state.child) return;
+
+  const locked = careSpendPending && careLockedView ? careLockedView : null;
+  const hunger = hungerOverride == null
+    ? (locked ? locked.hunger : activeHunger())
+    : hungerOverride;
+  const charges = chargesOverride == null
+    ? (locked ? locked.charges : careCharges(state.child.careCharges))
+    : careCharges(chargesOverride);
+  const rounded = Math.round(hunger);
+  const band = careBand(hunger);
+
+  el('c-care-charges').textContent = charges;
+  el('c-care-charges').setAttribute('aria-label', `${charges} of ${CARE_CONFIG.chargeCap} Care Charges`);
+  el('c-hunger-val').textContent = `${rounded}/100`;
+  el('c-hunger-band').textContent = band.label;
+  bar.style.width = `${hunger}%`;
+  meterEl.setAttribute('aria-valuenow', String(rounded));
+  const row = el('c-hunger-need');
+  row.classList.remove('thriving', 'okay', 'needs-care', 'urgent-safe', 'is-saving');
+  row.classList.add(band.cls);
+  row.classList.toggle('is-saving', careSpendPending);
+}
+
+function ensureActiveCatCare(catId, cat) {
+  if (!catId || (cat.catNeeds && cat.catNeeds.lastUpdatedAt) || careInitPending.has(catId)) return;
+  careInitPending.add(catId);
+  store.ensureCatCare(state.familyId, catId)
+    .catch(() => setTimeout(() => careInitPending.delete(catId), 5000));
+}
 // ---- Café cat behavior: one state, one timer -------------------------------
 // A single owner for what the cat is doing. Every transition cancels the pending
 // timer, so a stale beat can never override a newer action — the root cause of
 // the old "snap back to center / revert the pose" bug (a 900ms settle timer and
 // a separate stroll-return timer both fighting whatever was happening now).
 let catTapCount = 0;
-let catState = 'idle';     // idle | glance | react | dragged | approach | eat | play | sleep
+let catState = 'idle';     // idle | glance | react | dragged | approach | eat | drink | play | sleep
 let catStateTimer = null;  // duration of the current transient state
 let catBeatTimer = null;   // schedules the next autonomous idle beat
 let catAnimTimer = null;   // frame-swap loop for multi-frame poses (eat/play/walk)
@@ -485,23 +563,20 @@ function preloadCatFrames(def) {
     img.src = src;
   });
 }
-// Art for a café pose. If the cat is "sleeping" at its own placed bed, it naps
-// ON that bed (the cat-on-bed art) instead of the plain curled pose. Passing a
-// target prevents a different signature bed elsewhere in the room from being
-// shown when Sirus tapped another sleep object.
-function cafePoseArt(def, poseKey, targetItemId = null) {
+// Art for a café pose. Sleep always uses the cat-only transparent sprite layered
+// over the actual object Sirus selected. The old signature-bed composites made
+// Moss appear inside one bed while Nova and Ember appeared beside that same bed.
+// One shared layering path keeps every cat and every sleep object consistent.
+function cafePoseArt(def, poseKey) {
   if (!def.poses) return def.art;
-  if (poseKey === 'sleep' && def.bedItemId && def.bedPose) {
-    const rec = ownedCafeRecord(def.bedItemId);
-    const correctTarget = targetItemId == null || targetItemId === def.bedItemId;
-    if (correctTarget && rec && rec.placed !== false) return def.bedPose;
-  }
   return def.poses[poseKey] || def.poses.sit || def.art;
 }
 
 function renderChildCafe() {
   el('c-coins').textContent = state.child.coins || 0;
   const id = state.child.activeCatId; const cat = state.cats[id] || {}; const def = CAT_DEFS[id];
+  renderCafeCareStatus();
+  ensureActiveCatCare(id, cat);
   el('c-cafe-room').style.backgroundImage = `url("${CAFE_ROOM_ART}")`;
   preloadCatFrames(def);
   const mood = catMood();
@@ -669,11 +744,21 @@ function initCafeInteractions() {
         try { await store.moveCafeCat(state.familyId, x, y); }
         catch (_) { toast('Could not save that move.'); renderChildCafe(); }
       } else {
+        // The 256×256 cat PNG has a large transparent rectangle. If a visible
+        // bowl/toy/bed sits under that rectangle, the browser reports the cat as
+        // the tap target even though Sirus clearly touched the object. Look
+        // through the cat layer and prioritize that placed object so Water and
+        // Toy Basket cannot become mysteriously untappable after decorating.
+        const behindCat = Number.isFinite(e.clientX) && Number.isFinite(e.clientY)
+          && document.elementsFromPoint
+          ? firstCafeDecorElement(document.elementsFromPoint(e.clientX, e.clientY))
+          : null;
         if (d.interrupted && state.child) {
           const x = round(d.startX), y = round(d.startY);
           state.child.cafeCat = { x, y };
           store.moveCafeCat(state.familyId, x, y).catch(() => {});
         }
+        if (behindCat) return activateCafeItem(behindCat);
         reactCat(e); // a tap, not a drag → pet/react
       }
     }
@@ -683,7 +768,11 @@ function initCafeInteractions() {
   room.addEventListener('click', (e) => {
     if (cafeMode !== 'play') return;
     const itemEl = e.target.closest('[data-decor]');
-    if (itemEl) activateCafeItem(itemEl);
+    if (itemEl) return activateCafeItem(itemEl);
+    // Cat taps are handled by the pointer flow above. A blank-room tap is a
+    // movement request: walk there, remain there, and persist the new spot.
+    if (e.target.closest('#c-cafe-cat-wrap, .fx-sprite')) return;
+    moveCatToRoomTap(e);
   });
   room.addEventListener('keydown', (e) => {
     if (cafeMode !== 'play' || (e.key !== 'Enter' && e.key !== ' ')) return;
@@ -739,14 +828,11 @@ function playSprite(poseKey, { fps = 3, holdMs = 0, heroAction = false, targetIt
   // frames exist, object interactions use the same cat's base action frames and
   // return to Hero art afterward; ordinary idle reactions keep Hero art.
   const frames = (!cat.evolved || heroAction) && def.frames && def.frames[poseKey];
-  // Keep the special cat-on-bed art when its favored bed is placed. The plain
-  // two-frame sleep loop is used only when the cat is sleeping elsewhere.
   const poseArt = cafePoseArt(def, poseKey, targetItemId);
-  const usesBedPose = poseKey === 'sleep' && poseArt === def.bedPose;
   const still = cat.evolved && !heroAction
     ? def.heroArt
-    : (usesBedPose ? def.bedPose : (frames && frames[0]) || poseArt);
-  if (!frames || frames.length < 2 || reduce || usesBedPose) { catEl.src = still; return; }
+    : (frames && frames[0]) || poseArt;
+  if (!frames || frames.length < 2 || reduce) { catEl.src = still; return; }
   let i = 0; catEl.src = frames[0];
   catAnimTimer = setInterval(() => { i = (i + 1) % frames.length; catEl.src = frames[i]; }, Math.round(1000 / fps));
   if (holdMs) catAnimStopTimer = setTimeout(stopSpriteAnimation, holdMs);
@@ -766,18 +852,96 @@ function pulseCafeItem(itemEl, item) {
   if (item && item.role === 'decor') toast(`${item.name} looks cozy here.`);
 }
 
-function actionHidesTarget(item, def) {
+function actionHidesTarget(item) {
   if (item.role === 'food') return true; // eat art already contains a bowl
   if (item.role === 'play' && (item.id === 'rug' || item.id === 'pinkYarn')) return true;
-  return item.role === 'rest' && item.id === def.bedItemId; // signature nap art contains the bed
+  return false;
 }
 
 function cafeActionHint(item, catName) {
-  if (item.role === 'food') return item.id === 'waterBowl'
-    ? `${catName} is getting a drink.`
-    : `${catName} is eating.`;
+  if (item.role === 'food') return `${catName} is eating.`;
+  if (item.role === 'water') return `${catName} is getting a drink.`;
   if (item.role === 'rest') return `${catName} is sleeping · tap the cat or another object to wake up`;
   return `${catName} is playing!`;
+}
+
+function showHungerRefill(result, destination) {
+  renderCafeCareStatus({ hungerOverride: result.before, chargesOverride: result.chargesBefore });
+  const bar = el('c-hunger-bar');
+  if (bar) void bar.offsetWidth;
+  requestAnimationFrame(() => {
+    renderCafeCareStatus({ hungerOverride: result.after, chargesOverride: result.chargesAfter });
+  });
+
+  const delta = el('c-hunger-delta');
+  if (delta) {
+    clearTimeout(careFeedbackTimer);
+    delta.textContent = `+${result.refill}`;
+    delta.classList.remove('show'); void delta.offsetWidth; delta.classList.add('show');
+    careFeedbackTimer = setTimeout(() => { delta.classList.remove('show'); delta.textContent = ''; }, 1800);
+  }
+  const charge = el('c-care-charges');
+  if (charge) { charge.classList.remove('spent'); void charge.offsetWidth; charge.classList.add('spent'); }
+
+  const room = el('c-cafe-room');
+  if (room) spawnFx('assets/fx-sparkle.png', room, {
+    count: 3, cx: destination.x + 20, cy: destination.y + 23,
+    spread: 10, size: 30, life: 1000
+  });
+}
+
+async function resolveCafeCare(item, destination) {
+  if (item.need !== 'hunger' || careSpendPending) return;
+  const catId = state.child.activeCatId;
+  const def = CAT_DEFS[catId];
+  const before = activeHunger();
+  const chargesBefore = careCharges(state.child.careCharges);
+
+  if (before >= CARE_CONFIG.maxNeed) {
+    setCafeHint(`${def.name} is comfortably full · no Care Charge used`);
+    toast('Hunger is full — your Care Charge is safe.');
+    return;
+  }
+  if (chargesBefore < 1) {
+    setCafeHint(`${def.name} can still snack. Complete a quest to earn a Care Charge for Hunger.`);
+    toast('Complete a quest to earn a Care Charge.');
+    return;
+  }
+
+  careSpendPending = true;
+  careLockedView = { hunger: before, charges: chargesBefore };
+  renderCafeCareStatus();
+  setCafeHint(`${def.name} is eating · saving care…`);
+
+  try {
+    const result = await store.spendHungerCare(state.familyId, catId);
+    if (state.child) state.child.careCharges = result.chargesAfter;
+    const cat = state.cats[catId] || {};
+    state.cats[catId] = {
+      ...cat,
+      catNeeds: { ...(cat.catNeeds || {}), hunger: result.after, lastUpdatedAt: Date.now() }
+    };
+    careSpendPending = false;
+    careLockedView = null;
+    if (state.child.activeCatId === catId) {
+      showHungerRefill(result, destination);
+      setCafeHint(`${def.name}'s Hunger rose by ${result.refill}.`);
+    }
+  } catch (err) {
+    careSpendPending = false;
+    careLockedView = null;
+    renderCafeCareStatus();
+    if (err.message === 'no-care-charges') {
+      setCafeHint(`Complete a quest to earn a Care Charge for ${def.name}.`);
+      toast('No Care Charges right now.');
+    } else if (err.message === 'need-full') {
+      setCafeHint(`${def.name} is comfortably full · no Care Charge used`);
+      toast('Hunger is full — your Care Charge is safe.');
+    } else {
+      setCafeHint('Care did not save yet · try again when connected');
+      toast('Care did not save — your charge is still safe.');
+    }
+  }
 }
 
 function beginCafeObjectAction(item, destination) {
@@ -788,7 +952,7 @@ function beginCafeObjectAction(item, destination) {
   const { def, wrap } = catCtx();
   if (wrap) wrap.style.transition = '';
   const liveTarget = el('c-placed').querySelector(`[data-decor="${item.id}"]`) || catTargetEl;
-  markCatTarget(liveTarget, actionHidesTarget(item, def));
+  markCatTarget(liveTarget, actionHidesTarget(item));
 
   // The destination is now the cat's real location, not a temporary animation
   // offset. Save it just like a direct drag so reopening the café doesn't snap
@@ -812,6 +976,7 @@ function beginCafeObjectAction(item, destination) {
     count: 2, cx: destination.x + 20, cy: destination.y + 25,
     spread: 8, size: 28, life: 800, mode: 'trail'
   });
+  resolveCafeCare(item, destination);
 }
 
 function activateCafeItem(itemEl) {
@@ -867,6 +1032,58 @@ function activateCafeItem(itemEl) {
     wrap.style.transition = `left ${travelMs}ms linear, top ${travelMs}ms linear`;
     requestAnimationFrame(() => {
       if (catState !== 'approach' || catTargetId !== item.id) return;
+      wrap.style.left = destination.x + '%';
+      wrap.style.top = destination.y + '%';
+    });
+  }
+}
+
+function moveCatToRoomTap(e) {
+  const room = el('c-cafe-room');
+  const { def, wrap } = catCtx();
+  if (!room || !wrap || !def) return;
+
+  const rr = room.getBoundingClientRect();
+  const wr = wrap.getBoundingClientRect();
+  const from = {
+    x: ((wr.left - rr.left) / rr.width) * 100,
+    y: ((wr.top - rr.top) / rr.height) * 100
+  };
+  const destination = catDestinationForTap({
+    tapX: ((e.clientX - rr.left) / rr.width) * 100,
+    tapY: ((e.clientY - rr.top) / rr.height) * 100
+  });
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const travelMs = catWalkDuration(from, destination, reduce);
+
+  releaseCatTarget();
+  wrap.style.transition = 'none';
+  wrap.style.left = from.x + '%';
+  wrap.style.top = from.y + '%';
+  wrap.style.bottom = 'auto';
+  void wrap.offsetWidth;
+
+  const arrive = () => {
+    if (catState !== 'approach' || catTargetId !== null) return;
+    const x = Math.round(destination.x * 10) / 10;
+    const y = Math.round(destination.y * 10) / 10;
+    if (state.child) state.child.cafeCat = { x, y };
+    store.moveCafeCat(state.familyId, x, y).catch(() => toast('Could not save that spot.'));
+    settleCatToRest();
+  };
+
+  catTransient('approach', travelMs, arrive);
+  playSprite('walk', { fps: 4, heroAction: true });
+  setCafeHint(`${def.name} is walking over…`);
+
+  if (travelMs === 0) {
+    wrap.style.left = destination.x + '%';
+    wrap.style.top = destination.y + '%';
+    arrive();
+  } else {
+    wrap.style.transition = `left ${travelMs}ms linear, top ${travelMs}ms linear`;
+    requestAnimationFrame(() => {
+      if (catState !== 'approach' || catTargetId !== null) return;
       wrap.style.left = destination.x + '%';
       wrap.style.top = destination.y + '%';
     });
@@ -1174,12 +1391,14 @@ function bindEvents() {
 
 async function handleComplete(questId) {
   try {
-    await store.completeQuest(state.familyId, state.uid, questId);
+    const result = await store.completeQuest(state.familyId, state.uid, questId);
     // Immediate win even though the minutes are gated: celebrate + buzz so the
     // tap feels great; the reward then stacks in the "waiting for Mom" pile.
     confettiBurst();
     if (navigator.vibrate) { try { navigator.vibrate(12); } catch (_) {} }
-    toast('Nice one! ⭐ Sent to Mom');
+    toast(result && result.careChargeGranted
+      ? 'Nice one! +1 Care Charge · Sent to Mom'
+      : 'Nice one! Care Charges are full · Sent to Mom');
   }
   catch (err) {
     if (err.message === 'already-completed') toast('Already done today!');

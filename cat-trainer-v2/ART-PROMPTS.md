@@ -90,6 +90,18 @@ All under `cat-trainer-v2/assets/`. Transparent PNG unless noted.
 | `ember-green-paw-bed.png` | Ember asleep on a green bed with a paw print |
 | `moss-pink-heart-bed.png` | Moss asleep on a pink bed with a heart |
 
+**Runtime note (device-tested 2026-08-09):** these three composites are preserved
+assets but are not selected during ordinary object sleep. One signature bed per
+cat made only Moss-on-pink (or another exact match) look physically inside the
+bed. The Café now layers each transparent `*-sleep` loop over whichever real
+bed/pillow/house was tapped, so all three cats behave consistently.
+
+**Future drink-art gap:** no drink pose exists, and the `*-eat` art contains its
+own food bowl, so it must not be reused for water. If richer water animation is
+requested later, generate transparent cat-only `nova/ember/moss-drink-a.png` and
+`-drink-b.png` frames with a lowered/raised head and **no embedded bowl**; the
+placed `water-bowl-teal.png` remains visible underneath.
+
 ### Café items (17) — single cozy object, centered, transparent
 | Filename | Item |
 |---|---|

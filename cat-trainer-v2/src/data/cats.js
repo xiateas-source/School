@@ -21,7 +21,8 @@ export const CAT_DEFS = {
       idle: ['assets/nova-sit.png', 'assets/nova-blink.png'],
       sleep: ['assets/nova-sleep.png', 'assets/nova-sleep-b.png']
     },
-    // If this café bed item is owned + placed, the café cat naps ON it.
+    // Preserved signature-bed art. Runtime sleep currently layers the cat-only
+    // frames over whichever rest object was tapped for consistent cat × bed use.
     bedItemId: 'bed', bedPose: 'assets/nova-blue-star-bed.png'
   },
   ember: {

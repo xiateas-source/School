@@ -8,9 +8,10 @@ rules_version = '2';
 //     definitions), members, pairing codes, apply point/cat rewards, and create
 //     point transactions (adjustments, redemptions, and approved quest earnings).
 //  3. The child role is limited to its legitimate actions: REQUESTING a quest
-//     completion (once per local day, always status 'pending' — it grants nothing
-//     until a parent approves), switching the active cat, and buying café items
-//     with coins. The child can never raise its own minutes/coins or cat stats.
+//     completion (once per local day, always status 'pending'), receiving its one
+//     capped Care Charge, spending that charge through a paired catNeeds write,
+//     switching the active cat, and buying café items with coins. The child can
+//     never raise its own minutes/coins or long-term cat progress stats.
 //  4. Duplicate quest completions can't double-count (deterministic doc id +
 //     create-only). Rewards are applied only by the parent's approval.
 //
@@ -62,6 +63,53 @@ service cloud.firestore {
     }
 
     match /families/{fid} {
+      // Static café catalog mirrored from src/data/cafe-items.js. Keeping the
+      // price server-side prevents a child client from naming a real item but
+      // claiming a cheaper price in the purchase transaction.
+      function cafeItemPrice(itemId) {
+        return itemId == 'rug' ? 4
+          : itemId == 'bed' ? 6
+          : itemId == 'plant' ? 8
+          : itemId == 'tower' ? 12
+          : itemId == 'pinkBed' ? 7
+          : itemId == 'foodBowl' ? 5
+          : itemId == 'waterBowl' ? 5
+          : itemId == 'pinkYarn' ? 4
+          : itemId == 'bookshelf' ? 14
+          : itemId == 'toyBasket' ? 9
+          : itemId == 'moonCollar' ? 10
+          : itemId == 'petPillow' ? 6
+          : itemId == 'greenBed' ? 7
+          : itemId == 'bunting' ? 8
+          : itemId == 'tealCollar' ? 10
+          : itemId == 'petHouse' ? 15
+          : itemId == 'goldCrown' ? 16
+          : -1;
+      }
+
+      // A legitimate tablet purchase is one atomic three-part change: the
+      // known item is newly created, Coins decrease by its exact catalog price,
+      // and the child profile names that same purchase at request.time.
+      function pairedCafePurchase(childId, itemId) {
+        let price = cafeItemPrice(itemId);
+        let childPath = /databases/$(database)/documents/families/$(fid)/childProfiles/$(childId);
+        let itemPath = /databases/$(database)/documents/families/$(fid)/childProfiles/$(childId)/ownedCafeItems/$(itemId);
+        let childBefore = get(childPath).data;
+        let childAfter = getAfter(childPath).data;
+        let purchase = childAfter.get('lastCafePurchase', {});
+        return price > 0
+          && childBefore.get('coins', 0) >= price
+          && childAfter.get('coins', 0) == childBefore.get('coins', 0) - price
+          && purchase.get('itemId', '') == itemId
+          && purchase.get('at', null) == request.time
+          && !exists(itemPath)
+          && existsAfter(itemPath)
+          && getAfter(itemPath).data.keys().hasOnly(['purchasedAt', 'price', 'placed'])
+          && getAfter(itemPath).data.price == price
+          && getAfter(itemPath).data.purchasedAt == request.time
+          && getAfter(itemPath).data.placed == true;
+      }
+
       // A parent creates their own family; familyId == the parent's uid.
       allow create: if signedIn()
         && fid == request.auth.uid
@@ -97,35 +145,120 @@ service cloud.firestore {
 
       // --- Child profile ---------------------------------------------------
       match /childProfiles/{childId} {
+        function storedCareCharges() {
+          return resource.data.get('careCharges', 0);
+        }
+        function requestedCareCharges() {
+          return request.resource.data.get('careCharges', 0);
+        }
+        function validCafePurchase() {
+          let purchase = request.resource.data.get('lastCafePurchase', {});
+          let itemId = purchase.get('itemId', '');
+          return itemId is string && pairedCafePurchase(childId, itemId);
+        }
+        // A child may gain exactly one charge only alongside the pending quest
+        // completion that created it. The completion id is persisted on the
+        // profile so a loose profile update cannot mint care by itself.
+        function validCareEarn() {
+          let completionId = request.resource.data.get('lastCareCompletionId', '');
+          let completionPath = /databases/$(database)/documents/families/$(fid)/questCompletions/$(completionId);
+          return storedCareCharges() >= 0
+            && storedCareCharges() < 6
+            && requestedCareCharges() == storedCareCharges() + 1
+            && completionId is string
+            && !exists(completionPath)
+            && existsAfter(completionPath)
+            && getAfter(completionPath).data.childId == childId
+            && getAfter(completionPath).data.status == 'pending'
+            && getAfter(completionPath).data.careChargeGranted == true
+            && getAfter(completionPath).data.createdBy == request.auth.uid;
+        }
+        // Spending is a one-charge decrement paired with a same-transaction
+        // care update on exactly the named cat. Decreasing a charge without the
+        // cat write is rejected; raising Hunger without a charge is rejected by
+        // the nested cat rule below.
+        function validCareSpend() {
+          let spend = request.resource.data.get('lastCareSpend', {});
+          let catId = spend.get('catId', '');
+          let catPath = /databases/$(database)/documents/families/$(fid)/childProfiles/$(childId)/cats/$(catId);
+          return storedCareCharges() > 0
+            && requestedCareCharges() == storedCareCharges() - 1
+            && catId is string
+            && spend.get('need', '') == 'hunger'
+            && spend.get('at', null) == request.time
+            && existsAfter(catPath)
+            && getAfter(catPath).data.catNeeds.lastUpdatedAt == request.time;
+        }
+
         allow read: if isMember(fid);
         allow create, delete: if isParent(fid);
-        // Parent can set anything. The child may change only its active cat — its
-        // minutes (available) and coins are frozen for a child write, so rewards
-        // land solely through a parent's quest approval, never self-credited.
+        // Parent can set anything. A child can never raise Coins: they either
+        // stay unchanged or decrease by the exact price of an atomically-created
+        // catalog item. Care Charges independently stay unchanged or pass the
+        // quest-grant / care-spend checks above.
         allow update: if isParent(fid)
           || (isChild(fid)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'activeCatId', 'cafeCat', 'coins', 'lastCafePurchase',
+                'careCharges', 'lastCareCompletionId', 'lastCareSpend'
+              ])
               && request.resource.data.available == resource.data.available
-              && request.resource.data.coins == resource.data.coins);
+              && (request.resource.data.coins == resource.data.coins
+                || validCafePurchase())
+              && (requestedCareCharges() == storedCareCharges()
+                || (requestedCareCharges() == storedCareCharges() + 1 && validCareEarn())
+                || (requestedCareCharges() == storedCareCharges() - 1 && validCareSpend())));
 
         match /cats/{catId} {
+          function validChildCareUpdate() {
+            let oldNeeds = resource.data.get('catNeeds', {});
+            let newNeeds = request.resource.data.catNeeds;
+            let childPath = /databases/$(database)/documents/families/$(fid)/childProfiles/$(childId);
+            let childBefore = get(childPath).data;
+            let childAfter = getAfter(childPath).data;
+            let spend = childAfter.get('lastCareSpend', {});
+            let isFirstCareStamp = !resource.data.keys().hasAny(['catNeeds'])
+              || !oldNeeds.keys().hasAny(['lastUpdatedAt']);
+            let isPaidRefill = childBefore.get('careCharges', 0) > 0
+              && childAfter.get('careCharges', 0) == childBefore.get('careCharges', 0) - 1
+              && spend.get('catId', '') == catId
+              && spend.get('need', '') == 'hunger'
+              && spend.get('at', null) == request.time
+              && newNeeds.hunger <= oldNeeds.get('hunger', 80) + 20;
+            return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['catNeeds'])
+              && newNeeds.diff(oldNeeds).affectedKeys().hasOnly(['hunger', 'lastUpdatedAt'])
+              && newNeeds.hunger is number
+              && newNeeds.hunger >= 0
+              && newNeeds.hunger <= 100
+              && newNeeds.lastUpdatedAt == request.time
+              && ((isFirstCareStamp
+                    && newNeeds.hunger == oldNeeds.get('hunger', 80)
+                    && childAfter.get('careCharges', 0) == childBefore.get('careCharges', 0))
+                  || isPaidRefill);
+          }
+
           allow read: if isMember(fid);
           allow create: if isParent(fid);
-          // Cat progress is a reward — applied only by a parent (quest approval or
-          // undo). The child never writes cat stats directly.
-          allow update: if isParent(fid);
+          // Brain/Energy/Bond/Hero remain parent-only rewards. A child may update
+          // only catNeeds through the tightly paired care transaction above.
+          allow update: if isParent(fid) || (isChild(fid) && validChildCareUpdate());
           allow delete: if isParent(fid);
         }
 
         match /ownedCafeItems/{itemId} {
           allow read: if isMember(fid);
-          // Purchases are create-only (can't be un-bought by the child).
-          allow create: if isMember(fid);
+          // Purchases are create-only. A parent may create one directly; a child
+          // must pair it with the exact catalog-price coin debit above.
+          allow create: if isParent(fid)
+            || (isChild(fid) && pairedCafePurchase(childId, itemId));
           // The child may rearrange / put away their OWN décor (x, y, placed),
           // but the purchase record is immutable: price + purchasedAt must not
           // change, and only a parent can delete an item. Café items grant no
           // points or coins, so this can't be abused for value.
           allow update: if isParent(fid)
             || (isChild(fid)
+                && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['x', 'y', 'placed'])
                 && request.resource.data.price == resource.data.price
                 && request.resource.data.purchasedAt == resource.data.purchasedAt);
           allow delete: if isParent(fid);

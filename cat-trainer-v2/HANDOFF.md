@@ -1,6 +1,6 @@
 # Cat Trainer v2 — Handoff & Context
 
-_Last updated: 2026-08-07. This is the durable source of truth for the rebuild.
+_Last updated: 2026-08-09. This is the durable source of truth for the rebuild.
 If you're a fresh session picking this up, read this file first._
 
 ---
@@ -74,6 +74,7 @@ cat-trainer-v2/
     ├── firebase.js       modular SDK init from CDN + offline persistence
     ├── auth.js           parent email+password, anonymous child, device memory
     ├── store.js          realtime subscriptions + transaction-safe writes
+    ├── care.js           Hunger decay + Care Charge tuning (pure/tested)
     ├── data/
     │   ├── cats.js        CAT_DEFS (nova/ember/moss + hero art)
     │   ├── quests.js      13 default quests, sections, section icons
@@ -91,8 +92,11 @@ families/{familyId}                 familyId == parent's auth uid
   members/{uid}                     { role:'parent'|'child', displayName, pairingCode? }
                                     (multiple 'parent' members allowed: Mom is the
                                      owner; Abba is a co-parent who joined by code)
-  childProfiles/{childId='sirus'}   { name, activeCatId, available, coins, childCanSwitchCat }
-    cats/{catId}                    { brain, energy, bond, evolved }   (independent per cat)
+  childProfiles/{childId='sirus'}   { name, activeCatId, available, coins, childCanSwitchCat,
+                                      careCharges, lastCareCompletionId?, lastCareSpend?,
+                                      lastCafePurchase?{ itemId, at }, cafeCat?{ x, y } }
+    cats/{catId}                    { brain, energy, bond, evolved,
+                                      catNeeds{ hunger, lastUpdatedAt } }   (independent per cat)
     ownedCafeItems/{itemId}         { purchasedAt, price, x?, y?, placed? }
                                     (x/y = saved room position %; placed=false = tucked
                                      away in the shop. Absent x/y → a default slot;
@@ -125,6 +129,10 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
   update is guarded so the purchase record stays immutable — `price` +
   `purchasedAt` can't change and only a parent can delete an item. Café items
   grant no points/coins, so a child editing them can't manufacture value.
+  A purchase is an atomic, server-validated pair: the child's Coins decrease by
+  the catalog price while that exact previously-unowned item is created. The
+  17-item price allowlist is mirrored in `firestore.rules` and checked by
+  `tools/test-cafe-interactions.mjs`.
 - **Membership joins** — a user can create only their *own* member doc, and only
   as (1) the family owner bootstrapping their parent membership, (2) a **co-parent**
   presenting an active `role:'parent'` invite code for the family, or (3) a child
@@ -136,11 +144,16 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
 > paste `firestore.rules` → Publish). Until Mom does this, the affected feature is
 > denied with "Missing or insufficient permissions." See `FIREBASE-SETUP.md` →
 > "Publishing / updating the security rules."
-> - **Latest change (2026-08-07): the interactive café** added the child
->   `ownedCafeItems` update rule above. **Pending re-publish** — until then, drag /
->   put-away / place fail on the tablet (tap reactions still work, they're
->   client-only). The point-notes feature needs **no** rules change (notes ride on
->   parent-created transactions, which the rules already allow).
+> - **Latest change (2026-08-09): Hunger care** allows a child to stamp only the
+>   migration-safe initial `catNeeds` value or perform a paired one-charge Hunger
+>   refill. Charge earning must be paired with its new pending quest completion;
+>   charge spending must be paired with the named cat's timestamped need write.
+>   Lor published the first Hunger-care rules on 2026-08-09.
+> - **Follow-up purchase correction (2026-08-09):** the published rule still
+>   froze `coins` on every child write, which denied legitimate purchases (14
+>   coins could not buy the 12-coin Cat Tree). The latest file validates an exact
+>   catalog-price debit + new owned-item record. **Publish this newest rules file
+>   again before testing purchases or Hunger.**
 > - Earlier changes (co-parent login, ledger-delete) were already published on
 >   2026-08-07; the café one is a *new* change on top.
 >
@@ -166,8 +179,9 @@ Added 2026-08-07 from Drive: 6 café items (`bunting-pastel`, `pet-house-green`,
 `pet-pillow-mint`, `bed-green-paws`, `collar-teal-heart`, `crown-gold-heart`);
 `coin.png`; app icons (`icon-192/512`, `apple-touch-icon`); 12 cat poses
 (`{nova,ember,moss}-{sit,play,eat,sleep,celebrate}`); the on-bed nap poses
-(`{nova-blue-star,ember-green-paw,moss-pink-heart}-bed`, shown when the cat's
-signature bed is placed); 4 effects (`fx-{sparkle,starburst,confetti,paw}`); and
+(`{nova-blue-star,ember-green-paw,moss-pink-heart}-bed`, preserved but no longer
+selected at runtime because coverage is inconsistent across cat × bed pairs); 4
+effects (`fx-{sparkle,starburst,confetti,paw}`); and
 section/reward icons (`night-routine`, `tidy-and-help`, `game-time-star`). Added
 2026-08-09: 18 second animation frames for two-frame blink/play/eat/walk/sleep
 loops across Nova, Ember, and Moss. Cat taps alternate play/celebrate reactions;
@@ -200,7 +214,25 @@ evolution won't feel special. Candidate for a fresher Drive asset.
       then visibly eats, sleeps, or plays; a new object or direct cat touch cleanly
       interrupts. Sleep persists until interrupted, Hero cats participate, and
       reduced-motion users get meaningful still poses. Decorative taps acknowledge
-      without claiming a care refill. Needs/Care Charges remain Slice 4.
+      without claiming a care refill.
+- [x] **Device-note corrections on the Hunger branch**: tapping blank room space
+      makes the cat walk there and save its location; water has a distinct free
+      drink bob with the teal bowl visible; Toy Basket is explicitly mapped/tested
+      as play; placed objects remain tappable beneath the cat PNG's transparent
+      rectangle; and all cats use transparent sleep frames layered over the
+      selected rest object instead of inconsistent signature-bed composites.
+- [x] **Child café purchase authorization**: tablet purchases now pair a catalog-
+      price Coin debit with the exact new item. This fixes the reported 14-coins /
+      12-coin Cat Tree denial. Requires the latest rules republish above.
+- [x] **Hunger care prove-the-loop**: Hunger starts Thriving at a testable 80,
+      then decays from a stored timestamp at 35/day (maximum 48 hours per return),
+      and displays a labeled
+      0–100 meter. Each quest tap immediately grants one flexible Care Charge up
+      to 6 while permanent rewards still wait for parent approval. After the cat
+      reaches the purple food bowl, one accepted transaction spends a charge and
+      refills up to +20 with meter, delta, count, and sparkle feedback. Full Hunger
+      and no-charge/save-failure paths never fake or waste a refill. The water bowl
+      stays free and neutral. Rest/Happiness and Hero-care days remain next.
 - [x] **Notes on point changes**: Mom/Abba can attach a free-text note to any add,
       subtract, or screen-time redemption from the parent portal; it shows as a
       second line in the ledger. (No rules change.)
@@ -256,6 +288,14 @@ evolution won't feel special. Candidate for a fresher Drive asset.
   single household; move quest completion into a Cloud Function (Blaze plan) if
   stronger guarantees are ever needed.
 - **Ember hero art** is weak (§7).
+- **Family feedback is not yet surfaced on the child device.** Positive manual
+  points need a one-time exciting Mom/Abba-attributed cat message; rejected quests
+  currently reappear without explaining what happened. Build both with the same
+  durable notification queue and deterministic speech bubble.
+- **Advanced pet health is deliberately post-MVP.** Sirus wants recoverable
+  sickness, balanced too-much/too-little care, purchasable medicine, and visible
+  consequences. `CAFE-GOAL.md` §5.6 preserves the request with no-death, no-loss,
+  no-shame, and free-recovery guardrails.
 
 ## 10. Future features / backlog
 
@@ -270,6 +310,11 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - Weekly "boss cat" needing a bigger combined effort.
 - Multiple children (schema is close; childProfiles is already a collection).
 - Fresher `ember-hero.png`.
+- Deterministic cat speech-bubble feedback for parent-added points and returned
+  quests (with correct Mom/Abba attribution and one-time delivery).
+- Mom, Abba, Sirus, and Arlo as selectable Café visitors (avatars already exist).
+- After the full three-need loop: Sirus's recoverable health/medicine expansion
+  from `CAFE-GOAL.md` §5.6.
 
 ## 11. How to make a change & deploy
 

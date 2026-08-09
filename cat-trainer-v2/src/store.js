@@ -2,15 +2,18 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=80d56a9c';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=80d56a9c';
-import { seededQuests } from './data/quests.js?v=80d56a9c';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=80d56a9c';
+import { initFirebase, db, dbSdk } from './firebase.js?v=9bf62112';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=9bf62112';
+import { seededQuests } from './data/quests.js?v=9bf62112';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=9bf62112';
+import {
+  careCharges, freshCatNeeds, grantCareCharge, hungerAt, refillHunger
+} from './care.js?v=9bf62112';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, applyBalanceDelta
-} from './shared/rewards.js?v=80d56a9c';
-import { localDate, localTimeLabel } from './shared/dates.js?v=80d56a9c';
+} from './shared/rewards.js?v=9bf62112';
+import { localDate, localTimeLabel } from './shared/dates.js?v=9bf62112';
 
 export const CHILD_ID = 'sirus';
 
@@ -70,8 +73,14 @@ export async function setupFamily(parentUid, { familyName = 'Our Family', parent
   await setDoc(p.member(parentUid), { role: 'parent', displayName: parentName });
 
   const batch = writeBatch(database);
-  batch.set(p.child(), { name: 'Sirus', activeCatId: 'nova', available: 0, coins: 0, childCanSwitchCat: true });
-  CAT_IDS.forEach(catId => batch.set(p.cat(catId), freshCatProgress()));
+  batch.set(p.child(), {
+    name: 'Sirus', activeCatId: 'nova', available: 0, coins: 0,
+    childCanSwitchCat: true, careCharges: 0
+  });
+  CAT_IDS.forEach(catId => batch.set(p.cat(catId), {
+    ...freshCatProgress(),
+    catNeeds: freshCatNeeds(serverTimestamp())
+  }));
   seededQuests().forEach(q => batch.set(p.quest(q.id), q));
   await batch.commit();
 }
@@ -233,10 +242,10 @@ export async function adjustPoints(familyId, uid, { amount, reasonCode, reasonLa
   });
 }
 
-// Sirus taps a quest complete → this files a PENDING request. It credits NOTHING
-// spendable yet (no minutes, coins, or cat stats): a parent must approve first
-// (see approveCompletion), at which point the reward lands. Still one-per-day via
-// the deterministic completion id, and refuses a duplicate for the same day.
+// Sirus taps a quest complete → this files a PENDING request and immediately
+// grants one capped Care Charge. Minutes, coins, and long-term cat stats still
+// wait for parent approval (see approveCompletion). One-per-day is enforced by
+// the deterministic completion id.
 export async function completeQuest(familyId, uid, questId, { deviceId = 'tablet' } = {}) {
   const { database, sdk } = await fs();
   const { runTransaction, serverTimestamp } = sdk;
@@ -244,7 +253,7 @@ export async function completeQuest(familyId, uid, questId, { deviceId = 'tablet
   const today = localDate();
   const completionId = `${CHILD_ID}_${questId}_${today}`;
 
-  await runTransaction(database, async (tx) => {
+  return runTransaction(database, async (tx) => {
     const compSnap = await tx.get(p.completion(completionId));
     if (compSnap.exists()) throw new Error('already-completed');
 
@@ -255,6 +264,7 @@ export async function completeQuest(familyId, uid, questId, { deviceId = 'tablet
 
     const childSnap = await tx.get(p.child());
     const child = childSnap.data();
+    const charge = grantCareCharge(child.careCharges);
 
     const points = Math.max(0, Number(quest.points) || 0);
     const brain = Math.max(0, Number(quest.brain) || 0);
@@ -265,12 +275,20 @@ export async function completeQuest(familyId, uid, questId, { deviceId = 'tablet
     // fallback if the quest is later edited/deleted; the real credit is recomputed
     // from the live quest at approval time. activeCatId is snapshotted so approval
     // rewards the cat that was active when the quest was done.
+    if (charge.granted) {
+      tx.update(p.child(), {
+        careCharges: charge.after,
+        lastCareCompletionId: completionId
+      });
+    }
     tx.set(p.completion(completionId), {
       childId: CHILD_ID, questId, questTitle: quest.title || 'Quest',
       localDate: today, status: 'pending', activeCatId: child.activeCatId,
       rewards: { points, brain, energy, coins, bond: QUEST_BOND },
+      careChargeGranted: charge.granted,
       createdBy: uid, createdAt: serverTimestamp()
     });
+    return { careChargeGranted: charge.granted, careCharges: charge.after };
   });
 }
 
@@ -303,6 +321,12 @@ export async function approveCompletion(familyId, uid, completion) {
 
     const childSnap = await tx.get(p.child());
     const child = childSnap.data();
+    // Pending completions created before Care Charges shipped have no boolean
+    // marker. Give those one migration-safe charge at approval; a recorded false
+    // means the cap was already full at completion time and is not reconsidered.
+    const legacyCharge = typeof comp.careChargeGranted !== 'boolean'
+      ? grantCareCharge(child.careCharges)
+      : { granted: false, after: careCharges(child.careCharges) };
     const catId = comp.activeCatId || child.activeCatId;
     const catRef = p.cat(catId);
     const catSnap = await tx.get(catRef);
@@ -317,13 +341,19 @@ export async function approveCompletion(familyId, uid, completion) {
     if (!nextCat.evolved && isHeroReady(nextCat)) nextCat.evolved = true;
 
     tx.update(catRef, nextCat);
-    tx.update(p.child(), {
+    const childUpdate = {
       available: (child.available || 0) + points,
       coins: (child.coins || 0) + coins
-    });
+    };
+    if (legacyCharge.granted) {
+      childUpdate.careCharges = legacyCharge.after;
+      childUpdate.lastCareCompletionId = completionId;
+    }
+    tx.update(p.child(), childUpdate);
     tx.update(p.completion(completionId), {
       status: 'approved',
       rewards: { points, brain, energy, coins, bond: QUEST_BOND },
+      careChargeGranted: comp.careChargeGranted === true || legacyCharge.granted,
       approvedBy: uid, approvedAt: serverTimestamp()
     });
     // Ledger row is stamped at approval time — the moment the minutes actually
@@ -369,6 +399,10 @@ export async function parentCompleteQuest(familyId, uid, questId) {
 
     const childSnap = await tx.get(p.child());
     const child = childSnap.data();
+    const shouldGrantCare = !existing || typeof existing.careChargeGranted !== 'boolean';
+    const charge = shouldGrantCare
+      ? grantCareCharge(child.careCharges)
+      : { granted: false, after: careCharges(child.careCharges) };
     const catId = (existing && existing.activeCatId) || child.activeCatId;
     const catRef = p.cat(catId);
     const catSnap = await tx.get(catRef);
@@ -383,20 +417,28 @@ export async function parentCompleteQuest(familyId, uid, questId) {
     if (!nextCat.evolved && isHeroReady(nextCat)) nextCat.evolved = true;
 
     tx.update(catRef, nextCat);
-    tx.update(p.child(), {
+    const childUpdate = {
       available: (child.available || 0) + points,
       coins: (child.coins || 0) + coins
-    });
+    };
+    if (charge.granted) {
+      childUpdate.careCharges = charge.after;
+      childUpdate.lastCareCompletionId = completionId;
+    }
+    tx.update(p.child(), childUpdate);
 
     const rewards = { points, brain, energy, coins, bond: QUEST_BOND };
     if (existing) {
       tx.update(p.completion(completionId), {
-        status: 'approved', rewards, approvedBy: uid, approvedAt: serverTimestamp()
+        status: 'approved', rewards,
+        careChargeGranted: existing.careChargeGranted === true || charge.granted,
+        approvedBy: uid, approvedAt: serverTimestamp()
       });
     } else {
       tx.set(p.completion(completionId), {
         childId: CHILD_ID, questId, questTitle: title,
         localDate: today, status: 'approved', activeCatId: catId, rewards,
+        careChargeGranted: charge.granted,
         createdBy: uid, createdAt: serverTimestamp(),
         approvedBy: uid, approvedAt: serverTimestamp()
       });
@@ -413,9 +455,9 @@ export async function parentCompleteQuest(familyId, uid, questId) {
   });
 }
 
-// Parent rejects a pending completion → discard it. Nothing was credited, so this
-// just deletes the request; with no completion doc for today, the quest reappears
-// on Sirus's list (re-given) to earn again.
+// Parent rejects a pending completion → discard it so the quest reappears for
+// Sirus. An immediate Care Charge is deliberately not clawed back; the care plan
+// treats already-given care as safe even when a completion is later rejected.
 export async function rejectCompletion(familyId, completionId) {
   if (!completionId) return;
   const { database, sdk } = await fs();
@@ -515,10 +557,71 @@ export async function deleteTransaction(familyId, uid, txn) {
   });
 }
 
+// Existing cats predate the care layer. Stamp a healthy baseline on first use so
+// elapsed-time decay begins when the family first sees the feature, not at an
+// arbitrary deployment date. This is idempotent across devices.
+export async function ensureCatCare(familyId, catId) {
+  if (!CAT_DEFS[catId]) return { initialized: false };
+  const { database, sdk } = await fs();
+  const { runTransaction, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+  const catRef = p.cat(catId);
+
+  return runTransaction(database, async (tx) => {
+    const catSnap = await tx.get(catRef);
+    if (!catSnap.exists()) throw new Error('cat-missing');
+    const cat = catSnap.data();
+    if (cat.catNeeds && cat.catNeeds.lastUpdatedAt) return { initialized: false };
+    tx.update(catRef, {
+      catNeeds: {
+        ...(cat.catNeeds || {}),
+        hunger: hungerAt(cat.catNeeds),
+        lastUpdatedAt: serverTimestamp()
+      }
+    });
+    return { initialized: true };
+  });
+}
+
+// Spend one flexible Care Charge on Hunger. The transaction recomputes both the
+// decayed need and the charge count from stored data; callers never submit an
+// amount. This prevents repeated taps or two devices from double-spending.
+export async function spendHungerCare(familyId, catId) {
+  if (!CAT_DEFS[catId]) throw new Error('cat-missing');
+  const { database, sdk } = await fs();
+  const { runTransaction, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+  const catRef = p.cat(catId);
+  const nowMs = Date.now();
+
+  return runTransaction(database, async (tx) => {
+    const childSnap = await tx.get(p.child());
+    const catSnap = await tx.get(catRef);
+    if (!childSnap.exists() || !catSnap.exists()) throw new Error('care-state-missing');
+    const child = childSnap.data();
+    const cat = catSnap.data();
+    const result = refillHunger(hungerAt(cat.catNeeds, nowMs), child.careCharges);
+    if (!result.ok) throw new Error(result.reason);
+
+    tx.update(p.child(), {
+      careCharges: result.chargesAfter,
+      lastCareSpend: { catId, need: 'hunger', at: serverTimestamp() }
+    });
+    tx.update(catRef, {
+      catNeeds: {
+        ...(cat.catNeeds || {}),
+        hunger: result.after,
+        lastUpdatedAt: serverTimestamp()
+      }
+    });
+    return result;
+  });
+}
+
 // Buy a café item with Cat Coins (never screen-time points).
 export async function purchaseCafeItem(familyId, uid, itemId) {
   const { database, sdk } = await fs();
-  const { runTransaction } = sdk;
+  const { runTransaction, serverTimestamp } = sdk;
   const p = paths(sdk, database, familyId);
   const item = CAFE_ITEMS[itemId];
   if (!item) throw new Error('unknown-item');
@@ -529,8 +632,17 @@ export async function purchaseCafeItem(familyId, uid, itemId) {
     const childSnap = await tx.get(p.child());
     const coins = childSnap.data().coins || 0;
     if (coins < item.price) throw new Error('not-enough-coins');
-    tx.update(p.child(), { coins: coins - item.price });
-    tx.set(p.ownedItem(itemId), { purchasedAt: sdk.serverTimestamp(), price: item.price, placed: true });
+    // The purchase marker lets Firestore Rules prove that this exact coin
+    // decrease is paired with this exact catalog item creation. Without that
+    // pairing, the old blanket "coins cannot change" child rule denied every
+    // legitimate tablet purchase (including a 12-coin tree with 14 coins).
+    tx.update(p.child(), {
+      coins: coins - item.price,
+      lastCafePurchase: { itemId, at: serverTimestamp() }
+    });
+    tx.set(p.ownedItem(itemId), {
+      purchasedAt: serverTimestamp(), price: item.price, placed: true
+    });
   });
 }
 

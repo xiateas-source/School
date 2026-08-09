@@ -3,6 +3,7 @@
 
 export const CAFE_ACTIONS = Object.freeze({
   food: Object.freeze({ state: 'eat', pose: 'eat', durationMs: 7000 }),
+  water: Object.freeze({ state: 'drink', pose: 'sit', durationMs: 7000 }),
   rest: Object.freeze({ state: 'sleep', pose: 'sleep', durationMs: null }),
   play: Object.freeze({ state: 'play', pose: 'play', durationMs: 7000 })
 });
@@ -25,6 +26,22 @@ export function catDestinationForObject({ role, itemLeft, itemTop, itemWidth = 2
     x: clamp(itemCenter - actionPropAnchor, 2, 58),
     y: clamp(itemTop - verticalOffset, 12, 68)
   };
+}
+
+// Translate a blank-room tap into the same clamped left/top coordinates used by
+// direct cat dragging. The offsets center the 40%-wide cat wrapper under the
+// finger while keeping it inside the playable floor area.
+export function catDestinationForTap({ tapX, tapY }) {
+  return {
+    x: clamp(tapX - 20, 2, 58),
+    y: clamp(tapY - 22, 12, 68)
+  };
+}
+
+// elementsFromPoint returns the visible stack from front to back. Select the
+// first placed décor record beneath the cat's transparent image rectangle.
+export function firstCafeDecorElement(elements) {
+  return Array.from(elements || []).find(node => node && node.dataset && node.dataset.decor) || null;
 }
 
 export function catWalkDuration(from, to, reducedMotion = false) {

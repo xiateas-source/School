@@ -5,7 +5,9 @@
 // Note: the first four IDs (rug/bed/plant/tower) are historical and their IDs do
 // not match their current display names (e.g. `rug` is now "Blue Yarn"). They are
 // kept verbatim for migration compatibility. `role` drives Play-mode behavior;
-// decor acknowledges a tap but never pretends to change a care need.
+// `need` opts an object into a paid care refill. Decor acknowledges a tap but
+// never pretends to change a care need, and the water bowl remains a free,
+// neutral interaction rather than secretly refilling Hunger.
 
 export const CAFE_ITEMS = {
   rug:        { id: 'rug',        name: 'Blue Yarn',        price: 4,  role: 'play',  art: 'assets/yarn-blue.png',        className: 'decor-yarn-blue' },
@@ -13,8 +15,8 @@ export const CAFE_ITEMS = {
   plant:      { id: 'plant',      name: 'Paw-Print Plant',  price: 8,  role: 'decor', art: 'assets/plant.png',            className: 'decor-plant-png' },
   tower:      { id: 'tower',      name: 'Cat Tree',         price: 12, role: 'play',  art: 'assets/cat-tree.png',         className: 'decor-cat-tree' },
   pinkBed:    { id: 'pinkBed',    name: 'Pink Heart Bed',   price: 7,  role: 'rest',  art: 'assets/bed-pink-hearts.png',  className: 'decor-bed-pink' },
-  foodBowl:   { id: 'foodBowl',   name: 'Purple Food Bowl', price: 5,  role: 'food',  art: 'assets/food-bowl-purple.png', className: 'decor-food-bowl' },
-  waterBowl:  { id: 'waterBowl',  name: 'Teal Water Bowl',  price: 5,  role: 'food',  art: 'assets/water-bowl-teal.png',  className: 'decor-water-bowl' },
+  foodBowl:   { id: 'foodBowl',   name: 'Purple Food Bowl', price: 5,  role: 'food',  need: 'hunger', art: 'assets/food-bowl-purple.png', className: 'decor-food-bowl' },
+  waterBowl:  { id: 'waterBowl',  name: 'Teal Water Bowl',  price: 5,  role: 'water', art: 'assets/water-bowl-teal.png',  className: 'decor-water-bowl' },
   pinkYarn:   { id: 'pinkYarn',   name: 'Pink Yarn',        price: 4,  role: 'play',  art: 'assets/yarn-pink.png',        className: 'decor-yarn-pink' },
   bookshelf:  { id: 'bookshelf',  name: 'Cat Bookshelf',    price: 14, role: 'decor', art: 'assets/bookshelf.png',        className: 'decor-bookshelf' },
   toyBasket:  { id: 'toyBasket',  name: 'Toy Basket',       price: 9,  role: 'play',  art: 'assets/toy-basket.png',       className: 'decor-toy-basket' },
