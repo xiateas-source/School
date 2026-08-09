@@ -1,9 +1,12 @@
 # Cat Trainer — Interactive Café Goal
 
 > **Status:** Active product spec and roadmap, reconciled through the live
-> three-need care release (PR #36, August 9, 2026). Hunger has passed device
-> testing. Rest and Happiness are live and awaiting Sirus's device test before
-> Hero-care progression begins.
+> three-need care release (PR #36, August 9, 2026). Hunger, Rest, Happiness,
+> their matching object interactions, and room/menu layering have passed device
+> testing. The full-meter feedback correction is implemented locally: any need
+> displayed as 100/100 is treated as full and cannot request or spend a Care
+> Charge. A spare-charge device confirmation can happen organically and does not
+> block Hero-care progression.
 >
 > **This is the combined spec.** It merges the product/experience spec (the
 > "Interactive Café Goal") with a **code-grounded audit** of the current app, so
@@ -140,8 +143,12 @@ decisions; the sections below keep the fuller reasoning.
 - Blank-room taps call the cat to that saved location. Water has a distinct
   neutral action, Toy Basket is a play object, and every cat uses the same
   cat-only sleep layering path on every rest object.
-- Hunger and the core object-interaction loop passed device testing. Rest and
-  Happiness still need their post-release device pass.
+- Hunger, Rest, Happiness, the core object-interaction loop, and room/menu
+  layering passed device testing. A need that rounds to 100/100 now follows the
+  full-need path even after tiny timestamp decay: the action still plays, the UI
+  says the need is full, and no Care Charge is requested or spent. Automated
+  coverage protects both zero and nonzero charge balances; the latter can be
+  confirmed on a phone when it occurs naturally.
 
 **Animation plan:** **`ART-ANIMATION.md`** records the frame manifest, generation
 prompts, and frame-swapper wiring. All three tiers are present and mapped; object
@@ -1024,8 +1031,11 @@ The MVP is complete when all of the following work together:
 > cue highlights a useful placed object (or the stored-item tray) without spending
 > care automatically. A paid play refill also uses 5 Rest, making the locked
 > play→rest rhythm visible without allowing repeated screen taps to drain it.
-> Hunger passed device testing. Rest and Happiness are the current phone-test
-> checkpoint. After they pass, `heroCareProgress` is the next separate progression
+> All three need meters and their matching food/rest/play actions passed device
+> testing, including play's 5-Rest cost. Displayed-full needs now preserve Care
+> Charges in the shared rules and UI, including when real-time decay has moved the
+> stored value just below 100. A nonzero-balance phone confirmation remains useful
+> but can happen organically. `heroCareProgress` is the next separate progression
 > slice.
 
 ### Slice 5 — animation polish

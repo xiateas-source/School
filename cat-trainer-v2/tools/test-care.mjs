@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {
-  CARE_CONFIG, careCharges, freshCatNeeds, grantCareCharge, hungerAt,
-  lowestCareNeed, needAt, needsAt, refillHunger, refillNeed
+  CARE_CONFIG, careCharges, displayNeedValue, freshCatNeeds, grantCareCharge,
+  hungerAt, isNeedFull, lowestCareNeed, needAt, needsAt, refillHunger, refillNeed
 } from '../src/care.js';
 import { CAFE_ITEMS } from '../src/data/cafe-items.js';
 
@@ -38,6 +38,9 @@ assert.equal(careCharges(3.8), 3);
 assert.equal(careCharges(99), CARE_CONFIG.chargeCap);
 assert.deepEqual(grantCareCharge(5), { before: 5, after: 6, granted: true });
 assert.deepEqual(grantCareCharge(6), { before: 6, after: 6, granted: false });
+assert.equal(displayNeedValue(99.9), 100);
+assert.equal(isNeedFull(99.9), true, 'a need displayed as 100 is full to care actions');
+assert.equal(isNeedFull(99.4), false, 'a need displayed as 99 can receive care');
 
 assert.deepEqual(refillHunger(42, 3), {
   ok: true, reason: null, before: 42, after: 62, refill: 20,
@@ -51,6 +54,10 @@ assert.equal(refillHunger(50, 0).reason, 'no-care-charges');
 assert.equal(refillHunger(100, 4).reason, 'need-full');
 assert.equal(refillHunger(100, 0).reason, 'need-full', 'a full cat never asks for a quest');
 assert.equal(refillHunger(100, 4).chargesAfter, 4, 'full Hunger never wastes a charge');
+assert.equal(refillHunger(99.9, 0).reason, 'need-full',
+  'displayed-full Hunger never asks for a quest after tiny timestamp decay');
+assert.equal(refillHunger(99.9, 4).chargesAfter, 4,
+  'displayed-full Hunger preserves every available charge');
 
 const restRefill = refillNeed({
   hunger: 100, rest: 50, happiness: 90, lastUpdatedAt: NOW - 24 * HOUR

@@ -47,6 +47,19 @@ export function careCharges(value) {
   return Math.trunc(clamp(Number(value) || 0, 0, CARE_CONFIG.chargeCap));
 }
 
+// Care decisions must agree with the whole-number value shown in the meter.
+// Without this shared rule, a recently-full need can decay to 99.9 while the
+// phone still says 100/100, then incorrectly ask Sirus to earn another charge.
+export function displayNeedValue(value) {
+  const raw = Number(value);
+  const safe = Number.isFinite(raw) ? raw : CARE_CONFIG.startingNeed;
+  return Math.round(clamp(safe, 0, CARE_CONFIG.maxNeed));
+}
+
+export function isNeedFull(value) {
+  return displayNeedValue(value) >= CARE_CONFIG.maxNeed;
+}
+
 // Missing values are migration-safe healthy defaults. In particular, cats from
 // the Hunger-only release already have a timestamp but no Rest/Happiness. Those
 // two new needs begin at 80 on first use instead of being retroactively decayed
@@ -103,7 +116,7 @@ export function refillNeed(catNeeds, need, currentCharges, nowMs = Date.now()) {
   const needsBefore = needsAt(catNeeds, nowMs);
   const before = needsBefore[need];
   const chargesBefore = careCharges(currentCharges);
-  if (before >= CARE_CONFIG.maxNeed) {
+  if (isNeedFull(before)) {
     return {
       ok: false, reason: 'need-full', need, before, after: before, refill: 0,
       chargesBefore, chargesAfter: chargesBefore,

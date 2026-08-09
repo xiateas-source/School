@@ -1,23 +1,24 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=eb73f886';
+import { isConfigured } from './firebase.js?v=e3b3c5da';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=eb73f886';
-import * as store from './store.js?v=eb73f886';
-import { CAT_DEFS } from './data/cats.js?v=eb73f886';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=eb73f886';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=eb73f886';
+} from './auth.js?v=e3b3c5da';
+import * as store from './store.js?v=e3b3c5da';
+import { CAT_DEFS } from './data/cats.js?v=e3b3c5da';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=e3b3c5da';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=e3b3c5da';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=eb73f886';
+} from './cafe-interactions.js?v=e3b3c5da';
 import {
-  CARE_CONFIG, CARE_NEEDS, careCharges, lowestCareNeed, needsAt
-} from './care.js?v=eb73f886';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=eb73f886';
+  CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
+  lowestCareNeed, needsAt
+} from './care.js?v=e3b3c5da';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=e3b3c5da';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -514,7 +515,7 @@ function renderCafeCareStatus({ needsOverride = null, chargesOverride = null } =
   el('c-care-charges').setAttribute('aria-label', `${charges} of ${CARE_CONFIG.chargeCap} Care Charges`);
   for (const need of CARE_NEEDS) {
     const value = needs[need];
-    const rounded = Math.round(value);
+    const rounded = displayNeedValue(value);
     const band = careBand(value);
     const bar = el(`c-${need}-bar`);
     const meterEl = el(`c-${need}-meter`);
@@ -985,7 +986,7 @@ async function resolveCafeCare(item, destination) {
   const before = needsBefore[need];
   const chargesBefore = careCharges(state.child.careCharges);
 
-  if (before >= CARE_CONFIG.maxNeed) {
+  if (isNeedFull(before)) {
     setCafeHint(`${def.name}'s ${meta.label} is full · no Care Charge used`);
     toast(`${meta.label} is full — your Care Charge is safe.`);
     return;

@@ -18,7 +18,7 @@
 // for the module version stamps, so every deploy gets a fresh cache and purges
 // the old one.
 
-const CACHE_VERSION = 'eb73f886'; // stamped by tools/stamp.mjs
+const CACHE_VERSION = 'e3b3c5da'; // stamped by tools/stamp.mjs
 const CACHE_PREFIX = 'cat-trainer-v2-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 
