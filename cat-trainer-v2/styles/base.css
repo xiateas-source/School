@@ -299,7 +299,7 @@ main { padding: 0 16px; }
 }
 /* The café cat lives in a wrapper so a continuous "breathing" idle (on the wrap)
    and a springy tap reaction (on the img) never fight over the same transform. */
-.cafe-cat-wrap { position: absolute; bottom: 8%; left: 30%; width: 40%; z-index: 2; transform-origin: bottom center; animation: catBreathe 3.4s ease-in-out infinite; transition: left .9s ease-in-out; }
+.cafe-cat-wrap { position: absolute; bottom: 8%; left: 30%; width: 40%; z-index: 2; transform-origin: bottom center; animation: catBreathe 3.4s ease-in-out infinite; }
 .cafe-cat-wrap.mood-sleepy { animation: catSleep 5.5s ease-in-out infinite; }
 .cafe-cat-wrap.mood-happy  { animation: catHappy 2.6s ease-in-out infinite; }
 .cafe-cat { display: block; width: 100%; cursor: pointer; transform-origin: bottom center; touch-action: none;

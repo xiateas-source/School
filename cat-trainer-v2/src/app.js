@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=68afe4da';
+import { isConfigured } from './firebase.js?v=e08bf3c9';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=68afe4da';
-import * as store from './store.js?v=68afe4da';
-import { CAT_DEFS } from './data/cats.js?v=68afe4da';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=68afe4da';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=68afe4da';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=68afe4da';
+} from './auth.js?v=e08bf3c9';
+import * as store from './store.js?v=e08bf3c9';
+import { CAT_DEFS } from './data/cats.js?v=e08bf3c9';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=e08bf3c9';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=e08bf3c9';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=e08bf3c9';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -407,18 +407,15 @@ async function applyCafeUndo() {
 }
 // The cat's resting base position (left %) — a saved spot if Sirus moved it, else
 // the room's default. Used so autonomous strolls return to where he left the cat
-// instead of snapping to the middle.
-function catBaseLeft() { const p = state.child && state.child.cafeCat; return (p && p.x != null) ? p.x : 30; }
-// The café cat's resting look reflects real progress, so tapping and earning
-// visibly change it: sleepy when Energy is low, bright and bouncy after a quest.
+// The café cat's resting look. It stays awake (sitting) by default and gets
+// bright and bouncy after a quest. Sleep is NOT tied to the training Energy stat
+// anymore (that stat is near zero early on, which made the cat look asleep almost
+// always) — real sleep/napping will come from the Rest care-need in Slice 4.
 function catMood() {
   const id = state.child.activeCatId; const cat = state.cats[id] || {};
   if (cat.evolved) return { pose: null, cls: 'mood-happy' };
-  const energy = cat.energy || 0;
   const happyToday = (state.todayCompletions && state.todayCompletions.length > 0) || (cat.bond || 0) >= 12;
-  if (energy <= 3) return { pose: 'sleep', cls: 'mood-sleepy' };
-  if (happyToday)  return { pose: 'sit',   cls: 'mood-happy' };
-  return { pose: 'sit', cls: 'mood-calm' };
+  return happyToday ? { pose: 'sit', cls: 'mood-happy' } : { pose: 'sit', cls: 'mood-calm' };
 }
 // ---- Café cat behavior: one state, one timer -------------------------------
 // A single owner for what the cat is doing. Every transition cancels the pending
@@ -426,7 +423,7 @@ function catMood() {
 // the old "snap back to center / revert the pose" bug (a 900ms settle timer and
 // a separate stroll-return timer both fighting whatever was happening now).
 let catTapCount = 0;
-let catState = 'idle';     // idle | wander | glance | react | dragged
+let catState = 'idle';     // idle | glance | react | dragged
 let catStateTimer = null;  // duration of the current transient state
 let catBeatTimer = null;   // schedules the next autonomous idle beat
 // Art for a café pose. If the cat is "sleeping" and owns + placed its own bed,
@@ -649,24 +646,14 @@ function reactCat(e) {
 }
 
 // ---- Autonomous behavior: the cat lives on its own between taps -------------
-// Little "beats" — a wander, a glance, a hop — so the café never looks frozen.
-// Sleepy cats stir rarely; happy cats are livelier. Each beat is a state
-// transition, so it can't stack on or override a tap/drag in progress.
-function catWander() {
-  const { wrap } = catCtx();
-  if (!wrap) return;
-  const base = catBaseLeft();
-  const dir = Math.random() < 0.5 ? -1 : 1;
-  // Amble near where Sirus left the cat, then STAY there — the CSS eases `left`,
-  // and nothing schedules a return to center anymore.
-  const dest = clampNum(base + dir * (5 + Math.random() * 8), 2, 58);
-  wrap.style.left = dest.toFixed(1) + '%';
-  catTransient('wander', 1100, () => { catState = 'idle'; });
-}
-function catGlance() {
+// We only have single-frame sprites — no walk cycle — so "life" comes from CSS
+// micro-motion (a wiggle or a little hop on the still sprite) and the occasional
+// brief pose swap to the play frame. No sliding across the floor (that reads as
+// gliding without a walk animation), and the cat stays where Sirus left it.
+function catPlayBeat() {
   const { cat, def, catEl } = catCtx();
   if (cat.evolved || !def.poses) return catHop();
-  catEl.src = cafePoseArt(def, 'play'); // look at something, then settle back
+  catEl.src = cafePoseArt(def, 'play'); // a quick bat at a toy, then settle back
   catTransient('glance', 900);
 }
 function catHop() {
@@ -674,7 +661,7 @@ function catHop() {
   catEl.classList.remove('react'); void catEl.offsetWidth; catEl.classList.add('react');
   catTransient('glance', 600, () => { catState = 'idle'; });
 }
-function catSway() {
+function catWiggle() {
   const { catEl } = catCtx();
   catEl.classList.remove('react-wiggle'); void catEl.offsetWidth; catEl.classList.add('react-wiggle');
   catTransient('glance', 600, () => { catState = 'idle'; });
@@ -687,25 +674,22 @@ function catIdleBeat() {
   // Only stir when the café is open, in Play mode, the cat is at rest, and Sirus
   // isn't mid-drag. Otherwise wait quietly for the next beat.
   if (!reduce && onCafe && !cafeDrag && cafeMode === 'play' && catState === 'idle') {
-    const mood = catMood();
     const roll = Math.random();
-    if (mood.cls === 'mood-sleepy') catSway();       // barely stirs, keeps napping
-    else if (roll < 0.45) catWander();
-    else if (roll < 0.8) catGlance();
-    else catHop();
+    if (roll < 0.45) catWiggle();          // a little shimmy in place
+    else if (roll < 0.8) catPlayBeat();    // flash the play pose, then settle
+    else catHop();                         // a happy hop
   }
   scheduleCatBeat();
 }
-// Next beat sooner when the cat's lively, later when it's sleepy.
+// A livelier cat (just did a quest) stirs a bit more often.
 function scheduleCatBeat() {
   clearTimeout(catBeatTimer);
   const moodCls = state.child ? catMood().cls : 'mood-calm';
-  const base = moodCls === 'mood-sleepy' ? 9000 : moodCls === 'mood-happy' ? 4500 : 6500;
+  const base = moodCls === 'mood-happy' ? 5000 : 7000;
   catBeatTimer = setTimeout(catIdleBeat, base + Math.random() * 4000);
 }
-// Reopening the café shouldn't freeze the cat mid-center. Show its mood-resting
-// look at the saved spot, and — unless it's sleepy — glance up a moment later, so
-// it reads as "oh, you're here" rather than a static portrait.
+// Reopening the café shouldn't freeze the cat mid-center. Place it at its saved
+// spot in its resting pose and give a small wiggle hello (CSS, no walk needed).
 function catWelcomeBack() {
   if (!state.child) return;
   clearTimeout(catStateTimer);
@@ -715,9 +699,7 @@ function catWelcomeBack() {
   if (wrap && pos && pos.x != null) { wrap.style.left = pos.x + '%'; wrap.style.top = pos.y + '%'; wrap.style.bottom = 'auto'; }
   settleCatToRest();
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (!reduce && catMood().cls !== 'mood-sleepy') {
-    catStateTimer = setTimeout(() => { if (catState === 'idle' && cafeMode === 'play') catGlance(); }, 900);
-  }
+  if (!reduce) catStateTimer = setTimeout(() => { if (catState === 'idle' && cafeMode === 'play') catWiggle(); }, 700);
 }
 
 // Spawn a few effect sprites inside a positioned container. mode: rise | fall | pop.
