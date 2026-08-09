@@ -8,7 +8,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=80d56a9c">
+  <link rel="stylesheet" href="styles/base.css?v=9bf62112">
 </head>
 <body>
   <div id="app">
@@ -223,7 +223,13 @@
         <!-- Cafe -->
         <section class="screen" data-cscreen="cafe">
           <h2 class="page-title">Cat Café</h2>
-          <div class="coin-pill"><img class="coin-ico" src="assets/coin.png" alt=""> <span id="c-coins">0</span> coins</div>
+          <div class="cafe-wallets">
+            <div class="coin-pill"><img class="coin-ico" src="assets/coin.png" alt=""> <span id="c-coins">0</span> coins</div>
+            <div class="care-charge-pill" title="Complete a quest to earn one">
+              <span aria-hidden="true">✦</span> <strong id="c-care-charges" aria-live="polite">0</strong>
+              <span>Care Charges</span>
+            </div>
+          </div>
           <div class="cafe-modebar">
             <button id="c-decorate-btn" class="ghost-btn">🎨 Decorate room</button>
             <span id="c-decorate-actions" hidden>
@@ -231,8 +237,20 @@
               <button id="c-done-btn">Done</button>
             </span>
           </div>
+          <section class="care-panel" aria-label="Daily cat care">
+            <div class="care-need" id="c-hunger-need">
+              <div class="care-need-label">
+                <span><img src="assets/food-bowl-purple.png" alt=""> Hunger</span>
+                <span><small id="c-hunger-band">Thriving</small> <b id="c-hunger-val">80/100</b></span>
+              </div>
+              <div class="care-meter" id="c-hunger-meter" role="progressbar" aria-label="Hunger" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80">
+                <i id="c-hunger-bar"></i>
+              </div>
+              <span class="care-delta" id="c-hunger-delta" aria-live="polite"></span>
+            </div>
+          </section>
           <div class="cafe-room" id="c-cafe-room"><div id="c-placed"></div><div id="c-cafe-cat-wrap" class="cafe-cat-wrap"><img id="c-cafe-cat" class="cafe-cat" alt=""></div></div>
-          <p class="cafe-hint" id="c-cafe-hint">Tap a bowl, bed, or toy · tap or drag the cat to interrupt</p>
+          <p class="cafe-hint" id="c-cafe-hint">Tap anywhere to call the cat · bowls, beds, and toys are playable</p>
           <div id="c-tray" class="cafe-tray" hidden></div>
           <h3 class="shop-heading">Cozy things</h3>
           <div id="c-shop" class="shop-grid"></div>
@@ -294,7 +312,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=80d56a9c"></script>
+  <script type="module" src="src/app.js?v=9bf62112"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.

@@ -112,10 +112,17 @@ Committed on `claude/cat-cafe-design-sbz2n9` (before this spec), clearing the
   coins**; a fresh child starts `coins: 0` with nothing owned. So "initially
   owned" = **none**; everything is shop-unlocked. Food bowl and water bowl are
   ordinary shop items today.
-- **▸ From the code — cat-specific:** each cat has a favored bed
-  (`bedItemId`: Nova→`bed`, Ember→`greenBed`, Moss→`pinkBed`) that swaps in the
-  cat-on-bed nap art when that bed is owned + placed (`cafePoseArt`). This is the
-  one existing "typed" object relationship to preserve.
+- **▸ Device-test correction:** the prior child-profile rule froze `coins` on
+  every child write, so the UI could show “Buy” while Firestore denied the
+  purchase (for example, 14 coins could not buy the 12-coin Cat Tree). The
+  testing branch pairs the exact catalog-price debit with the new owned-item
+  record in one validated transaction.
+- **▸ From the art:** each cat has one signature cat-on-bed composite
+  (Nova→blue, Ember→green, Moss→pink). Device testing showed that selecting those
+  composites makes one matching pair look inside the furniture while the other
+  cats look beside it. The runtime now layers the ordinary transparent sleep
+  frames over the rest object actually tapped; signature composites remain
+  archived art unless complete, consistent coverage is intentionally added.
 
 ### 0.8 Decisions locked (Aug 2026)
 
@@ -159,6 +166,10 @@ assumptions:
 - Implication for **Slice 3**: object interactions now use the completed
   front-3/4 walk loop while translating to the selected object. Reduced-motion
   mode moves directly to the destination and shows the action's meaningful still.
+- **Latest device notes:** blank-room taps now call the cat to that location;
+  water has a distinct neutral bob without swapping in food-bowl art; Toy Basket
+  is explicitly mapped/tested as play; and every cat uses the same cat-only sleep
+  layering path on every rest object.
 
 **Animation plan:** **`ART-ANIMATION.md`** records the frame manifest, generation
 prompts, and frame-swapper wiring. All three tiers are present and mapped; object
@@ -192,11 +203,15 @@ These decisions are already made:
 - Nova, Ember, and Moss retain their established identities and existing poses.
 - The cat must visibly **idle, wander, seek attention, move to objects, eat,
   play, sleep, celebrate, and evolve**.
-- Sirus can **move the cat and decorate the room**.
+- Sirus can **move the cat and decorate the room**. Dragging remains available,
+  and tapping an open spot calls the cat to walk there and stay there.
 - Furniture placement persists. The room should reopen as Sirus left it.
 - **Mom, Abba, Sirus, and Arlo can eventually appear inside the Café as family
   visitors.** This is a locked future direction, not a requirement for the first
   Interactive Café MVP.
+- Short, deterministic **cat speech bubbles** eventually deliver meaningful
+  family feedback: exciting parent-added points and gentle returned-quest
+  messages. This is not AI chat and does not block the core care loop.
 - Hunger, Rest, and Happiness genuinely decay over real time.
 - Needs are restored through real-life quest activity, not unlimited screen
   tapping.
@@ -231,8 +246,11 @@ refill Hunger.
 
 Low needs have visible, meaningful consequences: behavior changes, the cat asks
 for attention, and Hero growth slows until care resumes. Consequences do not
-include death, sickness, abandonment, devolution, lost possessions, erased
-progress, or emotional rejection.
+include death, abandonment, devolution, lost possessions, erased progress, or
+emotional rejection. A later advanced-care expansion may add a **temporary,
+fully recoverable “under the weather” state and medicine**, because Sirus wants
+pet care to carry more responsibility; §5.6 defines the safety boundary. That
+health layer is deliberately after the three core needs work end-to-end.
 
 ### 3.5 A family place
 
@@ -403,6 +421,34 @@ feels like busywork in testing, switch Rest to self-recovery + play-cost. Either
 way, `play` nudging Rest down a little gives back-to-back play a natural "let the
 cat rest" beat.
 
+### 5.6 Advanced pet health and medicine — LOCKED LATER DIRECTION
+
+Sirus wants the cats to require real care, including visible consequences for
+too little **or too much** food/water, a temporary sick or sad state, and medicine
+he can buy and give. Preserve that request as a post-MVP expansion; do not bolt
+it onto Hunger alone before Rest and Happiness are proven.
+
+The later design must satisfy all of these boundaries:
+
+- The state is mild, temporary, and completely recoverable. Cats never die, run
+  away, become permanently injured, lose Bond, devolve, or lose possessions.
+- Cause and repair are readable before consequences occur. The interface must
+  show a healthy target or “full” limit instead of surprising Sirus with a hidden
+  overfeeding rule.
+- The current MVP continues to **block food at full** and preserve the Care
+  Charge. It has no Hydration need, so water cannot yet cause or cure illness.
+- If balanced feeding/hydration is later added, too-much care should first make
+  the cat politely refuse (“I’m full”) before any temporary low-energy/unwell
+  consequence is possible.
+- Medicine can be a shop item and a hands-on action, but recovery must never be
+  paywalled behind a coin balance. Provide a starter/free recovery route if
+  medicine is required.
+- A return after time away is framed as “let’s help” and celebrates recovery; it
+  never says Sirus caused suffering or failed the cat.
+
+This feature needs its own tuning and device test after the full Café goal is
+complete. It is not part of the Hunger prove-the-loop PR.
+
 ## 6. Care Charges and quest mapping
 
 ### 6.1 Proposed rule — TUNING DRAFT
@@ -468,7 +514,7 @@ The cat has exactly one primary state at a time.
 | `APPROACH_OBJECT` | Sirus taps an interactive object | Move toward a usable position beside that object | Arrive, then enter object activity |
 | `EAT` | Bowl selected and care is available | Show eat pose at the bowl; refill Hunger visibly | Animation completes |
 | `PLAY` | Toy selected and care is available | Show play pose at the toy; refill Happiness visibly | Animation completes |
-| `SLEEP` | Sleep object selected and care is available, or Rest is very low | Show sleep/cat-on-bed pose and remain asleep meaningfully | Sirus wakes/moves cat or rest completes |
+| `SLEEP` | Sleep object selected and care is available, or Rest is very low | Layer the cat-only sleep pose over the selected rest object and remain asleep meaningfully | Sirus wakes/moves cat or rest completes |
 | `PET_REACTION` | Sirus taps the cat | Pause, react, and acknowledge the touch | After a readable duration |
 | `CELEBRATE` | Quest/care milestone | Use celebrate pose and effect | After animation completes |
 | `HERO_EVENT` | Evolution milestone | Hero pose overrides normal activity | Event completes |
@@ -476,7 +522,7 @@ The cat has exactly one primary state at a time.
 
 > **▸ From the code:** the ingredients already exist but are scattered across ad
 > hoc timers — `catStroll` (WANDER), `catIdleBeat`/`scheduleCatIdle` (IDLE),
-> `reactCat` (PET_REACTION), `cafePoseArt` (pose lookup incl. cat-on-bed for
+> `reactCat` (PET_REACTION), `cafePoseArt` (shared pose lookup for IDLE/EAT/PLAY/
 > SLEEP), and the evolution flow (HERO_EVENT). The work is **consolidating these
 > into one state variable with the priority rules below**, not writing behavior
 > from scratch. `EAT` and `APPROACH_OBJECT` are the genuinely new states (and
@@ -560,6 +606,8 @@ he interacts.
 ### 8.1 Moving the cat
 
 - Sirus can press and drag the cat in Play mode.
+- Tapping an open room location makes the cat walk there, remain there, and save
+  that location. Tapping an object still uses the object's specific action.
 - The cat remains where it is dropped, clamped to the walkable room area.
 - Dragging cancels the cat's current autonomous movement or noncritical action.
 - Dropping near a compatible object may suggest an interaction, but must not
@@ -589,7 +637,7 @@ he interacts.
 | Object type | Play-mode action |
 | --- | --- |
 | Food bowl | Cat approaches and eats; offers to spend a Care Charge on Hunger |
-| Water bowl | Cat approaches and drinks; small neutral care animation, or later supports a fourth need if intentionally added |
+| Water bowl | Cat approaches and performs a distinct neutral drink bob with the teal bowl still visible; dedicated drink sprites or a Hydration need may come later |
 | Bed / pillow / house | Cat approaches and sleeps; offers to spend a Care Charge on Rest |
 | Yarn / toy basket / cat tree | Cat approaches and plays; offers to spend a Care Charge on Happiness |
 | Decorative objects | Small feedback only; they do not pretend to be usable care objects |
@@ -608,9 +656,18 @@ need changed when it did not. Reuse `fx-sparkle.png`, `fx-starburst.png`,
 > `CAFE_ITEMS` — food/water bowls (`foodBowl`, `waterBowl`), beds (`bed`,
 > `pinkBed`, `greenBed`, `petPillow`, `petHouse`), toys (`rug`/`pinkYarn` yarn,
 > `toyBasket`, `tower` cat-tree). Tag each item in `cafe-items.js` with a
-> `role: 'food' | 'rest' | 'play' | 'decor'` so the Café doesn't hardcode ID
+> `role: 'food' | 'water' | 'rest' | 'play' | 'decor'` so the Café doesn't hardcode ID
 > lists. Collars/crown are `decor` (see §9.2). The décor `wiggle` acknowledgment
 > already exists in `initCafeInteractions`.
+
+> **▸ Device-test correction (2026-08-09):** water is now its own `water` role,
+> rather than borrowing food art that contains the wrong bowl. The Toy Basket is
+> explicitly covered as a `play` action. A bowl/toy/bed beneath the cat's large
+> transparent PNG rectangle is resolved as the visible object tap instead of an
+> accidental cat tap. Sleep uses each cat's transparent curled
+> frames layered over the selected bed/pillow/house; the three signature-bed
+> composites are not selected because they made only the matching cat/bed pair
+> appear to be inside the furniture.
 
 ### 8.4 Drag-the-yarn play
 
@@ -892,6 +949,30 @@ This can begin as local, on-screen character selection. It does not require
 simultaneous multiplayer accounts, real-time networking, or separate devices in
 its first version.
 
+### 13.1 Cat speech bubbles and family feedback — locked follow-up
+
+The cat should help Sirus understand meaningful family actions without making
+him study the ledger:
+
+- When Mom or Abba manually adds positive points, show one exciting synced
+  announcement with the adult, amount, and reason—for example, “Mom gave you 1
+  point for drying dishes!” The cat may deliver it in a speech bubble with a
+  short celebration.
+- A rejected completion must never silently disappear. Return the quest to the
+  available list and show one gentle message such as, “Mom sent Drying Dishes
+  back—check it and try again.” Support a short optional parent reason later.
+- Attribute Mom and Abba correctly; do not label every parent event “Mom.”
+- Give each event a durable id/read state so refreshing, reconnecting, or opening
+  a second device does not replay the same celebration repeatedly.
+- Use short deterministic templates. These speech bubbles are **not AI chat** and
+  must not imply open-ended understanding the app does not have.
+- Messages celebrate noticed behavior and make repair clear. They never shame,
+  accuse, or have the cat withdraw affection.
+
+Build the manual-point and returned-quest messages together as one feedback
+slice, because they need the same event queue, attribution, bubble, and one-time
+delivery behavior. Ordinary care hints can later reuse the bubble component.
+
 ## 14. Gentle-parenting and CBT-aligned guardrails
 
 The Café may create motivation and responsibility. It may not turn care into
@@ -916,6 +997,8 @@ Do:
 - let Sirus restart without a lecture;
 - frame needs as information: notice, choose, care, continue;
 - preserve affection/Bond as secure even when a need is low.
+- if the later health layer ships, label an unwell state as temporary, name the
+  available repair action, and celebrate recovery without assigning blame.
 
 ## 15. Scope of the Interactive Café MVP
 
@@ -925,11 +1008,12 @@ The MVP is complete when all of the following work together:
 2. He can place, move, store, and restore owned décor.
 3. The layout and cat location survive reload and work across supported screen
    sizes.
-4. He can drag the cat and leave it where dropped.
+4. He can drag the cat or tap an open spot to call it, and it remains where moved.
 5. The cat idles and wanders without snapping back to center.
 6. Tapping the cat creates a readable response.
-7. Tapping a bowl, sleep object, or toy makes the cat travel there and perform
-   the correct lasting pose.
+7. Tapping a food/water bowl, sleep object, or toy makes the cat travel there
+   and perform the correct lasting pose; Water and Toy Basket are explicitly
+   covered, and sleep presentation is consistent across cats and furniture.
 8. Dragging yarn makes the cat visibly follow and play without turning screen
    play into an unlimited Happiness refill.
 9. A low need produces one functional icon cue that guides Sirus to a compatible
@@ -976,20 +1060,35 @@ The MVP is complete when all of the following work together:
 - Add approach movement and bowl/bed/toy interactions.
 - Add drag-the-yarn play and lightweight feedback for decorative object taps.
 - Animate meter refills and Care Charge spending so cause and effect are clear.
-- Use the existing eat, sleep, play, celebrate, and cat-on-bed sprites.
+- Use the existing eat, cat-only sleep, play, and celebrate sprites; keep the
+  partial signature-bed composites optional until coverage is consistent.
 - Add clear no-charge feedback without guilt.
 
 > **▸ Current sub-slice:** placed food/rest/play objects now run the interruption-
-> safe walk → eat/sleep/play loop, including Hero cats and signature-bed art;
-> decorative objects acknowledge taps without implying a refill. Drag-the-yarn,
-> Care Charges, meters, and no-charge messaging remain for the next sub-slice /
-> Slice 4 boundary so the app does not display a care economy before it exists.
+> safe walk → eat/sleep/play loop, including Hero cats;
+> decorative objects acknowledge taps without implying a refill. The Hunger
+> prove-the-loop slice now adds the first real meter, timestamp decay, immediate
+> quest-earned Care Charges, purple-bowl spending, and clear full/no-charge/save-
+> failure feedback. The current testing branch also closes the reported gaps:
+> blank-room tap-to-walk, a distinct water action, explicit Toy Basket coverage,
+> object taps through the cat sprite's transparent box, consistent cat-only sleep
+> layered over any rest object, and the Firestore coin-
+> purchase pairing that previously denied a 12-coin Cat Tree at 14 coins.
+> Drag-the-yarn plus Rest/Happiness care remain follow-ups.
 
 ### Slice 4 — real-life care loop
 
 - Add Needs, timestamp decay, Care Charges, and quest hooks.
 - Tune decay/refill values from actual use.
 - Connect care to Hero progress.
+
+> **▸ Current vertical slice:** Hunger is implemented end-to-end with the locked
+> starting values: a healthy/testable 80 start, 100 maximum, 35/day timestamp
+> decay, a 48-hour return cap,
+> Care Charges capped at 6, and up to +20 per purple-food-bowl use. Existing cats
+> begin healthy on their first care-layer visit. Water remains a free neutral
+> interaction. Rest, Happiness, need cues, and `heroCareProgress` intentionally
+> wait until this vertical passes device testing.
 
 ### Slice 5 — animation polish
 
@@ -1001,6 +1100,15 @@ The MVP is complete when all of the following work together:
 > **▸ Status:** the two-frame idle, play, eat, walk, and sleep assets and the
 > interruption-safe frame-swapper are complete. Cat-specific timing, sounds,
 > snapshots, and richer object reactions remain optional polish.
+
+### Slice 5B — family feedback and speech bubbles
+
+- Add one durable, one-time child notification queue.
+- Celebrate positive manual point additions with Mom/Abba attribution, amount,
+  and reason through the cat.
+- Make rejected/returned quests visibly reappear with a gentle explanation and
+  optional parent note.
+- Reuse the deterministic bubble for later care hints; do not add AI chat.
 
 ### Slice 6 — family visits
 
@@ -1015,12 +1123,14 @@ The MVP is complete when all of the following work together:
 > `EAT` pose → meter rises. It exercises the whole vertical (store → decay → state
 > machine → visible resolution) on one need before the full three-need system,
 > and it's the fastest way to put a *doing something* cat in front of Sirus.
+> **Implemented; awaiting device testing.**
 
 ## 17. Non-goals for the first build
 
-- AI chat or open-ended cat dialogue
+- AI chat or open-ended cat dialogue (short deterministic speech bubbles are in scope)
 - Remaking existing art at a lower resolution
-- Breeding, death, sickness, or permanent pet loss
+- Breeding, death, permanent pet harm/loss, or the advanced illness/medicine
+  system in the first MVP (the recoverable later direction is §5.6)
 - A fourth need such as hygiene unless deliberately added later
 - Complex furniture collision physics
 - Family visitor avatars in the initial MVP
@@ -1061,8 +1171,9 @@ entry is ordinary tuning to confirm during testing.
    **▸ Answered (§0.2): two separate layers; Bond isn't in the Hero gate; coins
    stay décor-only; Care Charges are new.**
 10. Which existing objects are initially owned, shop-unlocked, or cat-specific? —
-    **▸ Answered (§0.7): none owned by default; all shop-unlocked; each cat has a
-    favored bed for the nap art.**
+    **▸ Answered (§0.7): none owned by default; all shop-unlocked. Signature-bed
+    art exists, but the current interaction layers each cat's transparent sleep
+    frames over whichever rest object Sirus actually taps.**
 11. Can the cat freely overlap furniture, or should only major objects reserve
    space?
 12. What exact attention cue feels clear to Sirus without becoming nagging?
@@ -1076,6 +1187,11 @@ entry is ordinary tuning to confirm during testing.
     with Save/Cancel?
 17. **New — Rest model:** symmetric decay (§5.3) or self-recovery + play-cost
     (§5.5)? *(Recommend symmetric first, switch if it feels like busywork.)*
+18. **Later health model:** how long must a need remain urgent before a temporary
+    unwell state is possible, and should balanced over-care ever do more than a
+    polite refusal? Decide with Sirus only after the three core needs are tested.
+19. Should point/returned-quest bubbles wait in a small inbox when the tablet was
+    closed, or show only for live events? Either way, each event displays once.
 
 ---
 

@@ -4,8 +4,19 @@
 > been integrity-checked at 256×256 with transparency, and are mapped in
 > `src/data/cats.js`. The frame-swapper animates idle blinks and autonomous play;
 > placed café objects now call the walk, eat, play, and sleep loops through the
-> interruption-safe Slice 3 state flow. Autonomous wandering and care resolution
-> remain separate follow-ups.
+> interruption-safe Slice 3 state flow. The first Hunger care resolution uses the
+> eat loop after a bowl approach; Rest/Happiness care and autonomous wandering
+> remain separate follow-ups. Device-test fixes add blank-room tap-to-walk, a
+> visible neutral water bob, and explicit Toy Basket play coverage.
+
+> **Sleep consistency:** runtime sleep now uses each cat's transparent curled
+> A↔B frames layered over the actual bed/pillow/house Sirus tapped. The three
+> signature cat-on-bed composites remain available but are intentionally unused:
+> one composite per cat cannot consistently cover every cat × bed combination.
+> **Water art gap:** no dedicated drink PNGs exist in `ART-PROMPTS.md`, and the
+> eat frames contain their own food bowl. Water therefore keeps the teal bowl
+> visible and uses a CSS head/body bob on the sit pose until drink frames are
+> deliberately generated.
 
 > Companion to `ART-PROMPTS.md` / `PIXEL-PROMPTS.md` (art generation) and
 > `CAFE-GOAL.md` (the café build). This defines **the animation gap, the frames
@@ -183,6 +194,10 @@ function playSprite(poseKey, { fps = 3, holdMs } = {}) {
 - `APPROACH_OBJECT` (Tier 2) → translate the cat's `left` toward the object while
   `playSprite('walk')`, stop the walk on arrival, then enter EAT/PLAY.
 - Idle beat (optional, Tier 3) → occasional `idle` blink loop for a beat.
+- `DRINK` → keep the placed water bowl visible and bob the cat-only sit sprite;
+  do not reuse an `eat` frame that contains the wrong bowl.
+- `SLEEP` → layer the cat-only sleep loop over the selected rest object; do not
+  choose a signature-bed composite unless complete equivalent coverage exists.
 
 ## 6. Suggested order
 
