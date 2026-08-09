@@ -160,6 +160,12 @@ assumptions:
   the item's side of the room**, not a walked approach. The `APPROACH_OBJECT`
   state should be a short hop/settle at the object, not a walk animation.
 
+**Animation plan:** the fix for all of the above — adding a second frame per
+action so the cat can eat/play/walk instead of swapping frozen poses — is speced
+in **`ART-ANIMATION.md`** (frame manifest, generation prompts, and the
+frame-swapper wiring). Tier 1 (6 PNGs) animates eat & play; Tier 2 (6 PNGs)
+unlocks a real walk for `APPROACH_OBJECT`.
+
 ---
 
 ## 1. Product promise
