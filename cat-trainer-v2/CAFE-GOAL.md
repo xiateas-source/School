@@ -117,6 +117,28 @@ Committed on `claude/cat-cafe-design-sbz2n9` (before this spec), clearing the
   cat-on-bed nap art when that bed is owned + placed (`cafePoseArt`). This is the
   one existing "typed" object relationship to preserve.
 
+### 0.8 Decisions locked (Aug 2026)
+
+Per the family's go-ahead, the open forks are decided here so building can
+proceed. **All remain tunable in testing** — this locks a starting point, not a
+final balance sheet. This table is the authoritative resolution of §18's design
+forks; the sections below keep the fuller reasoning.
+
+| Fork | Locked call | Why |
+| --- | --- | --- |
+| **Hero unlock rule** (§11.2, §18 Q2) | Keep the 12/12 Brain+Energy caps **and** require **14 distinct active care days** (`heroCareProgress`, advances only on days the cat is at least "Okay") | Can't be rushed in one session; ~2 weeks of real habit, not a grind |
+| **Rest model** (§5.3, §5.5, §18 Q17) | **Symmetric decay** (§5.3); `play` also nudges Rest down. Self-recovery (§5.5) is the documented fallback if Rest feels like busywork | Simplest to teach Sirus first |
+| **Care Charge grant** (§6.1, §18 Q4) | On the **child's quest completion** (immediate); coins + progression still gated on **parent approval** | Responsive without waiting on an adult |
+| **Care Charge type** (§6.2, §18 Q3) | **Flexible** — spend on any need; typed-by-section care deferred | Fewer choices for a young kid |
+| **Decay rates** (§5.3, §18 Q5) | Accept the §5.3 draft (Hunger 35 / Rest 25 / Happiness 20 per 24 h) as the starting point | Conservative; retune from a real week |
+| **Offline-decay cap** (§18 Q6) | Keep **48 h** | Gentle homecoming |
+| **Rest-action end** (§7.2, §18 Q7) | A Care-Charge rest **auto-ends** after the sleep animation; a low-Rest *self-nap* persists until Rest recovers or Sirus moves the cat | Predictable and cozy |
+| **Room scope** (§18 Q8) | **One shared room per child** (matches current per-child décor) | Simplest; per-cat rooms can come later |
+| **Furniture overlap** (§18 Q11) | Cat may **freely overlap** furniture (no collision) for MVP | Matches the "no collision physics" non-goal |
+| **Sound** (§12.1, §18 Q15) | **Off by default**, saved preference respected | Least intrusive |
+| **Room snapshot** (§9.4, §18 Q16) | **Preview with Save/Cancel**, not an instant download | A beat to confirm the shot |
+| **Attention-cue wording & family visits** (§18 Q12–Q14) | **Deferred** to their own slices; not MVP-blocking | Later polish |
+
 ---
 
 ## 1. Product promise
@@ -978,7 +1000,9 @@ The MVP is complete when all of the following work together:
 ## 18. Decisions to refine next
 
 These questions should be answered before Slice 4 is finalized. Items marked
-**▸ Answered** are resolved by the §0 audit; the rest remain product decisions.
+**▸ Answered** are resolved by the §0 audit. The remaining design **forks are now
+locked in §0.8** (starting points, still tunable); anything below without a §0.8
+entry is ordinary tuning to confirm during testing.
 
 1. Roughly how many individual quest completions make up Sirus's observed
    15–20 points on a typical day? — **▸ Answered (§0.4): ~1:1, so ~15–20
