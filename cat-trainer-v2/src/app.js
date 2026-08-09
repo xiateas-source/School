@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=a1a00993';
+import { isConfigured } from './firebase.js?v=68afe4da';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=a1a00993';
-import * as store from './store.js?v=a1a00993';
-import { CAT_DEFS } from './data/cats.js?v=a1a00993';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=a1a00993';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=a1a00993';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=a1a00993';
+} from './auth.js?v=68afe4da';
+import * as store from './store.js?v=68afe4da';
+import { CAT_DEFS } from './data/cats.js?v=68afe4da';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=68afe4da';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=68afe4da';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=68afe4da';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -48,6 +48,7 @@ function navChild(name) {
   document.querySelectorAll('[data-cgo]').forEach(b => b.classList.toggle('active', b.dataset.cgo === name));
   // Leaving the café always drops back to Play mode (never reopen mid-arrange).
   if (name !== 'cafe' && cafeMode !== 'play') { cafeMode = 'play'; cafeUndo = null; updateCafeModeUI(); }
+  if (name === 'cafe') catWelcomeBack();
   window.scrollTo(0, 0);
 }
 
@@ -69,7 +70,7 @@ async function enterChild(familyId, uid) {
   state.role = 'child'; state.familyId = familyId; state.uid = uid;
   showShell('child'); navChild('home');
   await subscribeAll();
-  scheduleCatIdle(); // the café cat ambles/glances on its own while Sirus watches
+  scheduleCatBeat(); // the café cat ambles/glances on its own while Sirus watches
 }
 
 async function subscribeAll() {
@@ -419,10 +420,15 @@ function catMood() {
   if (happyToday)  return { pose: 'sit',   cls: 'mood-happy' };
   return { pose: 'sit', cls: 'mood-calm' };
 }
+// ---- Café cat behavior: one state, one timer -------------------------------
+// A single owner for what the cat is doing. Every transition cancels the pending
+// timer, so a stale beat can never override a newer action — the root cause of
+// the old "snap back to center / revert the pose" bug (a 900ms settle timer and
+// a separate stroll-return timer both fighting whatever was happening now).
 let catTapCount = 0;
-let catSettleTimer = null;
-let catIdleTimer = null;
-let catStrollBack = null;
+let catState = 'idle';     // idle | wander | glance | react | dragged
+let catStateTimer = null;  // duration of the current transient state
+let catBeatTimer = null;   // schedules the next autonomous idle beat
 // Art for a café pose. If the cat is "sleeping" and owns + placed its own bed,
 // it naps ON that bed (the cat-on-bed art) instead of the plain curled pose.
 function cafePoseArt(def, poseKey) {
@@ -440,16 +446,13 @@ function renderChildCafe() {
   el('c-cafe-room').style.backgroundImage = `url("${CAFE_ROOM_ART}")`;
   const mood = catMood();
   const wrap = el('c-cafe-cat-wrap');
-  if (wrap) {
-    wrap.className = `cafe-cat-wrap ${mood.cls}`;
-    // Reopen with the cat where Sirus left it. Don't fight an in-progress drag.
-    if (cafeDrag && cafeDrag.kind === 'cat') { /* leave the live drag alone */ }
-    else {
-      const pos = state.child.cafeCat;
-      if (pos && pos.x != null) { wrap.style.left = pos.x + '%'; wrap.style.top = pos.y + '%'; wrap.style.bottom = 'auto'; }
-    }
-  }
-  el('c-cafe-cat').src = cat.evolved ? def.heroArt : cafePoseArt(def, mood.pose || 'sit');
+  if (wrap) wrap.className = `cafe-cat-wrap ${mood.cls}`;
+  // The cat's position is owned by the behavior machine (drag + welcome-back +
+  // wander), not re-applied here — a data snapshot must never teleport a cat that
+  // has wandered or been dragged back to its base spot.
+  // Only refresh the resting sprite while the cat is actually resting; if it's
+  // mid-react/glance/wander, leave its pose alone so a snapshot can't cut it off.
+  if (catState === 'idle') el('c-cafe-cat').src = catRestPoseSrc(cat, def);
   if (!cafeDrag) {
     el('c-placed').innerHTML = state.ownedItems.filter(o => o.placed !== false).map(o => {
       const item = CAFE_ITEMS[o.id]; if (!item) return '';
@@ -520,6 +523,7 @@ function initCafeInteractions() {
       e.preventDefault();
       const wrap = el('c-cafe-cat-wrap');
       wrap.style.transition = 'none'; // the wrap normally eases `left`; snap to the finger while dragging
+      clearTimeout(catStateTimer); catState = 'dragged'; // a grab beats any pending beat
       cafeDrag = { kind: 'cat', el: wrap, catEl: cat, rect: room.getBoundingClientRect(),
                    grabX: e.clientX, grabY: e.clientY, moved: false };
       try { cat.setPointerCapture(e.pointerId); } catch (_) { /* older browsers */ }
@@ -572,6 +576,7 @@ function initCafeInteractions() {
     if (d.kind === 'cat') {
       d.el.style.transition = ''; // restore the gentle ease for autonomous strolls
       try { d.catEl.releasePointerCapture(e.pointerId); } catch (_) { /* no-op */ }
+      catState = 'idle';
       if (d.moved && d.lastX != null) {
         const x = round(d.lastX), y = round(d.lastY);
         if (state.child) state.child.cafeCat = { x, y }; // optimistic: no snap-back before the write lands
@@ -586,9 +591,33 @@ function initCafeInteractions() {
   room.addEventListener('pointercancel', endDrag);
 }
 
+// The cat's mood-resting sprite (Hero art once evolved).
+function catRestPoseSrc(cat, def) {
+  const m = catMood();
+  return cat.evolved ? def.heroArt : cafePoseArt(def, m.pose || 'sit');
+}
+function catCtx() {
+  const id = state.child.activeCatId;
+  return { cat: state.cats[id] || {}, def: CAT_DEFS[id], catEl: el('c-cafe-cat'), wrap: el('c-cafe-cat-wrap') };
+}
+// Return to the resting look and mark the cat idle again.
+function settleCatToRest() {
+  const { cat, def, catEl } = catCtx();
+  if (catEl) catEl.src = catRestPoseSrc(cat, def);
+  catState = 'idle';
+}
+// Enter a transient state for `ms`, then run `onEnd` (default: settle to rest).
+// Cancels any pending transition first, so the newest action always wins.
+function catTransient(next, ms, onEnd) {
+  clearTimeout(catStateTimer);
+  catState = next;
+  catStateTimer = setTimeout(onEnd || settleCatToRest, ms);
+}
+
+// ---- Direct interaction: a pet/react ---------------------------------------
 function reactCat(e) {
-  const catEl = el('c-cafe-cat');
-  const id = state.child.activeCatId; const cat = state.cats[id] || {}; const def = CAT_DEFS[id];
+  const { cat, def, catEl } = catCtx();
+  const room = el('c-cafe-room');
   catTapCount++;
 
   // Physical feedback: a springy squash-stretch (alternating with a wiggle) and a
@@ -598,7 +627,6 @@ function reactCat(e) {
   if (navigator.vibrate) { try { navigator.vibrate(8); } catch (_) {} }
 
   // Burst right where the finger landed, not dead-center.
-  const room = el('c-cafe-room');
   let cx = 50, cy = 46;
   const px = e && (e.clientX ?? e.touches?.[0]?.clientX);
   const py = e && (e.clientY ?? e.touches?.[0]?.clientY);
@@ -609,68 +637,87 @@ function reactCat(e) {
   spawnFx('assets/fx-sparkle.png', room, { count: 3, cx, cy, spread: 16, size: 40 });
   if (catTapCount % 3 === 0) spawnFx('assets/fx-paw.png', room, { count: 1, cx, cy: cy + 6, spread: 0, size: 30, life: 700, mode: 'trail' });
 
-  // Flash a happy pose, then settle back to the mood-resting look — a tap is a
-  // reaction now, not a march through a slideshow.
+  // Hold a happy pose for a readable beat, then settle back. Tapping again during
+  // the beat just refreshes it (catTransient cancels the old timer) — no flicker,
+  // no slideshow, and no stale timer snapping the pose back early.
   if (!cat.evolved && def.poses) {
     catEl.src = cafePoseArt(def, (catTapCount % 2) ? 'play' : 'celebrate');
-    clearTimeout(catSettleTimer);
-    catSettleTimer = setTimeout(() => {
-      const m = catMood();
-      catEl.src = cat.evolved ? def.heroArt : cafePoseArt(def, m.pose || 'sit');
-    }, 900);
+    catTransient('react', 2600);
+  } else {
+    catTransient('react', 1600);
   }
 }
 
-// ---- Autonomous idle: the cat lives on its own between taps -----------------
-// A randomized, mood-paced timer gives the resting cat little "beats" — a
-// stroll, a glance at a toy, a hop — so the café never looks frozen. Sleepy cats
-// stir rarely; happy cats are livelier. (The behavior half of the Tamagotchi
-// idea, driven by real stats, on the single-frame sprites.)
-function catStroll() {
-  const wrap = el('c-cafe-cat-wrap');
+// ---- Autonomous behavior: the cat lives on its own between taps -------------
+// Little "beats" — a wander, a glance, a hop — so the café never looks frozen.
+// Sleepy cats stir rarely; happy cats are livelier. Each beat is a state
+// transition, so it can't stack on or override a tap/drag in progress.
+function catWander() {
+  const { wrap } = catCtx();
   if (!wrap) return;
-  const base = catBaseLeft(); // wander around wherever Sirus last left the cat
+  const base = catBaseLeft();
   const dir = Math.random() < 0.5 ? -1 : 1;
+  // Amble near where Sirus left the cat, then STAY there — the CSS eases `left`,
+  // and nothing schedules a return to center anymore.
   const dest = clampNum(base + dir * (5 + Math.random() * 8), 2, 58);
   wrap.style.left = dest.toFixed(1) + '%';
-  clearTimeout(catStrollBack);
-  catStrollBack = setTimeout(() => { const w = el('c-cafe-cat-wrap'); if (w) w.style.left = base + '%'; }, 1400 + Math.random() * 1200);
+  catTransient('wander', 1100, () => { catState = 'idle'; });
+}
+function catGlance() {
+  const { cat, def, catEl } = catCtx();
+  if (cat.evolved || !def.poses) return catHop();
+  catEl.src = cafePoseArt(def, 'play'); // look at something, then settle back
+  catTransient('glance', 900);
+}
+function catHop() {
+  const { catEl } = catCtx();
+  catEl.classList.remove('react'); void catEl.offsetWidth; catEl.classList.add('react');
+  catTransient('glance', 600, () => { catState = 'idle'; });
+}
+function catSway() {
+  const { catEl } = catCtx();
+  catEl.classList.remove('react-wiggle'); void catEl.offsetWidth; catEl.classList.add('react-wiggle');
+  catTransient('glance', 600, () => { catState = 'idle'; });
 }
 
 function catIdleBeat() {
-  // Respect reduced-motion: skip the beat entirely (but keep the loop alive).
-  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { scheduleCatIdle(); return; }
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const onCafe = state.role === 'child' && state.child
     && document.querySelector('[data-cscreen="cafe"]')?.classList.contains('active');
-  // Hold still while Sirus is arranging the room, so the cat can't wander onto
-  // furniture he's placing.
-  if (onCafe && !cafeDrag && cafeMode === 'play') {
-    const id = state.child.activeCatId; const cat = state.cats[id] || {}; const def = CAT_DEFS[id];
-    const catEl = el('c-cafe-cat');
+  // Only stir when the café is open, in Play mode, the cat is at rest, and Sirus
+  // isn't mid-drag. Otherwise wait quietly for the next beat.
+  if (!reduce && onCafe && !cafeDrag && cafeMode === 'play' && catState === 'idle') {
     const mood = catMood();
     const roll = Math.random();
-    if (mood.cls === 'mood-sleepy') {
-      // barely stirs — a slow little sway, then keeps napping
-      catEl.classList.remove('react-wiggle'); void catEl.offsetWidth; catEl.classList.add('react-wiggle');
-    } else if (roll < 0.45) {
-      catStroll();                                    // amble left or right
-    } else if (!cat.evolved && def.poses && roll < 0.8) {
-      catEl.src = cafePoseArt(def, 'play');           // glance/play, then settle back
-      clearTimeout(catSettleTimer);
-      catSettleTimer = setTimeout(() => { catEl.src = cat.evolved ? def.heroArt : cafePoseArt(def, catMood().pose || 'sit'); }, 800);
-    } else {
-      catEl.classList.remove('react'); void catEl.offsetWidth; catEl.classList.add('react');  // a happy hop
-    }
+    if (mood.cls === 'mood-sleepy') catSway();       // barely stirs, keeps napping
+    else if (roll < 0.45) catWander();
+    else if (roll < 0.8) catGlance();
+    else catHop();
   }
-  scheduleCatIdle();
+  scheduleCatBeat();
 }
-
 // Next beat sooner when the cat's lively, later when it's sleepy.
-function scheduleCatIdle() {
-  clearTimeout(catIdleTimer);
+function scheduleCatBeat() {
+  clearTimeout(catBeatTimer);
   const moodCls = state.child ? catMood().cls : 'mood-calm';
   const base = moodCls === 'mood-sleepy' ? 9000 : moodCls === 'mood-happy' ? 4500 : 6500;
-  catIdleTimer = setTimeout(catIdleBeat, base + Math.random() * 4000);
+  catBeatTimer = setTimeout(catIdleBeat, base + Math.random() * 4000);
+}
+// Reopening the café shouldn't freeze the cat mid-center. Show its mood-resting
+// look at the saved spot, and — unless it's sleepy — glance up a moment later, so
+// it reads as "oh, you're here" rather than a static portrait.
+function catWelcomeBack() {
+  if (!state.child) return;
+  clearTimeout(catStateTimer);
+  // Place the cat at its saved spot (this is the one moment we apply it).
+  const wrap = el('c-cafe-cat-wrap');
+  const pos = state.child.cafeCat;
+  if (wrap && pos && pos.x != null) { wrap.style.left = pos.x + '%'; wrap.style.top = pos.y + '%'; wrap.style.bottom = 'auto'; }
+  settleCatToRest();
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduce && catMood().cls !== 'mood-sleepy') {
+    catStateTimer = setTimeout(() => { if (catState === 'idle' && cafeMode === 'play') catGlance(); }, 900);
+  }
 }
 
 // Spawn a few effect sprites inside a positioned container. mode: rise | fall | pop.
