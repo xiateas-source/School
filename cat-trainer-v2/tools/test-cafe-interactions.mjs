@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CAFE_ITEMS } from '../src/data/cafe-items.js';
 import {
-  CAFE_ACTIONS, cafeActionFor, catDestinationForObject, catDestinationForTap,
-  firstCafeDecorElement, catWalkDuration
+  CAFE_ACTIONS, CAT_WANDER_SPOTS, cafeActionFor, catDestinationForObject,
+  catDestinationForTap, catWanderDestination, firstCafeDecorElement,
+  catWalkDuration
 } from '../src/cafe-interactions.js';
 
 const roles = Object.values(CAFE_ITEMS).reduce((counts, item) => {
@@ -51,6 +52,31 @@ assert.equal(catWalkDuration({ x: 20, y: 20 }, { x: 20, y: 20 }), 0);
 assert.equal(catWalkDuration({ x: 2, y: 12 }, { x: 58, y: 68 }), 1450);
 assert.equal(catWalkDuration({ x: 2, y: 12 }, { x: 58, y: 68 }, true), 0);
 
+for (let i = 0; i < CAT_WANDER_SPOTS.length; i++) {
+  const destination = catWanderDestination({
+    from: { x: 30, y: 38 },
+    random: () => i / CAT_WANDER_SPOTS.length
+  });
+  assert.ok(destination.x >= 2 && destination.x <= 58, 'wander x stays in cat drag bounds');
+  assert.ok(destination.y >= 12 && destination.y <= 68, 'wander y stays in cat drag bounds');
+  assert.ok(Math.hypot(destination.x - 30, destination.y - 38) >= 12,
+    'wander destination is a visible move, not an in-place shuffle');
+}
+assert.deepEqual(catWanderDestination({
+  from: { x: 4, y: 59 },
+  preferred: { x: 99, y: -20 }
+}), { x: 58, y: 12 }, 'a low-need object preference uses the shared safe bounds');
+assert.equal(catWanderDestination({
+  from: { x: 58, y: 12 },
+  preferred: { x: 58, y: 12 }
+}), null, 'a cat already beside the preferred object stays there');
+const rightOpen = catWanderDestination({
+  from: { x: 30, y: 38 },
+  obstacles: [{ x: 0, y: 0, width: 55, height: 100 }],
+  random: () => 0
+});
+assert.ok(rightOpen.x >= 55, 'wander chooses the least-obstructed room anchor');
+
 // The browser catalog and Firestore's server-authoritative price allowlist must
 // move together or valid purchases will be denied (or a stale price accepted).
 const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
@@ -79,5 +105,6 @@ assert.match(html, /id="c-need-cue"/, 'one functional low-need cue is present');
 const css = readFileSync(new URL('../styles/base.css', import.meta.url), 'utf8');
 assert.match(css, /\.cafe-room\s*\{[^}]*\bisolation:\s*isolate\s*;/s);
 assert.match(css, /\.bottom-nav\s*\{[^}]*\bz-index:\s*(?:[1-9]|[1-9]\d+)\s*;/s);
+assert.match(css, /data-cat-state="wander"/, 'travel walk does not inherit the idle breathing transform');
 
 console.log('Café interaction helpers: all checks passed.');

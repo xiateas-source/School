@@ -1,26 +1,26 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=19997e6a';
+import { isConfigured } from './firebase.js?v=ec69d8c2';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=19997e6a';
-import * as store from './store.js?v=19997e6a';
-import { CAT_DEFS } from './data/cats.js?v=19997e6a';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=19997e6a';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=19997e6a';
+} from './auth.js?v=ec69d8c2';
+import * as store from './store.js?v=ec69d8c2';
+import { CAT_DEFS } from './data/cats.js?v=ec69d8c2';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=ec69d8c2';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=ec69d8c2';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
-  firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=19997e6a';
+  catWanderDestination, firstCafeDecorElement, catWalkDuration
+} from './cafe-interactions.js?v=ec69d8c2';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=19997e6a';
+} from './care.js?v=ec69d8c2';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=19997e6a';
+} from './shared/rewards.js?v=ec69d8c2';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -412,6 +412,7 @@ function setCafeMode(mode) {
   // cat awake and stable instead of letting an old action finish behind the tray.
   if (mode === 'decorate' && catState !== 'idle') settleCatToRest();
   cafeMode = mode;
+  catBeatsSinceWander = 0;
   cafeUndo = null;
   updateCafeModeUI();
   renderChildCafe();
@@ -563,9 +564,10 @@ function ensureActiveCatCare(catId, cat) {
 // the old "snap back to center / revert the pose" bug (a 900ms settle timer and
 // a separate stroll-return timer both fighting whatever was happening now).
 let catTapCount = 0;
-let catState = 'idle';     // idle | glance | react | dragged | approach | eat | drink | play | sleep
+let catState = 'idle';     // idle | glance | wander | react | dragged | approach | eat | drink | play | sleep
 let catStateTimer = null;  // duration of the current transient state
 let catBeatTimer = null;   // schedules the next autonomous idle beat
+let catBeatsSinceWander = 0;
 let catAnimTimer = null;   // frame-swap loop for multi-frame poses (eat/play/walk)
 let catAnimStopTimer = null;
 let catTargetId = null;    // placed object currently selected by Sirus
@@ -791,6 +793,7 @@ function initCafeInteractions() {
       syncCatStateUI();
       if (d.moved && d.lastX != null) {
         const x = round(d.lastX), y = round(d.lastY);
+        catBeatsSinceWander = 0;
         if (state.child) state.child.cafeCat = { x, y }; // optimistic: no snap-back before the write lands
         try { await store.moveCafeCat(state.familyId, x, y); }
         catch (_) { toast('Could not save that move.'); renderChildCafe(); }
@@ -1066,6 +1069,7 @@ function beginCafeObjectAction(item, destination) {
   // back to the old spot; a failed offline write does not cancel the play action.
   const x = Math.round(destination.x * 10) / 10;
   const y = Math.round(destination.y * 10) / 10;
+  catBeatsSinceWander = 0;
   if (state.child) state.child.cafeCat = { x, y };
   store.moveCafeCat(state.familyId, x, y).catch(() => {});
 
@@ -1174,6 +1178,7 @@ function moveCatToRoomTap(e) {
     if (catState !== 'approach' || catTargetId !== null) return;
     const x = Math.round(destination.x * 10) / 10;
     const y = Math.round(destination.y * 10) / 10;
+    catBeatsSinceWander = 0;
     if (state.child) state.child.cafeCat = { x, y };
     store.moveCafeCat(state.familyId, x, y).catch(() => toast('Could not save that spot.'));
     settleCatToRest();
@@ -1232,9 +1237,9 @@ function reactCat(e) {
 }
 
 // ---- Autonomous behavior: the cat lives on its own between taps -------------
-// Idle life uses the new blink/play frames plus CSS micro-motion. Walk frames are
-// available for Slice 3 object approaches, but autonomous travel stays disabled
-// until movement has a destination and interruption rules.
+// Idle life mixes small in-place beats with occasional bounded travel. Wander
+// uses the same state owner and walk loop as directed movement, so any tap,
+// drag, mode change, or newer action interrupts it cleanly.
 function catPlayBeat() {
   const { cat, def } = catCtx();
   if (cat.evolved || !def.poses) return catHop();
@@ -1259,6 +1264,85 @@ function catBlink() {
   catEl.src = idle[1];                                // eyes closed
 }
 
+function cafeObstacleRects(room) {
+  const rr = room.getBoundingClientRect();
+  if (!rr.width || !rr.height) return [];
+  return Array.from(document.querySelectorAll('#c-placed [data-decor]')).map((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      x: ((rect.left - rr.left) / rr.width) * 100,
+      y: ((rect.top - rr.top) / rr.height) * 100,
+      width: (rect.width / rr.width) * 100,
+      height: (rect.height / rr.height) * 100
+    };
+  });
+}
+
+function catWander(preferredNeed = null) {
+  const room = el('c-cafe-room');
+  const { wrap } = catCtx();
+  if (!room || !wrap || cafeMode !== 'play' || catState !== 'idle') return false;
+
+  const rr = room.getBoundingClientRect();
+  const wr = wrap.getBoundingClientRect();
+  if (!rr.width || !rr.height) return false;
+  const from = {
+    x: ((wr.left - rr.left) / rr.width) * 100,
+    y: ((wr.top - rr.top) / rr.height) * 100
+  };
+
+  let preferred = null;
+  if (preferredNeed) {
+    const itemEl = Array.from(document.querySelectorAll('#c-placed [data-decor]'))
+      .find(node => CAFE_ITEMS[node.dataset.decor]?.need === preferredNeed);
+    if (!itemEl) return false;
+    const item = CAFE_ITEMS[itemEl.dataset.decor];
+    const ir = itemEl.getBoundingClientRect();
+    preferred = catDestinationForObject({
+      role: item.role,
+      itemLeft: ((ir.left - rr.left) / rr.width) * 100,
+      itemTop: ((ir.top - rr.top) / rr.height) * 100,
+      itemWidth: (ir.width / rr.width) * 100
+    });
+  }
+
+  const destination = catWanderDestination({
+    from,
+    obstacles: cafeObstacleRects(room),
+    preferred
+  });
+  if (!destination) return false;
+
+  const travelMs = catWalkDuration(from, destination, false);
+  const arrive = () => {
+    if (catState !== 'wander') return;
+    const x = Math.round(destination.x * 10) / 10;
+    const y = Math.round(destination.y * 10) / 10;
+    if (state.child) state.child.cafeCat = { x, y };
+    // This ordinary room write is intentionally offline-safe. A transient sync
+    // failure must not snap the cat back or interrupt its autonomous life.
+    store.moveCafeCat(state.familyId, x, y).catch(() => {});
+    settleCatToRest();
+  };
+
+  releaseCatTarget();
+  wrap.style.transition = 'none';
+  wrap.style.left = from.x + '%';
+  wrap.style.top = from.y + '%';
+  wrap.style.bottom = 'auto';
+  void wrap.offsetWidth;
+
+  catTransient('wander', travelMs, arrive);
+  playSprite('walk', { fps: 4, heroAction: true });
+  wrap.style.transition = `left ${travelMs}ms linear, top ${travelMs}ms linear`;
+  requestAnimationFrame(() => {
+    if (catState !== 'wander') return;
+    wrap.style.left = destination.x + '%';
+    wrap.style.top = destination.y + '%';
+  });
+  return true;
+}
+
 function catIdleBeat() {
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const onCafe = state.role === 'child' && state.child
@@ -1270,13 +1354,27 @@ function catIdleBeat() {
     const low = lowestCareNeed(activeCareNeeds(), 40);
     if (low) {
       // A cat asking for care stays quieter instead of performing a confusing
-      // autonomous play beat while one of its daily needs is low.
-      if (roll < 0.6) catBlink();
+      // autonomous play beat while one of its daily needs is low. Low Rest
+      // suppresses travel entirely; Hunger/Happiness may occasionally prompt a
+      // gentle walk near a matching placed object without using it or spending.
+      const traveled = low.need !== 'rest' && roll >= 0.9 && catWander(low.need);
+      if (traveled) catBeatsSinceWander = 0;
+      else if (roll < 0.6) catBlink();
       else catWiggle();
-    } else if (roll < 0.35) catBlink();    // a slow blink (animated if frames exist)
-    else if (roll < 0.6) catWiggle();      // a little shimmy in place
-    else if (roll < 0.85) catPlayBeat();   // bat at a toy, then settle
-    else catHop();                         // a happy hop
+    } else {
+      // Randomness keeps the cat from feeling clockwork; the five-beat ceiling
+      // keeps a valid build observable without making Sirus wait indefinitely.
+      const travelDue = catBeatsSinceWander >= 5 || roll < 0.18;
+      const traveled = travelDue && catWander();
+      if (traveled) catBeatsSinceWander = 0;
+      else {
+        catBeatsSinceWander++;
+        if (roll < 0.46) catBlink();         // a slow blink (animated if frames exist)
+        else if (roll < 0.68) catWiggle();   // a little shimmy in place
+        else if (roll < 0.9) catPlayBeat();  // bat at a toy, then settle
+        else catHop();                       // a happy hop
+      }
+    }
   }
   scheduleCatBeat();
 }
@@ -1292,6 +1390,7 @@ function scheduleCatBeat() {
 function catWelcomeBack() {
   if (!state.child) return;
   clearTimeout(catStateTimer);
+  catBeatsSinceWander = 0;
   // Place the cat at its saved spot (this is the one moment we apply it).
   const wrap = el('c-cafe-cat-wrap');
   const pos = state.child.cafeCat;

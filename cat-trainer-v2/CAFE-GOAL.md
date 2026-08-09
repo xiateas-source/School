@@ -31,7 +31,7 @@ The audit is complete; build against these facts and the locked calls in §0.8.
 | Cat definitions + poses | `src/data/cats.js` | `CAT_DEFS`, `freshCatProgress()` |
 | Daily quests | `src/data/quests.js` | `DEFAULT_QUESTS` (13), `SECTIONS`, `seededQuests()` |
 | Reward math (single source of truth) | `src/shared/rewards.js` | `CAPS`, `HERO_THRESHOLD`, `isHeroReady`, `applyCatProgress` |
-| Café render + interactions | `src/app.js` | `renderChildCafe`, `initCafeInteractions`, `reactCat`, `catMood`, `catIdleBeat`, `catWelcomeBack`, `cafePoseArt` |
+| Café render + interactions | `src/app.js` | `renderChildCafe`, `initCafeInteractions`, `reactCat`, `catMood`, `catIdleBeat`, `catWander`, `catWelcomeBack`, `cafePoseArt` |
 | Persistence / transactions | `src/store.js` | `purchaseCafeItem`, `moveCafeItem`, `setCafeItemPlaced`, quest-approval reward writes |
 
 ### 0.2 The current progression model (keep its two layers separate)
@@ -85,7 +85,7 @@ they do not repeat release history.
 | --- | --- | --- |
 | **Room and ordinary persistence** | Play/Decorate modes, owned-item tray, placement/storage, one-step Undo, room bounds, and normalized cat/décor positions | Ordinary save/reload behavior is complete: the room and cat reopen where they were left. This is separate from the offline/reconnect check below. |
 | **Cat response and basic welcome-back** | Interruption-safe actions; cat taps; drag and blank-room call-to-walk; object approach; lasting eat/play/sleep; autonomous in-place blink, wiggle, hop, and play; reopening restores the saved position and gives a small hello wiggle | Core movement and object interactions passed device testing. The richer need-based opening choices in §7.4 are optional polish, not an MVP blocker. |
-| **Autonomous travel wandering** | Two-frame walk art and directed travel are available, but random room travel is deliberately disabled; autonomous life currently happens in place | Implement bounded destination choice, enable `WANDER`, then phone-test pacing and interruptions. |
+| **Autonomous travel wandering** | The live release still limits autonomous life to in-place beats. The final branch adds bounded, décor-aware travel through the existing walk/state controller and saves each destination | Publish the final branch, then phone-test pacing, destination quality, interruptions, mode boundaries, and reload persistence. |
 | **Daily care and UI** | Hunger, Rest, Happiness, timestamp decay, Care Charges, functional need cue, food/rest/play spending, full-need protection, and fixed menu layering | All three meters and matching actions passed phone testing, including play's 5-Rest cost. A displayed-full action with a spare charge may be confirmed organically; automated coverage already protects the charge. |
 | **Hero progression** | Brain 12 + Energy 12 + 14 distinct healthy-care days, with atomic once-per-day writes and sticky existing Heroes; matching rules are published | Regression coverage passes. The full 14-day path remains a natural-use validation, not a blocker for the next slice. |
 | **Offline/reconnect** | The service worker caches the app shell, Firestore uses persistent local cache, and timestamp decay works after time away | No separate device pass is recorded. Complete the scoped offline/reconnect test in §16.2. |
@@ -472,8 +472,9 @@ The cat has exactly one primary state at a time.
 | `DRAGGED` | Sirus drags the cat | Follow pointer/finger | Drop at valid position, then idle |
 
 > **▸ From the code:** `catState`, one cancelable state timer, and the shared pose
-> lookup now coordinate idle, pet, approach, eat, play, sleep, celebrate, and drag
-> behavior. Autonomous wandering remains the one deliberately disabled state.
+> lookup now coordinate idle, wander, pet, approach, eat, play, sleep, celebrate,
+> and drag behavior. Travel wandering is implemented on the final branch and
+> remains unreleased until its phone pacing pass.
 
 ### 7.1 State priority
 
@@ -514,21 +515,22 @@ Released autonomous behavior is deliberately in place: while the Café is open,
 in Play mode, and the cat is not busy, it occasionally blinks, wiggles, hops, or
 plays. These beats quiet down when a daily need is low.
 
-The remaining travel-wander slice must:
+The final branch implementation:
 
-- choose an idle variation or short wander after a randomized delay;
-- remain inside the walkable room bounds;
-- avoid covering critical controls;
-- prefer relevant placed objects when a need is low;
-- do not repeatedly interrupt Sirus with attention cues;
-- do not snap back to center after wandering;
-- reduce wandering when Rest is low;
-- increase playful idle choices when Happiness and Rest are high.
+- chooses an in-place beat or an occasional short walk after a randomized delay;
+- scores fixed walkable anchors against placed décor and chooses among the least
+  obstructed destinations;
+- pauses outside Play mode and under reduced-motion preference;
+- gently prefers a matching placed object when Hunger or Happiness is low,
+  without starting care or spending a charge;
+- suppresses travel when Rest is low;
+- uses the existing cancelable walk state so taps, drags, object actions, and
+  mode changes take priority;
+- saves the arrival point and never schedules a return to center.
 
-Two-frame walk poses and interruption-safe directed movement are already mapped.
-Random room travel remains disabled until bounded destination selection is added
-and its pacing passes on Sirus's device. When enabled, the cat must stay at its
-destination rather than scheduling a return to center.
+Two-frame walk poses and interruption-safe directed movement are reused. The
+live release still has random room travel disabled; the final branch remains
+pending until destination quality and pacing pass on Sirus's device.
 
 ### 7.4 Welcome-back behavior
 
@@ -998,13 +1000,16 @@ The former audit, room, object, and care-loop slices are released; their durable
 contracts live in the sections above and their verification status lives only in
 §0.5. Keep this section limited to unfinished work.
 
-### 16.1 Autonomous travel wander
+### 16.1 Autonomous travel wander — device validation pending
 
-- Choose bounded, uncluttered destinations inside the visible room.
-- Use the existing walk loop and state-controller cancellation rules.
-- Keep the cat at the destination; never schedule a return to center.
-- Reduce travel when Rest is low and pause it outside Play mode.
-- Phone-test frequency, travel time, destination quality, and interruptions.
+The bounded implementation is complete on the final branch. After deployment,
+phone-test that the cat:
+
+- travels occasionally—not constantly—to sensible room destinations;
+- stays at the destination and still reopens there after a reload;
+- yields immediately to a cat tap/drag, blank-room call, or object action;
+- does not travel in Decorate mode or when Rest is low;
+- never crosses the fixed menu layer or leaves the visible room.
 
 The released saved-position hello remains the welcome-back baseline. Richer
 need-based opening choices in §7.4 are optional polish and are not part of this
