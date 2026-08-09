@@ -1,16 +1,16 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=e08bf3c9';
+import { isConfigured } from './firebase.js?v=e3284735';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=e08bf3c9';
-import * as store from './store.js?v=e08bf3c9';
-import { CAT_DEFS } from './data/cats.js?v=e08bf3c9';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=e08bf3c9';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=e08bf3c9';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=e08bf3c9';
+} from './auth.js?v=e3284735';
+import * as store from './store.js?v=e3284735';
+import { CAT_DEFS } from './data/cats.js?v=e3284735';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=e3284735';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=e3284735';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=e3284735';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -426,6 +426,29 @@ let catTapCount = 0;
 let catState = 'idle';     // idle | glance | react | dragged
 let catStateTimer = null;  // duration of the current transient state
 let catBeatTimer = null;   // schedules the next autonomous idle beat
+let catAnimTimer = null;   // frame-swap loop for multi-frame poses (eat/play/walk)
+let catAnimStopTimer = null;
+const preloadedCatFrames = new Set();
+
+function stopSpriteAnimation() {
+  clearInterval(catAnimTimer);
+  clearTimeout(catAnimStopTimer);
+  catAnimTimer = null;
+  catAnimStopTimer = null;
+}
+
+// Load a selected cat's alternate frames before its first autonomous beat. This
+// avoids a network flash between frame A and B, while keeping the initial page
+// load small because unselected cats are not preloaded.
+function preloadCatFrames(def) {
+  if (!def || !def.frames) return;
+  Object.values(def.frames).flat().forEach((src) => {
+    if (preloadedCatFrames.has(src)) return;
+    preloadedCatFrames.add(src);
+    const img = new Image();
+    img.src = src;
+  });
+}
 // Art for a café pose. If the cat is "sleeping" and owns + placed its own bed,
 // it naps ON that bed (the cat-on-bed art) instead of the plain curled pose.
 function cafePoseArt(def, poseKey) {
@@ -434,13 +457,14 @@ function cafePoseArt(def, poseKey) {
     const rec = ownedCafeRecord(def.bedItemId);
     if (rec && rec.placed !== false) return def.bedPose;
   }
-  return def.poses[poseKey];
+  return def.poses[poseKey] || def.poses.sit || def.art;
 }
 
 function renderChildCafe() {
   el('c-coins').textContent = state.child.coins || 0;
   const id = state.child.activeCatId; const cat = state.cats[id] || {}; const def = CAT_DEFS[id];
   el('c-cafe-room').style.backgroundImage = `url("${CAFE_ROOM_ART}")`;
+  preloadCatFrames(def);
   const mood = catMood();
   const wrap = el('c-cafe-cat-wrap');
   if (wrap) wrap.className = `cafe-cat-wrap ${mood.cls}`;
@@ -520,7 +544,11 @@ function initCafeInteractions() {
       e.preventDefault();
       const wrap = el('c-cafe-cat-wrap');
       wrap.style.transition = 'none'; // the wrap normally eases `left`; snap to the finger while dragging
-      clearTimeout(catStateTimer); catState = 'dragged'; // a grab beats any pending beat
+      clearTimeout(catStateTimer);
+      stopSpriteAnimation();
+      const { cat: progress, def } = catCtx();
+      cat.src = catRestPoseSrc(progress, def);
+      catState = 'dragged'; // a grab beats any pending beat
       cafeDrag = { kind: 'cat', el: wrap, catEl: cat, rect: room.getBoundingClientRect(),
                    grabX: e.clientX, grabY: e.clientY, moved: false };
       try { cat.setPointerCapture(e.pointerId); } catch (_) { /* older browsers */ }
@@ -600,15 +628,39 @@ function catCtx() {
 // Return to the resting look and mark the cat idle again.
 function settleCatToRest() {
   const { cat, def, catEl } = catCtx();
+  stopSpriteAnimation(); // stop any frame loop so it can't outlive its state
   if (catEl) catEl.src = catRestPoseSrc(cat, def);
   catState = 'idle';
 }
 // Enter a transient state for `ms`, then run `onEnd` (default: settle to rest).
-// Cancels any pending transition first, so the newest action always wins.
+// Cancels the old transition and its sprite loop first, so the newest action
+// always wins. Call playSprite() after catTransient() to start the new loop.
 function catTransient(next, ms, onEnd) {
   clearTimeout(catStateTimer);
+  stopSpriteAnimation();
   catState = next;
   catStateTimer = setTimeout(onEnd || settleCatToRest, ms);
+}
+// Animate a multi-frame pose by cycling its frames. Falls back to a meaningful
+// still under reduced motion or when a pose has no alternate frame. A dedicated
+// stop timer is cleared on every new run so an older hold can never stop a newer
+// animation.
+function playSprite(poseKey, { fps = 3, holdMs = 0 } = {}) {
+  const { cat, def, catEl } = catCtx();
+  stopSpriteAnimation();
+  if (!catEl || !def) return;
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const frames = !cat.evolved && def.frames && def.frames[poseKey];
+  // Keep the special cat-on-bed art when its favored bed is placed. The plain
+  // two-frame sleep loop is used only when the cat is sleeping elsewhere.
+  const usesBedPose = poseKey === 'sleep' && cafePoseArt(def, 'sleep') === def.bedPose;
+  const still = cat.evolved
+    ? def.heroArt
+    : (usesBedPose ? def.bedPose : (frames && frames[0]) || cafePoseArt(def, poseKey));
+  if (!frames || frames.length < 2 || reduce || usesBedPose) { catEl.src = still; return; }
+  let i = 0; catEl.src = frames[0];
+  catAnimTimer = setInterval(() => { i = (i + 1) % frames.length; catEl.src = frames[i]; }, Math.round(1000 / fps));
+  if (holdMs) catAnimStopTimer = setTimeout(stopSpriteAnimation, holdMs);
 }
 
 // ---- Direct interaction: a pet/react ---------------------------------------
@@ -638,33 +690,39 @@ function reactCat(e) {
   // the beat just refreshes it (catTransient cancels the old timer) — no flicker,
   // no slideshow, and no stale timer snapping the pose back early.
   if (!cat.evolved && def.poses) {
-    catEl.src = cafePoseArt(def, (catTapCount % 2) ? 'play' : 'celebrate');
     catTransient('react', 2600);
+    playSprite((catTapCount % 2) ? 'play' : 'celebrate');
   } else {
     catTransient('react', 1600);
   }
 }
 
 // ---- Autonomous behavior: the cat lives on its own between taps -------------
-// We only have single-frame sprites — no walk cycle — so "life" comes from CSS
-// micro-motion (a wiggle or a little hop on the still sprite) and the occasional
-// brief pose swap to the play frame. No sliding across the floor (that reads as
-// gliding without a walk animation), and the cat stays where Sirus left it.
+// Idle life uses the new blink/play frames plus CSS micro-motion. Walk frames are
+// available for Slice 3 object approaches, but autonomous travel stays disabled
+// until movement has a destination and interruption rules.
 function catPlayBeat() {
-  const { cat, def, catEl } = catCtx();
+  const { cat, def } = catCtx();
   if (cat.evolved || !def.poses) return catHop();
-  catEl.src = cafePoseArt(def, 'play'); // a quick bat at a toy, then settle back
-  catTransient('glance', 900);
+  catTransient('glance', 1200);
+  playSprite('play');   // animated bat if the play frames exist, else the single pose
 }
 function catHop() {
   const { catEl } = catCtx();
+  catTransient('glance', 600);
   catEl.classList.remove('react'); void catEl.offsetWidth; catEl.classList.add('react');
-  catTransient('glance', 600, () => { catState = 'idle'; });
 }
 function catWiggle() {
   const { catEl } = catCtx();
+  catTransient('glance', 600);
   catEl.classList.remove('react-wiggle'); void catEl.offsetWidth; catEl.classList.add('react-wiggle');
-  catTransient('glance', 600, () => { catState = 'idle'; });
+}
+function catBlink() {
+  const { cat, def, catEl } = catCtx();
+  const idle = !cat.evolved && def.frames && def.frames.idle;
+  if (!idle || idle.length < 2) return catWiggle();  // no blink frame yet → just wiggle
+  catTransient('glance', 180);                        // reopen (settle) shortly after
+  catEl.src = idle[1];                                // eyes closed
 }
 
 function catIdleBeat() {
@@ -675,8 +733,9 @@ function catIdleBeat() {
   // isn't mid-drag. Otherwise wait quietly for the next beat.
   if (!reduce && onCafe && !cafeDrag && cafeMode === 'play' && catState === 'idle') {
     const roll = Math.random();
-    if (roll < 0.45) catWiggle();          // a little shimmy in place
-    else if (roll < 0.8) catPlayBeat();    // flash the play pose, then settle
+    if (roll < 0.35) catBlink();           // a slow blink (animated if frames exist)
+    else if (roll < 0.6) catWiggle();      // a little shimmy in place
+    else if (roll < 0.85) catPlayBeat();   // bat at a toy, then settle
     else catHop();                         // a happy hop
   }
   scheduleCatBeat();
