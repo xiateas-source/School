@@ -1,6 +1,8 @@
 // Cat definitions — preserved from the legacy app (catTrainerMvpV1).
-// Each cat trains independently. Hero Form unlocks at Brain >= 12 AND Energy >= 12.
-// Brain/Energy are cumulative and are never spent when the Hero Form unlocks.
+// Each cat trains independently. Hero Form requires Brain >= 12, Energy >= 12,
+// and 14 distinct active care days. Progress is cumulative and never spent.
+
+import { freshHeroCareProgress } from '../shared/rewards.js?v=19997e6a';
 
 export const CAT_IDS = ['nova', 'ember', 'moss'];
 
@@ -65,5 +67,11 @@ export const CAT_DEFS = {
 
 // A cat's starting progress. All three cats start unlocked, matching the legacy app.
 export function freshCatProgress() {
-  return { brain: 0, energy: 0, bond: 0, evolved: false };
+  return {
+    brain: 0,
+    energy: 0,
+    bond: 0,
+    evolved: false,
+    heroCareProgress: freshHeroCareProgress()
+  };
 }

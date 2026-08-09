@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {
-  CARE_CONFIG, careCharges, displayNeedValue, freshCatNeeds, grantCareCharge,
-  hungerAt, isNeedFull, lowestCareNeed, needAt, needsAt, refillHunger, refillNeed
+  CARE_CONFIG, areCareNeedsOkay, careCharges, displayNeedValue, freshCatNeeds,
+  grantCareCharge, hungerAt, isNeedFull, lowestCareNeed, needAt, needsAt,
+  refillHunger, refillNeed
 } from '../src/care.js';
 import { CAFE_ITEMS } from '../src/data/cafe-items.js';
 
@@ -41,6 +42,9 @@ assert.deepEqual(grantCareCharge(6), { before: 6, after: 6, granted: false });
 assert.equal(displayNeedValue(99.9), 100);
 assert.equal(isNeedFull(99.9), true, 'a need displayed as 100 is full to care actions');
 assert.equal(isNeedFull(99.4), false, 'a need displayed as 99 can receive care');
+assert.equal(areCareNeedsOkay({ hunger: 39.5, rest: 40, happiness: 100 }), true,
+  'Hero care uses the same displayed 40/100 boundary Sirus sees');
+assert.equal(areCareNeedsOkay({ hunger: 39.4, rest: 100, happiness: 100 }), false);
 
 assert.deepEqual(refillHunger(42, 3), {
   ok: true, reason: null, before: 42, after: 62, refill: 20,

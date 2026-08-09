@@ -10,8 +10,9 @@ rules_version = '2';
 //  3. The child role is limited to its legitimate actions: REQUESTING a quest
 //     completion (once per local day, always status 'pending'), receiving its one
 //     capped Care Charge, spending that charge through a paired catNeeds write,
-//     switching the active cat, and buying café items with coins. The child can
-//     never raise its own minutes/coins or long-term cat progress stats.
+//     appending one parent-marked healthy Hero-care date, switching the active
+//     cat, and buying café items with coins. The child can never raise its own
+//     minutes/coins or long-term Brain/Energy/Bond stats.
 //  4. Duplicate quest completions can't double-count (deterministic doc id +
 //     create-only). Rewards are applied only by the parent's approval.
 //
@@ -210,6 +211,51 @@ service cloud.firestore {
                 || (requestedCareCharges() == storedCareCharges() - 1 && validCareSpend())));
 
         match /cats/{catId} {
+          // A child care transaction may append exactly one distinct day, never
+          // submit a replacement counter. The eligible date and timestamp were
+          // written by a parent approval; the child must preserve that marker,
+          // carry every prior date forward, and have all three displayed needs
+          // in the Okay band (39.5 rounds to the visible 40/100 threshold).
+          function validChildHeroCareAdvance(newNeeds) {
+            let oldProgress = resource.data.get('heroCareProgress', {});
+            let newProgress = request.resource.data.get('heroCareProgress', {});
+            let oldDates = oldProgress.get('activeDates', []);
+            let newDates = newProgress.get('activeDates', []);
+            let day = oldProgress.get('lastQuestDate', '');
+            return oldProgress is map
+              && newProgress is map
+              && oldDates is list
+              && newDates is list
+              && day is string
+              && day != ''
+              && oldProgress.get('lastQuestAt', null) is timestamp
+              && newProgress.keys().hasOnly(['activeDates', 'lastQuestDate', 'lastQuestAt'])
+              && newProgress.get('lastQuestDate', '') == day
+              && newProgress.get('lastQuestAt', null) == oldProgress.get('lastQuestAt', null)
+              && !oldDates.hasAny([day])
+              && newDates.hasAll(oldDates)
+              && newDates.hasAny([day])
+              && newDates.size() == oldDates.size() + 1
+              && newDates.size() <= 14
+              && newNeeds.hunger >= 39.5
+              && newNeeds.rest >= 39.5
+              && newNeeds.happiness >= 39.5;
+          }
+
+          function validChildEvolution() {
+            let wasEvolved = resource.data.get('evolved', false);
+            let isEvolved = request.resource.data.get('evolved', false);
+            let progress = request.resource.data.get('heroCareProgress', {});
+            let dates = progress.get('activeDates', []);
+            return isEvolved == wasEvolved
+              || (wasEvolved == false
+                && isEvolved == true
+                && request.resource.data.get('brain', 0) >= 12
+                && request.resource.data.get('energy', 0) >= 12
+                && dates is list
+                && dates.size() >= 14);
+          }
+
           function validChildCareUpdate() {
             let oldNeeds = resource.data.get('catNeeds', {});
             let newNeeds = request.resource.data.catNeeds;
@@ -248,7 +294,8 @@ service cloud.firestore {
               && newNeeds.rest >= oldNeeds.get('rest', 80) - 50 - (need == 'happiness' ? 5 : 0)
               && newNeeds.happiness <= oldNeeds.get('happiness', 80) + (need == 'happiness' ? 20 : 0)
               && newNeeds.happiness >= oldNeeds.get('happiness', 80) - 40;
-            return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['catNeeds'])
+            return request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['catNeeds', 'heroCareProgress', 'evolved'])
               && newNeeds.keys().hasOnly(['hunger', 'rest', 'happiness', 'lastUpdatedAt'])
               && newNeeds.diff(oldNeeds).affectedKeys().hasOnly([
                 'hunger', 'rest', 'happiness', 'lastUpdatedAt'
@@ -263,6 +310,10 @@ service cloud.firestore {
               && newNeeds.happiness >= 0
               && newNeeds.happiness <= 100
               && newNeeds.lastUpdatedAt == request.time
+              && (!request.resource.data.diff(resource.data).affectedKeys()
+                    .hasAny(['heroCareProgress', 'evolved'])
+                  || validChildHeroCareAdvance(newNeeds))
+              && validChildEvolution()
               && ((isCareMigration
                     && migrationValuesValid
                     && childAfter.get('careCharges', 0) == childBefore.get('careCharges', 0))
@@ -271,8 +322,9 @@ service cloud.firestore {
 
           allow read: if isMember(fid);
           allow create: if isParent(fid);
-          // Brain/Energy/Bond/Hero remain parent-only rewards. A child may update
-          // only catNeeds through the tightly paired care transaction above.
+          // Brain/Energy/Bond remain parent-only rewards. A child may update
+          // catNeeds and append only the one rules-validated Hero-care date
+          // paired with that care transaction; Hero may flip true only at 12/12/14.
           allow update: if isParent(fid) || (isChild(fid) && validChildCareUpdate());
           allow delete: if isParent(fid);
         }

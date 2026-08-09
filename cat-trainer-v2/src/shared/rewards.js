@@ -4,6 +4,7 @@
 
 export const CAPS = { brain: 12, energy: 12, bond: 20 };
 export const HERO_THRESHOLD = { brain: 12, energy: 12 };
+export const HERO_CARE_REQUIRED_DAYS = 14;
 
 export const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
@@ -27,8 +28,84 @@ export const CUSTOM_POSITIVE_BOND = 1;
 export const QUEST_BOND = 1;
 
 // --- Hero Form ---------------------------------------------------------------
+// Hero care is stored as distinct family-local dates instead of a client-
+// supplied counter. Transactions append at most one new date, so repeated
+// approvals/taps on the same day cannot rush the gate.
+const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function progressValue(value) {
+  return value && value.heroCareProgress ? value.heroCareProgress : (value || {});
+}
+
+export function heroCareDates(value) {
+  const source = progressValue(value).activeDates;
+  if (!Array.isArray(source)) return [];
+  const dates = [];
+  for (const date of source) {
+    if (typeof date !== 'string' || !LOCAL_DATE_PATTERN.test(date) || dates.includes(date)) continue;
+    dates.push(date);
+    if (dates.length >= HERO_CARE_REQUIRED_DAYS) break;
+  }
+  return dates;
+}
+
+export function heroCareDays(value) {
+  return heroCareDates(value).length;
+}
+
+export function freshHeroCareProgress() {
+  return { activeDates: [], lastQuestDate: null, lastQuestAt: null };
+}
+
+function validLocalDate(date) {
+  if (typeof date !== 'string' || !LOCAL_DATE_PATTERN.test(date)) {
+    throw new Error('invalid-hero-care-date');
+  }
+  return date;
+}
+
+function appendHeroCareDate(progress, date, careOkay) {
+  const activeDates = heroCareDates(progress);
+  const advanced = !!careOkay
+    && activeDates.length < HERO_CARE_REQUIRED_DAYS
+    && !activeDates.includes(date);
+  if (advanced) activeDates.push(date);
+  return { activeDates, advanced };
+}
+
+// Called only inside the parent approval transaction. Besides attempting the
+// once-per-day append, it leaves a server-timestamped activity marker so a
+// same-day care action can resume a day that was paused by low needs.
+export function recordHeroCareActivity(progress, date, careOkay, lastQuestAt = null) {
+  const localDay = validLocalDate(date);
+  const { activeDates, advanced } = appendHeroCareDate(progress, localDay, careOkay);
+  return {
+    progress: { activeDates, lastQuestDate: localDay, lastQuestAt },
+    advanced
+  };
+}
+
+// Called inside a care-spend transaction. It may append only the day previously
+// marked by parent approval, and only while that same local day is still active.
+export function resumeHeroCareActivity(progress, date, careOkay) {
+  const localDay = validLocalDate(date);
+  const stored = progressValue(progress);
+  const eligible = stored.lastQuestDate === localDay;
+  const { activeDates, advanced } = appendHeroCareDate(stored, localDay, eligible && careOkay);
+  return {
+    progress: {
+      activeDates,
+      lastQuestDate: stored.lastQuestDate || null,
+      lastQuestAt: stored.lastQuestAt || null
+    },
+    advanced
+  };
+}
+
 export function isHeroReady(cat) {
-  return cat.brain >= HERO_THRESHOLD.brain && cat.energy >= HERO_THRESHOLD.energy;
+  return cat.brain >= HERO_THRESHOLD.brain
+    && cat.energy >= HERO_THRESHOLD.energy
+    && heroCareDays(cat) >= HERO_CARE_REQUIRED_DAYS;
 }
 
 // Apply cumulative cat progress (never spent). Returns a new cat object and
