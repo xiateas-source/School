@@ -3,7 +3,9 @@
 > **Implementation status (Aug 2026):** all 18 planned frames now exist, have
 > been integrity-checked at 256×256 with transparency, and are mapped in
 > `src/data/cats.js`. The frame-swapper animates idle blinks and autonomous play;
-> eat, walk, and sleep loops are ready for the object/care states in Slices 3–4.
+> placed café objects now call the walk, eat, play, and sleep loops through the
+> interruption-safe Slice 3 state flow. Autonomous wandering and care resolution
+> remain separate follow-ups.
 
 > Companion to `ART-PROMPTS.md` / `PIXEL-PROMPTS.md` (art generation) and
 > `CAFE-GOAL.md` (the café build). This defines **the animation gap, the frames

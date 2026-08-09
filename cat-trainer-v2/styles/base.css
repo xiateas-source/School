@@ -302,6 +302,11 @@ main { padding: 0 16px; }
 .cafe-cat-wrap { position: absolute; bottom: 8%; left: 30%; width: 40%; z-index: 2; transform-origin: bottom center; animation: catBreathe 3.4s ease-in-out infinite; }
 .cafe-cat-wrap.mood-sleepy { animation: catSleep 5.5s ease-in-out infinite; }
 .cafe-cat-wrap.mood-happy  { animation: catHappy 2.6s ease-in-out infinite; }
+.cafe-cat-wrap[data-cat-state="approach"],
+.cafe-cat-wrap[data-cat-state="eat"],
+.cafe-cat-wrap[data-cat-state="play"],
+.cafe-cat-wrap[data-cat-state="sleep"],
+.cafe-cat-wrap[data-cat-state="dragged"] { animation: none; }
 .cafe-cat { display: block; width: 100%; cursor: pointer; transform-origin: bottom center; touch-action: none;
   -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
 /* When the art becomes pixel-art sprites, add here: image-rendering: pixelated; */
@@ -319,15 +324,21 @@ main { padding: 0 16px; }
    drop-shadow makes each item read as a liftable object (a "grab me" cue on
    touch, where there's no grab cursor). */
 .cafe-decor { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none;
-  -webkit-tap-highlight-color: transparent; filter: drop-shadow(0 3px 4px rgba(0,0,0,.18)); transition: filter .15s ease, transform .15s ease; }
+  -webkit-tap-highlight-color: transparent; filter: drop-shadow(0 3px 4px rgba(0,0,0,.18)); transition: filter .15s ease, transform .15s ease, opacity .15s ease; }
 .cafe-decor.dragging { cursor: grabbing; z-index: 6; transform: scale(1.06); filter: drop-shadow(0 6px 8px rgba(0,0,0,.25)); }
 .cafe-decor.wiggle { animation: decorWiggle .5s ease; }
+.cafe-decor.is-cat-target:not(.is-in-use) { filter: drop-shadow(0 0 7px rgba(255,184,76,.9)) drop-shadow(0 4px 5px rgba(0,0,0,.2)); }
+.cafe-decor.is-in-use { opacity: 0; pointer-events: none; }
+.cafe-decor:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
 @keyframes decorWiggle { 0%,100%{transform:rotate(0)} 20%{transform:rotate(-9deg)} 40%{transform:rotate(7deg)} 60%{transform:rotate(-5deg)} 80%{transform:rotate(3deg)} }
 .cafe-cat.react        { animation: catPop .5s ease; }
 .cafe-cat.react-wiggle { animation: catWiggle .5s ease; }
 @keyframes catPop    { 0%{transform:scale(1,1)} 25%{transform:scale(1.12,.9)} 50%{transform:scale(.94,1.08)} 75%{transform:scale(1.04,.98)} 100%{transform:scale(1,1)} }
 @keyframes catWiggle { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-6deg)} 50%{transform:rotate(5deg)} 75%{transform:rotate(-3deg)} }
-@media (prefers-reduced-motion: reduce) { .cafe-cat-wrap, .cafe-cat.react, .cafe-cat.react-wiggle { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .cafe-cat-wrap, .cafe-cat.react, .cafe-cat.react-wiggle, .cafe-decor.wiggle { animation: none; }
+  .cafe-cat-wrap { transition: none !important; }
+}
 .cafe-hint { font-size: .8rem; color: var(--muted); text-align: center; margin: 10px 2px 0; }
 .coin-ico { width: 1em; height: 1em; object-fit: contain; vertical-align: -0.15em; }
 
