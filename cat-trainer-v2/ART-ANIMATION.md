@@ -57,10 +57,14 @@ Loop A↔B → the cat visibly chews and bats. 6 images.
 A brand-new two-frame pose per cat; the app translates the cat horizontally while
 cycling the two frames.
 
+Kept **front-3/4** (a "waddle"), not a side profile — so the cat doesn't have to
+turn sideways to move and snap back to front on arrival, and it stays consistent
+with every other pose.
+
 | New file | Depiction |
 |---|---|
-| `nova-walk-a.png` · `ember-walk-a.png` · `moss-walk-a.png` | Standing, **front-left + back-right legs forward** (mid-stride), side-on ¾ |
-| `nova-walk-b.png` · `ember-walk-b.png` · `moss-walk-b.png` | The **opposite stride** (other legs forward) |
+| `nova-walk-a.png` · `ember-walk-a.png` · `moss-walk-a.png` | Front-3/4 walk, **frame 1**: near paw forward, body dipped slightly left, tail up |
+| `nova-walk-b.png` · `ember-walk-b.png` · `moss-walk-b.png` | Front-3/4 walk, **frame 2**: the opposite — other paw forward, body dipped slightly right |
 
 Cycling a↔b while moving `left` reads as walking. 6 images. Enables the Slice 3
 `APPROACH_OBJECT` state to be a real walk instead of a hop.
