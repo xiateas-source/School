@@ -139,6 +139,27 @@ forks; the sections below keep the fuller reasoning.
 | **Room snapshot** (§9.4, §18 Q16) | **Preview with Save/Cancel**, not an instant download | A beat to confirm the shot |
 | **Attention-cue wording & family visits** (§18 Q12–Q14) | **Deferred** to their own slices; not MVP-blocking | Later polish |
 
+### 0.9 Device-test corrections (Aug 2026)
+
+Ground truth from Sirus's device after Slices 1–2 shipped — these override earlier
+assumptions:
+
+- **Single-frame sprites only — the cat cannot walk or "glance up."** There is no
+  walk cycle, so **no sliding across the floor** (it reads as gliding) and no
+  frames for turning/looking. "Life" must come from CSS micro-motion on the still
+  sprite (breathe / wiggle / hop) plus brief swaps to the existing `play`/`eat`
+  poses. The `WANDER` state in §7 is therefore **motion-in-place, not travel**,
+  until real walk art exists (still a later-polish item per §7.3). *(Fixed in
+  Slice 2.1: removed the sliding wander and the glance-up welcome.)*
+- **Resting pose must NOT key off the training `energy` stat.** It made the cat
+  look asleep almost always (Energy is near zero early). The café cat now defaults
+  to **awake/sitting**, bouncier after a quest; **real sleep/napping comes only
+  from the Rest care-need in Slice 4** (and the cat-on-bed art returns then).
+  *(Fixed in Slice 2.1.)*
+- Implication for **Slice 3**: object interactions are **pose swaps + a hop toward
+  the item's side of the room**, not a walked approach. The `APPROACH_OBJECT`
+  state should be a short hop/settle at the object, not a walk animation.
+
 ---
 
 ## 1. Product promise
