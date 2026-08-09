@@ -2,15 +2,15 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=f2a0017e';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=f2a0017e';
-import { seededQuests } from './data/quests.js?v=f2a0017e';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=f2a0017e';
+import { initFirebase, db, dbSdk } from './firebase.js?v=a1a00993';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=a1a00993';
+import { seededQuests } from './data/quests.js?v=a1a00993';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=a1a00993';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, applyBalanceDelta
-} from './shared/rewards.js?v=f2a0017e';
-import { localDate, localTimeLabel } from './shared/dates.js?v=f2a0017e';
+} from './shared/rewards.js?v=a1a00993';
+import { localDate, localTimeLabel } from './shared/dates.js?v=a1a00993';
 
 export const CHILD_ID = 'sirus';
 
@@ -551,6 +551,17 @@ export async function setCafeItemPlaced(familyId, itemId, placed) {
   const { updateDoc } = sdk;
   const p = paths(sdk, database, familyId);
   await updateDoc(p.ownedItem(itemId), { placed });
+}
+
+// Save where the café cat is standing in the room (x/y as % of the room). Stored
+// on the child profile so the room reopens with the cat where Sirus left it. The
+// security rules let the child write this — only `available`/`coins` are frozen
+// for a child write — so no reward can be self-credited through it.
+export async function moveCafeCat(familyId, x, y) {
+  const { database, sdk } = await fs();
+  const { updateDoc } = sdk;
+  const p = paths(sdk, database, familyId);
+  await updateDoc(p.child(), { cafeCat: { x, y } });
 }
 
 export async function setActiveCat(familyId, catId) {
