@@ -1,21 +1,23 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=eea04fd8';
+import { isConfigured } from './firebase.js?v=eb73f886';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=eea04fd8';
-import * as store from './store.js?v=eea04fd8';
-import { CAT_DEFS } from './data/cats.js?v=eea04fd8';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=eea04fd8';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=eea04fd8';
+} from './auth.js?v=eb73f886';
+import * as store from './store.js?v=eb73f886';
+import { CAT_DEFS } from './data/cats.js?v=eb73f886';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=eb73f886';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=eb73f886';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=eea04fd8';
-import { CARE_CONFIG, careCharges, hungerAt } from './care.js?v=eea04fd8';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=eea04fd8';
+} from './cafe-interactions.js?v=eb73f886';
+import {
+  CARE_CONFIG, CARE_NEEDS, careCharges, lowestCareNeed, needsAt
+} from './care.js?v=eb73f886';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=eb73f886';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -427,26 +429,35 @@ async function applyCafeUndo() {
     toast('Undone.');
   } catch (_) { toast('Could not undo — try again.'); }
 }
-// The café cat's resting look. It stays awake (sitting) by default and gets
-// bright and bouncy after a quest. Sleep is NOT tied to the training Energy stat
-// anymore (that stat is near zero early on, which made the cat look asleep almost
-// always). Explicit bed taps sleep now; need-driven naps arrive with Slice 4.
+// The café cat's resting look. It is driven by daily care — never the long-term
+// training Energy stat. Low Rest gets a quiet sleep pose; another low need keeps
+// the cat calm while the functional cue points toward a useful object.
 function catMood() {
   const id = state.child.activeCatId; const cat = state.cats[id] || {};
+  const low = lowestCareNeed(activeCareNeeds(), 40);
+  if (low && low.need === 'rest') return { pose: 'sleep', cls: 'mood-sleepy' };
+  if (low) return { pose: 'sit', cls: 'mood-calm' };
   if (cat.evolved) return { pose: null, cls: 'mood-happy' };
   const happyToday = (state.todayCompletions && state.todayCompletions.length > 0) || (cat.bond || 0) >= 12;
   return happyToday ? { pose: 'sit', cls: 'mood-happy' } : { pose: 'sit', cls: 'mood-calm' };
 }
 
-// ---- Daily care: Hunger vertical slice -------------------------------------
-// Hunger is the first end-to-end need. Existing cats are lazily stamped at a
-// healthy 80 on their first post-launch visit; a Set prevents duplicate writes
-// while the realtime snapshot catches up.
+// ---- Daily care: Hunger + Rest + Happiness ---------------------------------
+// Existing Hunger-only cats are lazily migrated with healthy Rest/Happiness
+// defaults; a Set prevents duplicate writes while the realtime snapshot catches
+// up. All three needs use the same timestamp but distinct decay rates.
 const careInitPending = new Set();
 let careSpendPending = false;
 let careLockedView = null;
-let careFeedbackTimer = null;
+const careFeedbackTimers = new Map();
 let careClockTimer = null;
+let needGuideTimer = null;
+
+const CARE_META = Object.freeze({
+  hunger: Object.freeze({ label: 'Hunger', icon: 'assets/food-bowl-purple.png', objects: 'a food bowl' }),
+  rest: Object.freeze({ label: 'Rest', icon: 'assets/night-routine-icon.png', objects: 'a bed, pillow, or house' }),
+  happiness: Object.freeze({ label: 'Happiness', icon: 'assets/yarn-blue.png', objects: 'yarn, a toy basket, or the cat tree' })
+});
 
 function stopCareClock() {
   clearInterval(careClockTimer);
@@ -461,47 +472,69 @@ function startCareClock() {
   }, 60 * 1000);
 }
 
-function careBand(hunger) {
-  if (hunger >= 70) return { label: 'Thriving', cls: 'thriving' };
-  if (hunger >= 40) return { label: 'Okay', cls: 'okay' };
-  if (hunger >= 15) return { label: 'Needs care', cls: 'needs-care' };
+function careBand(value) {
+  if (value >= 70) return { label: 'Thriving', cls: 'thriving' };
+  if (value >= 40) return { label: 'Okay', cls: 'okay' };
+  if (value >= 15) return { label: 'Needs care', cls: 'needs-care' };
   return { label: 'Ready for care', cls: 'urgent-safe' };
 }
 
-function activeHunger() {
+function activeCareNeeds() {
+  if (!state.child) return needsAt(null);
   const cat = state.cats[state.child.activeCatId] || {};
-  return hungerAt(cat.catNeeds);
+  return needsAt(cat.catNeeds);
 }
 
-function renderCafeCareStatus({ hungerOverride = null, chargesOverride = null } = {}) {
-  const bar = el('c-hunger-bar');
-  const meterEl = el('c-hunger-meter');
-  if (!bar || !meterEl || !state.child) return;
+function renderNeedCue(needs) {
+  const cue = el('c-need-cue');
+  const icon = el('c-need-cue-icon');
+  if (!cue || !icon || !state.child) return;
+  const lowest = lowestCareNeed(needs, 40);
+  cue.hidden = !lowest || cafeMode !== 'play';
+  if (!lowest || cafeMode !== 'play') { delete cue.dataset.need; return; }
+  const meta = CARE_META[lowest.need];
+  const def = CAT_DEFS[state.child.activeCatId];
+  cue.dataset.need = lowest.need;
+  cue.setAttribute('aria-label', `Help ${def.name} with ${meta.label}`);
+  cue.title = `${meta.label} could use care`;
+  icon.src = meta.icon;
+  icon.alt = '';
+}
+
+function renderCafeCareStatus({ needsOverride = null, chargesOverride = null } = {}) {
+  if (!state.child) return;
 
   const locked = careSpendPending && careLockedView ? careLockedView : null;
-  const hunger = hungerOverride == null
-    ? (locked ? locked.hunger : activeHunger())
-    : hungerOverride;
+  const needs = needsOverride || (locked ? locked.needs : activeCareNeeds());
   const charges = chargesOverride == null
     ? (locked ? locked.charges : careCharges(state.child.careCharges))
     : careCharges(chargesOverride);
-  const rounded = Math.round(hunger);
-  const band = careBand(hunger);
 
   el('c-care-charges').textContent = charges;
   el('c-care-charges').setAttribute('aria-label', `${charges} of ${CARE_CONFIG.chargeCap} Care Charges`);
-  el('c-hunger-val').textContent = `${rounded}/100`;
-  el('c-hunger-band').textContent = band.label;
-  bar.style.width = `${hunger}%`;
-  meterEl.setAttribute('aria-valuenow', String(rounded));
-  const row = el('c-hunger-need');
-  row.classList.remove('thriving', 'okay', 'needs-care', 'urgent-safe', 'is-saving');
-  row.classList.add(band.cls);
-  row.classList.toggle('is-saving', careSpendPending);
+  for (const need of CARE_NEEDS) {
+    const value = needs[need];
+    const rounded = Math.round(value);
+    const band = careBand(value);
+    const bar = el(`c-${need}-bar`);
+    const meterEl = el(`c-${need}-meter`);
+    const row = el(`c-${need}-need`);
+    if (!bar || !meterEl || !row) continue;
+    el(`c-${need}-val`).textContent = `${rounded}/100`;
+    el(`c-${need}-band`).textContent = band.label;
+    bar.style.width = `${value}%`;
+    meterEl.setAttribute('aria-valuenow', String(rounded));
+    row.classList.remove('thriving', 'okay', 'needs-care', 'urgent-safe', 'is-saving');
+    row.classList.add(band.cls);
+    row.classList.toggle('is-saving', careSpendPending);
+  }
+  renderNeedCue(needs);
 }
 
 function ensureActiveCatCare(catId, cat) {
-  if (!catId || (cat.catNeeds && cat.catNeeds.lastUpdatedAt) || careInitPending.has(catId)) return;
+  const complete = cat.catNeeds && cat.catNeeds.lastUpdatedAt
+    && CARE_NEEDS.every(need => cat.catNeeds[need] != null && Number.isFinite(Number(cat.catNeeds[need])));
+  if (!catId || complete || careInitPending.has(catId)) return;
   careInitPending.add(catId);
   store.ensureCatCare(state.familyId, catId)
     .catch(() => setTimeout(() => careInitPending.delete(catId), 5000));
@@ -865,21 +898,73 @@ function cafeActionHint(item, catName) {
   return `${catName} is playing!`;
 }
 
-function showHungerRefill(result, destination) {
-  renderCafeCareStatus({ hungerOverride: result.before, chargesOverride: result.chargesBefore });
-  const bar = el('c-hunger-bar');
+function clearNeedGuides() {
+  clearTimeout(needGuideTimer);
+  document.querySelectorAll('.need-guide').forEach(node => node.classList.remove('need-guide'));
+}
+
+function holdNeedGuide(node) {
+  if (!node) return;
+  node.classList.remove('need-guide'); void node.offsetWidth; node.classList.add('need-guide');
+  needGuideTimer = setTimeout(() => node.classList.remove('need-guide'), 2800);
+}
+
+// The cue is guidance only. It highlights a usable placed object, or opens the
+// owned-item tray when the matching object is stored. It never starts an action
+// or spends a Care Charge on Sirus's behalf.
+function guideCareNeed(need) {
+  const meta = CARE_META[need];
+  const def = state.child && CAT_DEFS[state.child.activeCatId];
+  if (!meta || !def) return;
+  clearNeedGuides();
+
+  const placed = Array.from(document.querySelectorAll('#c-placed [data-decor]'))
+    .find(node => CAFE_ITEMS[node.dataset.decor]?.need === need);
+  if (placed) {
+    holdNeedGuide(placed);
+    setCafeHint(`Tap the highlighted ${CAFE_ITEMS[placed.dataset.decor].name} to help ${def.name}'s ${meta.label}.`);
+    return;
+  }
+
+  const stored = state.ownedItems.find(record =>
+    record.placed === false && CAFE_ITEMS[record.id]?.need === need);
+  if (stored) {
+    setCafeMode('decorate');
+    const trayCard = document.querySelector(`[data-place-tray="${stored.id}"]`)?.closest('.tray-item');
+    holdNeedGuide(trayCard);
+    setCafeHint(`Place the highlighted ${CAFE_ITEMS[stored.id].name}, then tap Done to use it.`);
+    return;
+  }
+
+  setCafeHint(`${def.name}'s ${meta.label} can be helped with ${meta.objects}.`);
+  toast(`Place or buy ${meta.objects} to help ${meta.label}.`);
+}
+
+function showCareDelta(need, text, tone = 'gain') {
+  const delta = el(`c-${need}-delta`);
+  if (!delta) return;
+  clearTimeout(careFeedbackTimers.get(need));
+  delta.textContent = text;
+  delta.classList.remove('show', 'cost');
+  delta.classList.toggle('cost', tone === 'cost');
+  void delta.offsetWidth;
+  delta.classList.add('show');
+  careFeedbackTimers.set(need, setTimeout(() => {
+    delta.classList.remove('show', 'cost');
+    delta.textContent = '';
+  }, 1800));
+}
+
+function showCareRefill(result, destination) {
+  renderCafeCareStatus({ needsOverride: result.needsBefore, chargesOverride: result.chargesBefore });
+  const bar = el(`c-${result.need}-bar`);
   if (bar) void bar.offsetWidth;
   requestAnimationFrame(() => {
-    renderCafeCareStatus({ hungerOverride: result.after, chargesOverride: result.chargesAfter });
+    renderCafeCareStatus({ needsOverride: result.needsAfter, chargesOverride: result.chargesAfter });
   });
 
-  const delta = el('c-hunger-delta');
-  if (delta) {
-    clearTimeout(careFeedbackTimer);
-    delta.textContent = `+${result.refill}`;
-    delta.classList.remove('show'); void delta.offsetWidth; delta.classList.add('show');
-    careFeedbackTimer = setTimeout(() => { delta.classList.remove('show'); delta.textContent = ''; }, 1800);
-  }
+  showCareDelta(result.need, `+${result.refill}`);
+  if (result.restCost > 0) showCareDelta('rest', `−${result.restCost}`, 'cost');
   const charge = el('c-care-charges');
   if (charge) { charge.classList.remove('spent'); void charge.offsetWidth; charge.classList.add('spent'); }
 
@@ -891,52 +976,56 @@ function showHungerRefill(result, destination) {
 }
 
 async function resolveCafeCare(item, destination) {
-  if (item.need !== 'hunger' || careSpendPending) return;
+  if (!item.need || !CARE_META[item.need] || careSpendPending) return;
+  const need = item.need;
+  const meta = CARE_META[need];
   const catId = state.child.activeCatId;
   const def = CAT_DEFS[catId];
-  const before = activeHunger();
+  const needsBefore = activeCareNeeds();
+  const before = needsBefore[need];
   const chargesBefore = careCharges(state.child.careCharges);
 
   if (before >= CARE_CONFIG.maxNeed) {
-    setCafeHint(`${def.name} is comfortably full · no Care Charge used`);
-    toast('Hunger is full — your Care Charge is safe.');
+    setCafeHint(`${def.name}'s ${meta.label} is full · no Care Charge used`);
+    toast(`${meta.label} is full — your Care Charge is safe.`);
     return;
   }
   if (chargesBefore < 1) {
-    setCafeHint(`${def.name} can still snack. Complete a quest to earn a Care Charge for Hunger.`);
+    setCafeHint(`${def.name} enjoyed that. Complete a quest to earn a Care Charge for ${meta.label}.`);
     toast('Complete a quest to earn a Care Charge.');
     return;
   }
 
   careSpendPending = true;
-  careLockedView = { hunger: before, charges: chargesBefore };
+  careLockedView = { needs: needsBefore, charges: chargesBefore };
   renderCafeCareStatus();
-  setCafeHint(`${def.name} is eating · saving care…`);
+  setCafeHint(`${def.name} is enjoying some care · saving…`);
 
   try {
-    const result = await store.spendHungerCare(state.familyId, catId);
+    const result = await store.spendCare(state.familyId, catId, need);
     if (state.child) state.child.careCharges = result.chargesAfter;
     const cat = state.cats[catId] || {};
     state.cats[catId] = {
       ...cat,
-      catNeeds: { ...(cat.catNeeds || {}), hunger: result.after, lastUpdatedAt: Date.now() }
+      catNeeds: { ...(cat.catNeeds || {}), ...result.needsAfter, lastUpdatedAt: Date.now() }
     };
     careSpendPending = false;
     careLockedView = null;
     if (state.child.activeCatId === catId) {
-      showHungerRefill(result, destination);
-      setCafeHint(`${def.name}'s Hunger rose by ${result.refill}.`);
+      showCareRefill(result, destination);
+      const restCopy = result.restCost > 0 ? ` · play used ${result.restCost} Rest` : '';
+      setCafeHint(`${def.name}'s ${meta.label} rose by ${result.refill}${restCopy}.`);
     }
   } catch (err) {
     careSpendPending = false;
     careLockedView = null;
     renderCafeCareStatus();
     if (err.message === 'no-care-charges') {
-      setCafeHint(`Complete a quest to earn a Care Charge for ${def.name}.`);
+      setCafeHint(`Complete a quest to earn a Care Charge for ${def.name}'s ${meta.label}.`);
       toast('No Care Charges right now.');
     } else if (err.message === 'need-full') {
-      setCafeHint(`${def.name} is comfortably full · no Care Charge used`);
-      toast('Hunger is full — your Care Charge is safe.');
+      setCafeHint(`${def.name}'s ${meta.label} is full · no Care Charge used`);
+      toast(`${meta.label} is full — your Care Charge is safe.`);
     } else {
       setCafeHint('Care did not save yet · try again when connected');
       toast('Care did not save — your charge is still safe.');
@@ -1160,7 +1249,13 @@ function catIdleBeat() {
   // isn't mid-drag. Otherwise wait quietly for the next beat.
   if (!reduce && onCafe && !cafeDrag && cafeMode === 'play' && catState === 'idle') {
     const roll = Math.random();
-    if (roll < 0.35) catBlink();           // a slow blink (animated if frames exist)
+    const low = lowestCareNeed(activeCareNeeds(), 40);
+    if (low) {
+      // A cat asking for care stays quieter instead of performing a confusing
+      // autonomous play beat while one of its daily needs is low.
+      if (roll < 0.6) catBlink();
+      else catWiggle();
+    } else if (roll < 0.35) catBlink();    // a slow blink (animated if frames exist)
     else if (roll < 0.6) catWiggle();      // a little shimmy in place
     else if (roll < 0.85) catPlayBeat();   // bat at a toy, then settle
     else catHop();                         // a happy hop
@@ -1225,6 +1320,9 @@ function bindEvents() {
     if (role) return chooseRole(role.dataset.chooseRole);
     const pgo = e.target.closest('[data-pgo]'); if (pgo) return navParent(pgo.dataset.pgo);
     const cgo = e.target.closest('[data-cgo]'); if (cgo) return navChild(cgo.dataset.cgo);
+
+    const needCue = e.target.closest('#c-need-cue');
+    if (needCue && needCue.dataset.need) { guideCareNeed(needCue.dataset.need); return; }
 
     const quick = e.target.closest('[data-quick]');
     if (quick) { const note = el('point-note').value.trim(); try { await store.adjustPoints(state.familyId, state.uid, { reasonCode: quick.dataset.quick, note }); const a = QUICK_ACTIONS.find(x=>x.code===quick.dataset.quick); el('point-note').value = ''; toast(`${a.amount>0?'+':''}${a.amount} · ${a.label}`); } catch (err) { toast('Could not save — check connection.'); } return; }

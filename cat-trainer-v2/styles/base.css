@@ -300,6 +300,7 @@ main { padding: 0 16px; }
 
 .care-panel { background: var(--paper); border-radius: 14px; box-shadow: var(--shadow); padding: 10px 12px; margin: 0 2px 10px; }
 .care-need { position: relative; }
+.care-need + .care-need { border-top: 1px solid var(--line); margin-top: 9px; padding-top: 9px; }
 .care-need-label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: .82rem; margin-bottom: 6px; }
 .care-need-label > span { display: inline-flex; align-items: center; gap: 5px; }
 .care-need-label img { width: 24px; height: 24px; object-fit: contain; image-rendering: pixelated; }
@@ -312,6 +313,7 @@ main { padding: 0 16px; }
 .care-need.urgent-safe .care-meter i { background: var(--pink); }
 .care-need.is-saving { opacity: .72; }
 .care-delta { position: absolute; right: 2px; bottom: 10px; color: var(--green); font-family: var(--font-display); font-size: .7rem; opacity: 0; pointer-events: none; }
+.care-delta.cost { color: var(--orange); }
 .care-delta.show { animation: careDelta 1.8s ease forwards; }
 @keyframes careDelta { 0%{opacity:0;transform:translateY(5px)} 20%,65%{opacity:1;transform:translateY(-8px)} 100%{opacity:0;transform:translateY(-18px)} }
 .cafe-room {
@@ -327,6 +329,10 @@ main { padding: 0 16px; }
 /* The café cat lives in a wrapper so a continuous "breathing" idle (on the wrap)
    and a springy tap reaction (on the img) never fight over the same transform. */
 .cafe-cat-wrap { position: absolute; bottom: 8%; left: 30%; width: 40%; z-index: 2; transform-origin: bottom center; animation: catBreathe 3.4s ease-in-out infinite; }
+.need-cue { position: absolute; z-index: 4; top: 1%; right: 2%; width: 42px; height: 38px; padding: 5px;
+  border: 2px solid #f0d690; border-radius: 50% 50% 50% 18%; background: var(--paper); box-shadow: 0 3px 8px rgba(91,70,44,.24); cursor: pointer; }
+.need-cue img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.need-cue:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
 .cafe-cat-wrap.mood-sleepy { animation: catSleep 5.5s ease-in-out infinite; }
 .cafe-cat-wrap.mood-happy  { animation: catHappy 2.6s ease-in-out infinite; }
 .cafe-cat-wrap[data-cat-state="approach"],
@@ -360,6 +366,8 @@ main { padding: 0 16px; }
 .cafe-decor.is-cat-target:not(.is-in-use) { filter: drop-shadow(0 0 7px rgba(255,184,76,.9)) drop-shadow(0 4px 5px rgba(0,0,0,.2)); }
 .cafe-decor.is-in-use { opacity: 0; pointer-events: none; }
 .cafe-decor:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+.need-guide { outline: 4px solid var(--gold); outline-offset: 3px; animation: needGuide .7s ease 3; }
+@keyframes needGuide { 0%,100%{filter:drop-shadow(0 3px 4px rgba(0,0,0,.18))} 50%{filter:drop-shadow(0 0 12px rgba(255,184,76,1));transform:scale(1.06)} }
 @keyframes decorWiggle { 0%,100%{transform:rotate(0)} 20%{transform:rotate(-9deg)} 40%{transform:rotate(7deg)} 60%{transform:rotate(-5deg)} 80%{transform:rotate(3deg)} }
 .cafe-cat.react        { animation: catPop .5s ease; }
 .cafe-cat.react-wiggle { animation: catWiggle .5s ease; }
@@ -368,7 +376,7 @@ main { padding: 0 16px; }
 @media (prefers-reduced-motion: reduce) {
   .cafe-cat-wrap, .cafe-cat.react, .cafe-cat.react-wiggle, .cafe-decor.wiggle,
   .cafe-cat-wrap[data-cat-state="drink"] .cafe-cat,
-  #c-care-charges.spent, .care-delta.show { animation: none; }
+  #c-care-charges.spent, .care-delta.show, .need-guide { animation: none; }
   .cafe-cat-wrap { transition: none !important; }
   .care-meter i { transition: none; }
   .care-delta.show { opacity: 1; }

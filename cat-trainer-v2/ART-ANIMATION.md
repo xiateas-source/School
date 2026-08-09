@@ -4,9 +4,9 @@
 > been integrity-checked at 256×256 with transparency, and are mapped in
 > `src/data/cats.js`. The frame-swapper animates idle blinks and autonomous play;
 > placed café objects now call the walk, eat, play, and sleep loops through the
-> interruption-safe Slice 3 state flow. The first Hunger care resolution uses the
-> eat loop after a bowl approach; Rest/Happiness care and autonomous wandering
-> remain separate follow-ups. Device-test fixes add blank-room tap-to-walk, a
+> interruption-safe Slice 3 state flow. Hunger, Rest, and Happiness care now use
+> the eat/sleep/play loops after their matching object approach; autonomous
+> wandering remains a separate follow-up. Device-test fixes add blank-room tap-to-walk, a
 > visible neutral water bob, and explicit Toy Basket play coverage.
 
 > **Sleep consistency:** runtime sleep now uses each cat's transparent curled

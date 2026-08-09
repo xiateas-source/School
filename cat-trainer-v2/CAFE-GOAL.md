@@ -161,8 +161,9 @@ assumptions:
 - **Resting pose must NOT key off the training `energy` stat.** It made the cat
   look asleep almost always (Energy is near zero early). The café cat now defaults
   to **awake/sitting**, bouncier after a quest. An explicit bed tap may start a
-  nap in Slice 3; automatic low-Rest sleeping waits for the care need in Slice 4.
-  *(The training-stat bug was fixed in Slice 2.1.)*
+  nap, and low daily Rest now selects the quiet sleep mood. The long-term Energy
+  stat remains completely separate. *(The training-stat bug was fixed in Slice
+  2.1.)*
 - Implication for **Slice 3**: object interactions now use the completed
   front-3/4 walk loop while translating to the selected object. Reduced-motion
   mode moves directly to the destination and shows the action's meaningful still.
@@ -173,7 +174,7 @@ assumptions:
 
 **Animation plan:** **`ART-ANIMATION.md`** records the frame manifest, generation
 prompts, and frame-swapper wiring. All three tiers are present and mapped; object
-actions now call them, while need-driven care behavior remains for Slice 4.
+actions now call them for food, rest, and play care.
 
 ---
 
@@ -1066,15 +1067,15 @@ The MVP is complete when all of the following work together:
 
 > **▸ Current sub-slice:** placed food/rest/play objects now run the interruption-
 > safe walk → eat/sleep/play loop, including Hero cats;
-> decorative objects acknowledge taps without implying a refill. The Hunger
-> prove-the-loop slice now adds the first real meter, timestamp decay, immediate
-> quest-earned Care Charges, purple-bowl spending, and clear full/no-charge/save-
-> failure feedback. The current testing branch also closes the reported gaps:
+> decorative objects acknowledge taps without implying a refill. The care loop
+> now includes all three real meters, timestamp decay, immediate quest-earned
+> Care Charges, food/rest/play spending, and clear full/no-charge/save-failure
+> feedback. The current implementation also closes the reported gaps:
 > blank-room tap-to-walk, a distinct water action, explicit Toy Basket coverage,
 > object taps through the cat sprite's transparent box, consistent cat-only sleep
 > layered over any rest object, and the Firestore coin-
 > purchase pairing that previously denied a 12-coin Cat Tree at 14 coins.
-> Drag-the-yarn plus Rest/Happiness care remain follow-ups.
+> Drag-the-yarn remains a follow-up; ordinary yarn taps already refill Happiness.
 
 ### Slice 4 — real-life care loop
 
@@ -1082,13 +1083,17 @@ The MVP is complete when all of the following work together:
 - Tune decay/refill values from actual use.
 - Connect care to Hero progress.
 
-> **▸ Current vertical slice:** Hunger is implemented end-to-end with the locked
-> starting values: a healthy/testable 80 start, 100 maximum, 35/day timestamp
-> decay, a 48-hour return cap,
-> Care Charges capped at 6, and up to +20 per purple-food-bowl use. Existing cats
-> begin healthy on their first care-layer visit. Water remains a free neutral
-> interaction. Rest, Happiness, need cues, and `heroCareProgress` intentionally
-> wait until this vertical passes device testing.
+> **▸ Current vertical slice:** Hunger, Rest, and Happiness are implemented end-
+> to-end with the locked starting values: a healthy/testable 80 start, 100
+> maximum, 35/25/20-per-day timestamp decay, a 48-hour return cap, Care Charges
+> capped at 6, and up to +20 per matching food/rest/play object use. Existing
+> Hunger-only cats migrate with fresh 80 Rest/Happiness values rather than taking
+> retroactive decay. Water remains a free neutral interaction. One lowest-need
+> cue highlights a useful placed object (or the stored-item tray) without spending
+> care automatically. A paid play refill also uses 5 Rest, making the locked
+> play→rest rhythm visible without allowing repeated screen taps to drain it.
+> `heroCareProgress` intentionally remains the next separate
+> progression slice so the three-needs interaction can be device-tested first.
 
 ### Slice 5 — animation polish
 
