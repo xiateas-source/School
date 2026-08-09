@@ -6,12 +6,17 @@ export const CARE_CONFIG = Object.freeze({
   maxNeed: 100,
   // 80 is safely inside the Thriving band and makes the first earned charge
   // visibly testable (80 -> 100) instead of presenting a full, inert meter.
-  startingHunger: 80,
-  hungerDecayPerDay: 35,
+  startingNeed: 80,
+  startingHunger: 80, // compatibility name for the shipped Hunger slice
+  decayPerDay: Object.freeze({ hunger: 35, rest: 25, happiness: 20 }),
+  hungerDecayPerDay: 35, // compatibility name for the shipped Hunger slice
   offlineDecayCapHours: 48,
   chargeCap: 6,
-  refillPerCharge: 20
+  refillPerCharge: 20,
+  playRestCost: 5
 });
+
+export const CARE_NEEDS = Object.freeze(['hunger', 'rest', 'happiness']);
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -30,21 +35,29 @@ function timestampMs(value) {
 }
 
 export function freshCatNeeds(lastUpdatedAt = null) {
-  return { hunger: CARE_CONFIG.startingHunger, lastUpdatedAt };
+  return {
+    hunger: CARE_CONFIG.startingNeed,
+    rest: CARE_CONFIG.startingNeed,
+    happiness: CARE_CONFIG.startingNeed,
+    lastUpdatedAt
+  };
 }
 
 export function careCharges(value) {
   return Math.trunc(clamp(Number(value) || 0, 0, CARE_CONFIG.chargeCap));
 }
 
-// Missing timestamps are a migration-safe healthy default. The store lazily
-// stamps existing cats on first use so decay begins from their first new visit,
-// not from an arbitrary deploy date.
-export function hungerAt(catNeeds, nowMs = Date.now()) {
-  const hungerValue = catNeeds && catNeeds.hunger;
-  const rawHunger = hungerValue == null ? NaN : Number(hungerValue);
+// Missing values are migration-safe healthy defaults. In particular, cats from
+// the Hunger-only release already have a timestamp but no Rest/Happiness. Those
+// two new needs begin at 80 on first use instead of being retroactively decayed
+// from Hunger's older timestamp.
+export function needAt(catNeeds, need, nowMs = Date.now()) {
+  if (!CARE_NEEDS.includes(need)) throw new Error('unknown-care-need');
+  const value = catNeeds && catNeeds[need];
+  const raw = value == null ? NaN : Number(value);
+  if (!Number.isFinite(raw)) return CARE_CONFIG.startingNeed;
   const stored = clamp(
-    Number.isFinite(rawHunger) ? rawHunger : CARE_CONFIG.startingHunger,
+    raw,
     0,
     CARE_CONFIG.maxNeed
   );
@@ -56,8 +69,27 @@ export function hungerAt(catNeeds, nowMs = Date.now()) {
     0,
     CARE_CONFIG.offlineDecayCapHours * HOUR_MS
   );
-  const decay = CARE_CONFIG.hungerDecayPerDay * (elapsedMs / DAY_MS);
+  const decay = CARE_CONFIG.decayPerDay[need] * (elapsedMs / DAY_MS);
   return roundTenth(clamp(stored - decay, 0, CARE_CONFIG.maxNeed));
+}
+
+export function needsAt(catNeeds, nowMs = Date.now()) {
+  return Object.fromEntries(CARE_NEEDS.map(need => [need, needAt(catNeeds, need, nowMs)]));
+}
+
+export function lowestCareNeed(needs, threshold = CARE_CONFIG.maxNeed + 1) {
+  const lowest = CARE_NEEDS.reduce((best, need) => {
+    const rawValue = needs && needs[need];
+    const raw = rawValue == null ? NaN : Number(rawValue);
+    const value = clamp(Number.isFinite(raw) ? raw : CARE_CONFIG.startingNeed, 0, CARE_CONFIG.maxNeed);
+    return !best || value < best.value ? { need, value } : best;
+  }, null);
+  return lowest && lowest.value < threshold ? lowest : null;
+}
+
+// Compatibility helper retained for the already-shipped Hunger callers/tests.
+export function hungerAt(catNeeds, nowMs = Date.now()) {
+  return needAt(catNeeds, 'hunger', nowMs);
 }
 
 export function grantCareCharge(current) {
@@ -66,26 +98,60 @@ export function grantCareCharge(current) {
   return { before, after, granted: after > before };
 }
 
-export function refillHunger(currentHunger, currentCharges) {
-  const before = roundTenth(clamp(Number(currentHunger) || 0, 0, CARE_CONFIG.maxNeed));
+export function refillNeed(catNeeds, need, currentCharges, nowMs = Date.now()) {
+  if (!CARE_NEEDS.includes(need)) throw new Error('unknown-care-need');
+  const needsBefore = needsAt(catNeeds, nowMs);
+  const before = needsBefore[need];
   const chargesBefore = careCharges(currentCharges);
   if (before >= CARE_CONFIG.maxNeed) {
-    return { ok: false, reason: 'need-full', before, after: before, refill: 0,
-      chargesBefore, chargesAfter: chargesBefore };
+    return {
+      ok: false, reason: 'need-full', need, before, after: before, refill: 0,
+      chargesBefore, chargesAfter: chargesBefore,
+      needsBefore, needsAfter: { ...needsBefore }, restCost: 0
+    };
   }
   if (chargesBefore < 1) {
-    return { ok: false, reason: 'no-care-charges', before, after: before, refill: 0,
-      chargesBefore, chargesAfter: chargesBefore };
+    return {
+      ok: false, reason: 'no-care-charges', need, before, after: before, refill: 0,
+      chargesBefore, chargesAfter: chargesBefore,
+      needsBefore, needsAfter: { ...needsBefore }, restCost: 0
+    };
   }
 
   const after = roundTenth(Math.min(CARE_CONFIG.maxNeed, before + CARE_CONFIG.refillPerCharge));
+  const restAfter = need === 'happiness'
+    ? roundTenth(Math.max(0, needsBefore.rest - CARE_CONFIG.playRestCost))
+    : needsBefore.rest;
+  const restCost = roundTenth(needsBefore.rest - restAfter);
   return {
     ok: true,
     reason: null,
+    need,
     before,
     after,
     refill: roundTenth(after - before),
     chargesBefore,
-    chargesAfter: chargesBefore - 1
+    chargesAfter: chargesBefore - 1,
+    needsBefore,
+    needsAfter: {
+      ...needsBefore,
+      [need]: after,
+      ...(need === 'happiness' ? { rest: restAfter } : {})
+    },
+    restCost
+  };
+}
+
+// Compatibility helper retained for the first vertical-slice API.
+export function refillHunger(currentHunger, currentCharges) {
+  const result = refillNeed({ hunger: currentHunger }, 'hunger', currentCharges);
+  return {
+    ok: result.ok,
+    reason: result.reason,
+    before: result.before,
+    after: result.after,
+    refill: result.refill,
+    chargesBefore: result.chargesBefore,
+    chargesAfter: result.chargesAfter
   };
 }

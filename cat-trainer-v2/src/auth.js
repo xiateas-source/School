@@ -5,7 +5,7 @@
 //  • Child device (tablet): anonymous sign-in, then joins the family by entering a
 //    short pairing code a parent generates. It holds a limited "child" role.
 
-import { initFirebase, auth, authSdk } from './firebase.js?v=eea04fd8';
+import { initFirebase, auth, authSdk } from './firebase.js?v=eb73f886';
 
 const EMAIL_KEY = 'catTrainerEmailForSignIn';
 

@@ -174,9 +174,9 @@ service cloud.firestore {
             && getAfter(completionPath).data.createdBy == request.auth.uid;
         }
         // Spending is a one-charge decrement paired with a same-transaction
-        // care update on exactly the named cat. Decreasing a charge without the
-        // cat write is rejected; raising Hunger without a charge is rejected by
-        // the nested cat rule below.
+        // care update on exactly the named cat and one known need. Decreasing a
+        // charge without the cat write is rejected; raising any need without a
+        // charge is rejected by the nested cat rule below.
         function validCareSpend() {
           let spend = request.resource.data.get('lastCareSpend', {});
           let catId = spend.get('catId', '');
@@ -184,7 +184,7 @@ service cloud.firestore {
           return storedCareCharges() > 0
             && requestedCareCharges() == storedCareCharges() - 1
             && catId is string
-            && spend.get('need', '') == 'hunger'
+            && spend.get('need', '') in ['hunger', 'rest', 'happiness']
             && spend.get('at', null) == request.time
             && existsAfter(catPath)
             && getAfter(catPath).data.catNeeds.lastUpdatedAt == request.time;
@@ -217,22 +217,54 @@ service cloud.firestore {
             let childBefore = get(childPath).data;
             let childAfter = getAfter(childPath).data;
             let spend = childAfter.get('lastCareSpend', {});
-            let isFirstCareStamp = !resource.data.keys().hasAny(['catNeeds'])
-              || !oldNeeds.keys().hasAny(['lastUpdatedAt']);
+            let need = spend.get('need', '');
+            let isCareMigration = !resource.data.keys().hasAny(['catNeeds'])
+              || !oldNeeds.keys().hasAll(['hunger', 'rest', 'happiness', 'lastUpdatedAt']);
+            let migrationValuesValid =
+              (oldNeeds.keys().hasAny(['hunger'])
+                ? newNeeds.hunger <= oldNeeds.get('hunger', 80)
+                  && newNeeds.hunger >= oldNeeds.get('hunger', 80) - 70
+                : newNeeds.hunger == 80)
+              && (oldNeeds.keys().hasAny(['rest'])
+                ? newNeeds.rest <= oldNeeds.get('rest', 80)
+                  && newNeeds.rest >= oldNeeds.get('rest', 80) - 50
+                : newNeeds.rest == 80)
+              && (oldNeeds.keys().hasAny(['happiness'])
+                ? newNeeds.happiness <= oldNeeds.get('happiness', 80)
+                  && newNeeds.happiness >= oldNeeds.get('happiness', 80) - 40
+                : newNeeds.happiness == 80);
             let isPaidRefill = childBefore.get('careCharges', 0) > 0
               && childAfter.get('careCharges', 0) == childBefore.get('careCharges', 0) - 1
               && spend.get('catId', '') == catId
-              && spend.get('need', '') == 'hunger'
+              && need in ['hunger', 'rest', 'happiness']
               && spend.get('at', null) == request.time
-              && newNeeds.hunger <= oldNeeds.get('hunger', 80) + 20;
+              // Non-selected needs may only decay. The selected need may rise by
+              // at most one server-authoritative +20 refill. The lower bounds
+              // mirror the 48-hour maximum decay (35/25/20 per day), plus the
+              // visible 5-Rest cost of a paid Happiness/play refill.
+              && newNeeds.hunger <= oldNeeds.get('hunger', 80) + (need == 'hunger' ? 20 : 0)
+              && newNeeds.hunger >= oldNeeds.get('hunger', 80) - 70
+              && newNeeds.rest <= oldNeeds.get('rest', 80) + (need == 'rest' ? 20 : 0)
+              && newNeeds.rest >= oldNeeds.get('rest', 80) - 50 - (need == 'happiness' ? 5 : 0)
+              && newNeeds.happiness <= oldNeeds.get('happiness', 80) + (need == 'happiness' ? 20 : 0)
+              && newNeeds.happiness >= oldNeeds.get('happiness', 80) - 40;
             return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['catNeeds'])
-              && newNeeds.diff(oldNeeds).affectedKeys().hasOnly(['hunger', 'lastUpdatedAt'])
+              && newNeeds.keys().hasOnly(['hunger', 'rest', 'happiness', 'lastUpdatedAt'])
+              && newNeeds.diff(oldNeeds).affectedKeys().hasOnly([
+                'hunger', 'rest', 'happiness', 'lastUpdatedAt'
+              ])
               && newNeeds.hunger is number
               && newNeeds.hunger >= 0
               && newNeeds.hunger <= 100
+              && newNeeds.rest is number
+              && newNeeds.rest >= 0
+              && newNeeds.rest <= 100
+              && newNeeds.happiness is number
+              && newNeeds.happiness >= 0
+              && newNeeds.happiness <= 100
               && newNeeds.lastUpdatedAt == request.time
-              && ((isFirstCareStamp
-                    && newNeeds.hunger == oldNeeds.get('hunger', 80)
+              && ((isCareMigration
+                    && migrationValuesValid
                     && childAfter.get('careCharges', 0) == childBefore.get('careCharges', 0))
                   || isPaidRefill);
           }

@@ -4,7 +4,9 @@
 export const CAFE_ACTIONS = Object.freeze({
   food: Object.freeze({ state: 'eat', pose: 'eat', durationMs: 7000 }),
   water: Object.freeze({ state: 'drink', pose: 'sit', durationMs: 7000 }),
-  rest: Object.freeze({ state: 'sleep', pose: 'sleep', durationMs: null }),
+  // A requested rest lasts long enough to read, then returns to the need-driven
+  // resting pose. If Rest is still low, catMood keeps the cat quietly asleep.
+  rest: Object.freeze({ state: 'sleep', pose: 'sleep', durationMs: 8000 }),
   play: Object.freeze({ state: 'play', pose: 'play', durationMs: 7000 })
 });
 

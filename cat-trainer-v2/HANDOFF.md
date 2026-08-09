@@ -74,7 +74,7 @@ cat-trainer-v2/
     ├── firebase.js       modular SDK init from CDN + offline persistence
     ├── auth.js           parent email+password, anonymous child, device memory
     ├── store.js          realtime subscriptions + transaction-safe writes
-    ├── care.js           Hunger decay + Care Charge tuning (pure/tested)
+    ├── care.js           Hunger/Rest/Happiness decay + Care Charge tuning (pure/tested)
     ├── data/
     │   ├── cats.js        CAT_DEFS (nova/ember/moss + hero art)
     │   ├── quests.js      13 default quests, sections, section icons
@@ -96,7 +96,8 @@ families/{familyId}                 familyId == parent's auth uid
                                       careCharges, lastCareCompletionId?, lastCareSpend?,
                                       lastCafePurchase?{ itemId, at }, cafeCat?{ x, y } }
     cats/{catId}                    { brain, energy, bond, evolved,
-                                      catNeeds{ hunger, lastUpdatedAt } }   (independent per cat)
+                                      catNeeds{ hunger, rest, happiness,
+                                                lastUpdatedAt } }   (independent per cat)
     ownedCafeItems/{itemId}         { purchasedAt, price, x?, y?, placed? }
                                     (x/y = saved room position %; placed=false = tucked
                                      away in the shop. Absent x/y → a default slot;
@@ -152,8 +153,13 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
 > - **Follow-up purchase correction (2026-08-09):** the published rule still
 >   froze `coins` on every child write, which denied legitimate purchases (14
 >   coins could not buy the 12-coin Cat Tree). The latest file validates an exact
->   catalog-price debit + new owned-item record. **Publish this newest rules file
->   again before testing purchases or Hunger.**
+>   catalog-price debit + new owned-item record. Lor published that corrected
+>   Hunger/purchase version before PR #34 device testing.
+> - **Three-need care follow-up (2026-08-09):** the latest file expands the same
+>   atomic one-charge care transaction from Hunger to Rest and Happiness, permits
+>   a migration-safe 80 starting value for those new fields, and prevents any
+>   non-selected need from increasing. **Publish this newest rules file before
+>   testing the Rest/Happiness branch.**
 > - Earlier changes (co-parent login, ledger-delete) were already published on
 >   2026-08-07; the café one is a *new* change on top.
 >
@@ -224,15 +230,17 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - [x] **Child café purchase authorization**: tablet purchases now pair a catalog-
       price Coin debit with the exact new item. This fixes the reported 14-coins /
       12-coin Cat Tree denial. Requires the latest rules republish above.
-- [x] **Hunger care prove-the-loop**: Hunger starts Thriving at a testable 80,
-      then decays from a stored timestamp at 35/day (maximum 48 hours per return),
-      and displays a labeled
-      0–100 meter. Each quest tap immediately grants one flexible Care Charge up
-      to 6 while permanent rewards still wait for parent approval. After the cat
-      reaches the purple food bowl, one accepted transaction spends a charge and
-      refills up to +20 with meter, delta, count, and sparkle feedback. Full Hunger
-      and no-charge/save-failure paths never fake or waste a refill. The water bowl
-      stays free and neutral. Rest/Happiness and Hero-care days remain next.
+- [x] **Three-need care loop**: Hunger, Rest, and Happiness start Thriving at a
+      testable 80 and decay from one stored timestamp at 35/25/20 per day (maximum
+      48 hours per return). Existing Hunger-only cats receive fresh Rest/Happiness
+      values without retroactive decay. Each quest tap immediately grants one
+      flexible Care Charge up to 6 while permanent rewards still wait for parent
+      approval. Food bowls refill Hunger, beds/pillows/houses refill Rest, and
+      yarn/toys/the Cat Tree refill Happiness by up to +20 through an atomic
+      one-charge transaction; a paid play refill also uses 5 Rest. Full/no-charge/save-failure paths never fake or
+      waste a refill; water stays free and neutral. The lowest need gets one
+      tappable guide to a compatible placed/stored object. Hero-care days remain
+      the next progression slice.
 - [x] **Notes on point changes**: Mom/Abba can attach a free-text note to any add,
       subtract, or screen-time redemption from the parent portal; it shows as a
       second line in the ledger. (No rules change.)
@@ -312,6 +320,8 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - Fresher `ember-hero.png`.
 - Deterministic cat speech-bubble feedback for parent-added points and returned
   quests (with correct Mom/Abba attribution and one-time delivery).
+- Fourteen-day `heroCareProgress`, advancing only on distinct active days when
+  the cat's three daily needs are at least Okay.
 - Mom, Abba, Sirus, and Arlo as selectable Café visitors (avatars already exist).
 - After the full three-need loop: Sirus's recoverable health/medicine expansion
   from `CAFE-GOAL.md` §5.6.

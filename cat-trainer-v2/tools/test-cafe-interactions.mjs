@@ -15,8 +15,11 @@ assert.deepEqual(roles, { play: 4, rest: 5, decor: 6, food: 1, water: 1 });
 assert.equal(cafeActionFor(CAFE_ITEMS.foodBowl), CAFE_ACTIONS.food);
 assert.equal(CAFE_ITEMS.foodBowl.need, 'hunger');
 assert.equal(CAFE_ITEMS.waterBowl.need, undefined);
+assert.ok(Object.values(CAFE_ITEMS).filter(item => item.role === 'rest').every(item => item.need === 'rest'));
+assert.ok(Object.values(CAFE_ITEMS).filter(item => item.role === 'play').every(item => item.need === 'happiness'));
 assert.equal(cafeActionFor(CAFE_ITEMS.waterBowl), CAFE_ACTIONS.water);
 assert.equal(cafeActionFor(CAFE_ITEMS.bed), CAFE_ACTIONS.rest);
+assert.ok(CAFE_ACTIONS.rest.durationMs >= 6000, 'a rest action remains readable before auto-ending');
 assert.equal(cafeActionFor(CAFE_ITEMS.rug), CAFE_ACTIONS.play);
 assert.equal(cafeActionFor(CAFE_ITEMS.toyBasket), CAFE_ACTIONS.play);
 assert.equal(cafeActionFor(CAFE_ITEMS.plant), null);
@@ -56,6 +59,19 @@ for (const item of Object.values(CAFE_ITEMS)) {
     `${item.id} price must be mirrored in Firestore Rules`);
 }
 assert.match(rules, /pairedCafePurchase\(childId, itemId\)/);
+assert.match(rules, /spend\.get\('need', ''\) in \['hunger', 'rest', 'happiness'\]/);
+assert.match(rules, /newNeeds\.keys\(\)\.hasOnly\(\['hunger', 'rest', 'happiness', 'lastUpdatedAt'\]\)/);
+const childCareRule = rules.match(/function validChildCareUpdate\(\) \{([\s\S]*?)\n\s+return request\.resource/);
+assert.ok(childCareRule, 'child care rule is present');
+assert.ok((childCareRule[1].match(/\blet\s/g) || []).length <= 10,
+  'Firestore Rules functions support at most ten let bindings');
+
+const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+for (const need of ['hunger', 'rest', 'happiness']) {
+  assert.match(html, new RegExp(`id="c-${need}-meter"`), `${need} meter is present`);
+  assert.match(html, new RegExp(`id="c-${need}-delta"`), `${need} refill feedback is present`);
+}
+assert.match(html, /id="c-need-cue"/, 'one functional low-need cue is present');
 
 // Café sprites have positive z-index values for in-room layering. Keep them in
 // a local stacking context, and keep the fixed app navigation above page

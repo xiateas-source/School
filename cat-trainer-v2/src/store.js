@@ -2,18 +2,18 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=eea04fd8';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=eea04fd8';
-import { seededQuests } from './data/quests.js?v=eea04fd8';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=eea04fd8';
+import { initFirebase, db, dbSdk } from './firebase.js?v=eb73f886';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=eb73f886';
+import { seededQuests } from './data/quests.js?v=eb73f886';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=eb73f886';
 import {
-  careCharges, freshCatNeeds, grantCareCharge, hungerAt, refillHunger
-} from './care.js?v=eea04fd8';
+  CARE_NEEDS, careCharges, freshCatNeeds, grantCareCharge, needsAt, refillNeed
+} from './care.js?v=eb73f886';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, applyBalanceDelta
-} from './shared/rewards.js?v=eea04fd8';
-import { localDate, localTimeLabel } from './shared/dates.js?v=eea04fd8';
+} from './shared/rewards.js?v=eb73f886';
+import { localDate, localTimeLabel } from './shared/dates.js?v=eb73f886';
 
 export const CHILD_ID = 'sirus';
 
@@ -566,16 +566,18 @@ export async function ensureCatCare(familyId, catId) {
   const { runTransaction, serverTimestamp } = sdk;
   const p = paths(sdk, database, familyId);
   const catRef = p.cat(catId);
+  const nowMs = Date.now();
 
   return runTransaction(database, async (tx) => {
     const catSnap = await tx.get(catRef);
     if (!catSnap.exists()) throw new Error('cat-missing');
     const cat = catSnap.data();
-    if (cat.catNeeds && cat.catNeeds.lastUpdatedAt) return { initialized: false };
+    const complete = cat.catNeeds && cat.catNeeds.lastUpdatedAt
+      && CARE_NEEDS.every(need => cat.catNeeds[need] != null && Number.isFinite(Number(cat.catNeeds[need])));
+    if (complete) return { initialized: false };
     tx.update(catRef, {
       catNeeds: {
-        ...(cat.catNeeds || {}),
-        hunger: hungerAt(cat.catNeeds),
+        ...needsAt(cat.catNeeds, nowMs),
         lastUpdatedAt: serverTimestamp()
       }
     });
@@ -583,11 +585,13 @@ export async function ensureCatCare(familyId, catId) {
   });
 }
 
-// Spend one flexible Care Charge on Hunger. The transaction recomputes both the
-// decayed need and the charge count from stored data; callers never submit an
-// amount. This prevents repeated taps or two devices from double-spending.
-export async function spendHungerCare(familyId, catId) {
+// Spend one flexible Care Charge on one known need. The transaction recomputes
+// all three decayed values and the charge count from stored data; callers choose
+// only Hunger/Rest/Happiness and never submit a refill amount. This prevents
+// repeated taps or two devices from double-spending.
+export async function spendCare(familyId, catId, need) {
   if (!CAT_DEFS[catId]) throw new Error('cat-missing');
+  if (!CARE_NEEDS.includes(need)) throw new Error('unknown-care-need');
   const { database, sdk } = await fs();
   const { runTransaction, serverTimestamp } = sdk;
   const p = paths(sdk, database, familyId);
@@ -600,22 +604,26 @@ export async function spendHungerCare(familyId, catId) {
     if (!childSnap.exists() || !catSnap.exists()) throw new Error('care-state-missing');
     const child = childSnap.data();
     const cat = catSnap.data();
-    const result = refillHunger(hungerAt(cat.catNeeds, nowMs), child.careCharges);
+    const result = refillNeed(cat.catNeeds, need, child.careCharges, nowMs);
     if (!result.ok) throw new Error(result.reason);
 
     tx.update(p.child(), {
       careCharges: result.chargesAfter,
-      lastCareSpend: { catId, need: 'hunger', at: serverTimestamp() }
+      lastCareSpend: { catId, need, at: serverTimestamp() }
     });
     tx.update(catRef, {
       catNeeds: {
-        ...(cat.catNeeds || {}),
-        hunger: result.after,
+        ...result.needsAfter,
         lastUpdatedAt: serverTimestamp()
       }
     });
     return result;
   });
+}
+
+// Compatibility alias for the first Hunger-only vertical slice.
+export function spendHungerCare(familyId, catId) {
+  return spendCare(familyId, catId, 'hunger');
 }
 
 // Buy a café item with Cat Coins (never screen-time points).
