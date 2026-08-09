@@ -1,12 +1,9 @@
 # Cat Trainer — Interactive Café Goal
 
-> **Status:** Active product spec and roadmap, reconciled through the merged
-> three-need care and full-meter correction (PRs #36–37, August 9, 2026).
-> Hunger, Rest, Happiness, their matching object interactions, and room/menu
-> layering have passed device testing. Any need displayed as 100/100 is treated
-> as full and cannot request or spend a Care Charge; a spare-charge confirmation
-> can happen organically. The locked Hero-care gate is implemented in application
-> code and awaits rules publication and device validation.
+> **Status:** Active product spec and roadmap, reconciled through the merged Hero
+> care release (PR #38, August 9, 2026). The application code and matching
+> Firestore rules are live. Current release, device-test, and remaining-work
+> status is kept in one place: §0.5.
 >
 > **This is the combined spec.** It merges the product/experience spec (the
 > "Interactive Café Goal") with a **code-grounded audit** of the current app, so
@@ -23,9 +20,8 @@
 
 ## 0. Codebase reality — grounded audit (Aug 2026)
 
-Everything in this section is read from the current `cat-trainer-v2/` source, so
-**Slice 0's audit is complete.** Build against these facts and the locked calls
-in §0.8.
+Everything in this section is read from the current `cat-trainer-v2/` source.
+The audit is complete; build against these facts and the locked calls in §0.8.
 
 ### 0.1 Where things live
 
@@ -35,7 +31,7 @@ in §0.8.
 | Cat definitions + poses | `src/data/cats.js` | `CAT_DEFS`, `freshCatProgress()` |
 | Daily quests | `src/data/quests.js` | `DEFAULT_QUESTS` (13), `SECTIONS`, `seededQuests()` |
 | Reward math (single source of truth) | `src/shared/rewards.js` | `CAPS`, `HERO_THRESHOLD`, `isHeroReady`, `applyCatProgress` |
-| Café render + interactions | `src/app.js` | `renderChildCafe`, `initCafeInteractions`, `reactCat`, `catMood`, `catIdleBeat`, `catStroll`, `cafePoseArt`, `cafeSlot`/`CAFE_SLOTS` |
+| Café render + interactions | `src/app.js` | `renderChildCafe`, `initCafeInteractions`, `reactCat`, `catMood`, `catIdleBeat`, `catWander`, `catWelcomeBack`, `cafePoseArt` |
 | Persistence / transactions | `src/store.js` | `purchaseCafeItem`, `moveCafeItem`, `setCafeItemPlaced`, quest-approval reward writes |
 
 ### 0.2 The current progression model (keep its two layers separate)
@@ -80,24 +76,36 @@ The new care layer must **never** read or write Brain/Energy/Bond values. It onl
   but it confirms §6.1's worry that per-quest is "generous": the design lever is
   the **cap and refill size**, not the earn rate.
 
-### 0.5 Released room baseline
+### 0.5 Current release and verification
 
-- Play and Decorate are separate modes. Cat and décor movement persist as
-  normalized room coordinates.
-- Cat taps, object taps, blank-room calls, and décor dragging have distinct
-  input paths and readable feedback.
-- One-step Decorate Undo, stored-item placement, and room bounds are implemented.
+This table is the single status record. Later sections define durable behavior;
+they do not repeat release history.
 
-### 0.6 Released behavior baseline (§7)
+| Area | Released now | Verification or remaining work |
+| --- | --- | --- |
+| **Room and ordinary persistence** | Play/Decorate modes, owned-item tray, placement/storage, one-step Undo, room bounds, and normalized cat/décor positions | Ordinary save/reload behavior is complete: the room and cat reopen where they were left. This is separate from the offline/reconnect check below. |
+| **Cat response and basic welcome-back** | Interruption-safe actions; cat taps; drag and blank-room call-to-walk; object approach; lasting eat/play/sleep; autonomous in-place blink, wiggle, hop, and play; reopening restores the saved position and gives a small hello wiggle | Core movement and object interactions passed device testing. The richer need-based opening choices in §7.4 are optional polish, not an MVP blocker. |
+| **Autonomous travel wandering** | The live release still limits autonomous life to in-place beats. The final branch adds bounded, décor-aware travel through the existing walk/state controller and saves each destination | Publish the final branch, then phone-test pacing, destination quality, interruptions, mode boundaries, and reload persistence. |
+| **Daily care and UI** | Hunger, Rest, Happiness, timestamp decay, Care Charges, functional need cue, food/rest/play spending, full-need protection, and fixed menu layering | All three meters and matching actions passed phone testing, including play's 5-Rest cost. A displayed-full action with a spare charge may be confirmed organically; automated coverage already protects the charge. |
+| **Hero progression** | Brain 12 + Energy 12 + 14 distinct healthy-care days, with atomic once-per-day writes and sticky existing Heroes; matching rules are published | Regression coverage passes. The full 14-day path remains a natural-use validation, not a blocker for the next slice. |
+| **Offline/reconnect** | The service worker caches the app shell, Firestore uses persistent local cache, and timestamp decay works after time away | No separate device pass is recorded. Complete the scoped offline/reconnect test in §16.2. |
+| **Yarn interaction** | In Play mode, tapping yarn makes the cat approach and play; in Decorate mode, dragging yarn repositions it | Both released paths passed device testing. Play-mode drag-and-follow is optional polish (§8.4), not an MVP blocker. |
 
-- Cat actions run through one interruption-safe state controller; a stale action
-  timer cannot reset a newer interaction.
+### 0.6 Released behavior architecture (§7)
+
+- One interruption-safe state controller owns cat actions; stale timers cannot
+  reset newer interactions.
 - Idle, walk, eat, play, sleep, pet, celebrate, drag, and object-approach states
-  use the mapped art and leave the cat at its saved destination.
-- Autonomous wandering remains disabled until its destination choice and pacing
-  pass a dedicated device test.
+  use mapped art and leave the cat at its saved destination.
+- Two-frame idle, play, eat, walk, and sleep art is mapped for all three cats.
+  Reduced-motion mode moves directly to a destination and still shows the
+  meaningful action.
+- The resting look is driven by daily Rest, never the long-term training Energy
+  stat. Low Rest selects quiet sleep; otherwise the cat is awake by default.
 
-### 0.7 Décor persistence & shop
+`ART-ANIMATION.md` is the frame manifest and wiring reference.
+
+### 0.7 Décor persistence and shop contract
 
 - **▸ From the code:** each owned item is a document in `ownedCafeItems` with its
   purchase record plus `x`, `y`, and `placed`; `moveCafeItem` saves position and
@@ -132,27 +140,7 @@ decisions; the sections below keep the fuller reasoning.
 | **Sound** (§12.1) | **Off by default**, saved preference respected | Least intrusive |
 | **Room snapshot** (§9.4) | **Preview with Save/Cancel**, not an instant download | A beat to confirm the shot |
 | **Attention-cue wording & family visits** (§13, §18) | **Deferred** to their own slices; not MVP-blocking | Later polish |
-
-### 0.9 Current animation and interaction ground truth (Aug 2026)
-
-- Two-frame idle, play, eat, walk, and sleep art is mapped for all three cats.
-  Object-directed actions use it; reduced-motion mode moves directly to the
-  destination and shows the meaningful action still.
-- The resting look is driven by daily care, never the long-term training Energy
-  stat. Low Rest selects quiet sleep; otherwise the cat is awake by default.
-- Blank-room taps call the cat to that saved location. Water has a distinct
-  neutral action, Toy Basket is a play object, and every cat uses the same
-  cat-only sleep layering path on every rest object.
-- Hunger, Rest, Happiness, the core object-interaction loop, and room/menu
-  layering passed device testing. A need that rounds to 100/100 now follows the
-  full-need path even after tiny timestamp decay: the action still plays, the UI
-  says the need is full, and no Care Charge is requested or spent. Automated
-  coverage protects both zero and nonzero charge balances; the latter can be
-  confirmed on a phone when it occurs naturally.
-
-**Animation plan:** **`ART-ANIMATION.md`** records the frame manifest, generation
-prompts, and frame-swapper wiring. All three tiers are present and mapped; object
-actions now call them for food, rest, and play care.
+| **Yarn interaction scope** (§8.4) | Keep tap-to-play in Play mode and drag-to-reposition in Decorate mode as the MVP; Play-mode drag-and-follow is optional polish | Preserves clear mode boundaries while retaining direct play and decoration controls |
 
 ---
 
@@ -472,7 +460,7 @@ The cat has exactly one primary state at a time.
 | State | Trigger | Expected behavior | Exit |
 | --- | --- | --- | --- |
 | `IDLE` | No higher-priority activity | Sit, breathe, look around, or make a tiny shift | Autonomous choice or interaction |
-| `WANDER` | Random idle choice while needs allow | Walk/slide to a valid open location and remain there | Arrive at destination |
+| `WANDER` | Random idle choice while needs allow | Walk to a valid open location and remain there | Arrive at destination |
 | `SEEK_ATTENTION` | A need is low and no interaction is active | Approach Sirus/front area or the relevant object; show a gentle cue | Care begins, tap response, or timeout |
 | `APPROACH_OBJECT` | Sirus taps an interactive object | Move toward a usable position beside that object | Arrive, then enter object activity |
 | `EAT` | Bowl selected and care is available | Show eat pose at the bowl; refill Hunger visibly | Animation completes |
@@ -484,8 +472,9 @@ The cat has exactly one primary state at a time.
 | `DRAGGED` | Sirus drags the cat | Follow pointer/finger | Drop at valid position, then idle |
 
 > **▸ From the code:** `catState`, one cancelable state timer, and the shared pose
-> lookup now coordinate idle, pet, approach, eat, play, sleep, celebrate, and drag
-> behavior. Autonomous wandering remains the one deliberately disabled state.
+> lookup now coordinate idle, wander, pet, approach, eat, play, sleep, celebrate,
+> and drag behavior. Travel wandering is implemented on the final branch and
+> remains unreleased until its phone pacing pass.
 
 ### 7.1 State priority
 
@@ -522,36 +511,44 @@ cancels pending state work before starting a newer interaction.
 
 ### 7.3 Autonomous behavior
 
-While the Café is open and the cat is not busy:
+Released autonomous behavior is deliberately in place: while the Café is open,
+in Play mode, and the cat is not busy, it occasionally blinks, wiggles, hops, or
+plays. These beats quiet down when a daily need is low.
 
-- choose an idle variation or short wander after a randomized delay;
-- remain inside the walkable room bounds;
-- avoid covering critical controls;
-- prefer relevant placed objects when a need is low;
-- do not repeatedly interrupt Sirus with attention cues;
-- do not snap back to center after wandering;
-- reduce wandering when Rest is low;
-- increase playful idle choices when Happiness and Rest are high.
+The final branch implementation:
 
-Two-frame idle, walk, eat, play, and sleep poses are already mapped. Autonomous
-wandering remains disabled until its pacing and destination selection pass on
-Sirus's device; when enabled, it must keep the cat at the destination rather than
-scheduling a return to center.
+- chooses an in-place beat or an occasional short walk after a randomized delay;
+- scores fixed walkable anchors against placed décor and chooses among the least
+  obstructed destinations;
+- pauses outside Play mode and under reduced-motion preference;
+- gently prefers a matching placed object when Hunger or Happiness is low,
+  without starting care or spending a charge;
+- suppresses travel when Rest is low;
+- uses the existing cancelable walk state so taps, drags, object actions, and
+  mode changes take priority;
+- saves the arrival point and never schedules a return to center.
+
+Two-frame walk poses and interruption-safe directed movement are reused. The
+live release still has random room travel disabled; the final branch remains
+pending until destination quality and pacing pass on Sirus's device.
 
 ### 7.4 Welcome-back behavior
 
-Opening the Café should not always reset the cat to a frozen center position.
-After restoring the saved room and applying elapsed-time decay, choose one valid
-opening presentation based on the saved state and current needs:
+The basic welcome-back is complete: opening the Café restores the cat's saved
+location and resting pose, then gives a small hello wiggle when reduced motion is
+off. It does not reset the cat to center.
+
+A later, non-MVP enhancement may choose a richer opening presentation after
+restoring the room and applying elapsed-time decay:
 
 - remain at the cat's last saved location in an appropriate idle pose;
 - already be sleeping at a placed bed when Rest is lowest;
 - investigate or sit near a placed toy when needs are healthy;
 - approach the front/attention area with the current functional need cue.
 
-This is presentation, not a random reward or a hidden need change. It must never
-move stored objects, spend care, or overwrite Sirus's saved cat position before
-he interacts.
+Any richer welcome-back remains presentation, not a random reward or hidden need
+change. It must never move stored objects, spend care, or overwrite Sirus's saved
+cat position before he interacts.
 
 ## 8. Direct interaction
 
@@ -607,9 +604,12 @@ need changed when it did not. Reuse `fx-sparkle.png`, `fx-starburst.png`,
 > take priority through a cat sprite's transparent area, and transparent curled
 > cat frames layer over every rest object. Collars and the crown remain décor.
 
-### 8.4 Drag-the-yarn play
+### 8.4 Optional Play-mode drag-the-yarn polish
 
-Yarn supports one direct toy interaction in addition to ordinary tap-to-play:
+For the MVP, tapping yarn in Play mode makes the cat approach and play, while
+dragging yarn in Decorate mode repositions it.
+
+A later enhancement may add a separate direct toy interaction in Play mode:
 
 - In Play mode, Sirus can press and drag a placed yarn ball.
 - If the cat is available, it turns toward or follows the yarn within the
@@ -762,10 +762,14 @@ Requirements:
   caller-supplied counter.
 - `lastQuestDate` and server-stamped `lastQuestAt` mark parent-approved activity
   so a low-care day may resume through valid care later that same date.
-- The app remains usable offline and syncs when connectivity returns.
+- After one successful online load, the app shell and cached room remain usable
+  offline. Non-transactional room writes may queue and sync after reconnect.
+- Purchases and care/progression transactions require a connection. If attempted
+  offline, they must fail clearly, preserve the last confirmed state, and remain
+  retryable after reconnect.
 - Firestore rules explicitly limit child writes to the released Café fields and
-  validate care grants, care spends, and purchases atomically. The matching rules
-  for Hunger, Rest, and Happiness are deployed.
+  validate care grants, care spends, purchases, and Hero-care advances atomically.
+  The matching rules are deployed.
 - Conflicting writes should preserve owned items and the most recent intentional
   room arrangement.
 
@@ -794,7 +798,7 @@ Hero form represents sustained real-world effort and care—not a perfect streak
 > ledger reversal. Existing Heroes with no historical care-date records remain
 > Heroes; the care gate controls only future false→true evolution.
 
-### 11.2 Locked Hero-care gate — IMPLEMENTED, RELEASE VALIDATION PENDING
+### 11.2 Locked Hero-care gate
 
 At the observed pace of 15–20 points per active day, a points-only threshold
 would roughly correspond to:
@@ -847,8 +851,8 @@ Implemented transaction contract:
 - Missing progress is a zero-day fallback for unevolved cats. Existing evolved
   cats remain evolved without invented historical dates.
 
-The application code and regression coverage are complete. The updated Firestore
-rules must be published before device testing or release.
+The application code, regression coverage, and matching Firestore rules are
+released. The 14-day path is validated through natural use (§0.5).
 
 ## 12. Character identity
 
@@ -975,119 +979,70 @@ The MVP is complete when all of the following work together:
 7. Tapping a food/water bowl, sleep object, or toy makes the cat travel there
    and perform the correct lasting pose; Water and Toy Basket are explicitly
    covered, and sleep presentation is consistent across cats and furniture.
-8. Dragging yarn makes the cat visibly follow and play without turning screen
-   play into an unlimited Happiness refill.
-9. A low need produces one functional icon cue that guides Sirus to a compatible
+8. A low need produces one functional icon cue that guides Sirus to a compatible
    object.
-10. A completed care action visibly changes the correct meter and Care Charge
-    count.
-11. Decorate mode includes at least one-step Undo.
-12. Hunger, Rest, and Happiness decay from real elapsed time.
-13. Real quest completion supplies limited care; screen tapping alone cannot keep
-   every need full.
-14. Low needs change behavior and prompt attention without removing progress or
+9. A completed care action visibly changes the correct meter and Care Charge
+   count.
+10. Decorate mode includes at least one-step Undo.
+11. Hunger, Rest, and Happiness decay from real elapsed time.
+12. Real quest completion supplies limited care; screen tapping alone cannot keep
+    every need full.
+13. Low needs change behavior and prompt attention without removing progress or
     using guilt.
-15. Care and approved quests contribute to Hero evolution without devolution.
-16. All state saves safely, including offline/reconnect behavior.
+14. Care and approved quests contribute to Hero evolution without devolution.
+15. The cached room opens offline after a prior online load; offline-safe room
+    changes sync after reconnect; connection-required transactions fail clearly
+    without losing confirmed state.
 
-## 16. Recommended build slices
+## 16. Remaining delivery slices
 
-### Slice 0 — unblock persistence
+The former audit, room, object, and care-loop slices are released; their durable
+contracts live in the sections above and their verification status lives only in
+§0.5. Keep this section limited to unfinished work.
 
-- Audit current Café code and deployed Firestore rules.
-- Verify existing décor writes actually save and reload.
-- Add migration-safe Café state defaults.
+### 16.1 Autonomous travel wander — device validation pending
 
-> **▸ Status: complete.** The audit, migration-safe care defaults, and matching
-> Firestore rules are implemented; the current three-need rules are deployed.
+The bounded implementation is complete on the final branch. After deployment,
+phone-test that the cat:
 
-### Slice 1 — the room becomes Sirus's
+- travels occasionally—not constantly—to sensible room destinations;
+- stays at the destination and still reopens there after a reload;
+- yields immediately to a cat tap/drag, blank-room call, or object action;
+- does not travel in Decorate mode or when Rest is low;
+- never crosses the fixed menu layer or leaves the visible room.
 
-- Add explicit Play/Decorate modes.
-- Add item tray, free placement, storage, bounds, and persistence.
-- Add one-step Undo for the current decorating session.
-- Make the cat draggable and persist its position.
+The released saved-position hello remains the welcome-back baseline. Richer
+need-based opening choices in §7.4 are optional polish and are not part of this
+slice.
 
-> **▸ Status: complete for the current room model.** Play/Decorate, the owned-item
-> tray, placement/storage, one-step Undo, room bounds, and cat position persistence
-> are released.
+### 16.2 Offline/reconnect device validation
 
-### Slice 2 — the cat becomes alive
+After one successful online load:
 
-- Replace reset timers with the explicit behavior state machine.
-- Add lasting tap response, idle, wander, and attention states.
-- Add state-aware welcome-back presentation and the functional need cue.
-- Prevent stale timers and center snapping.
+1. Reopen the Café offline and confirm the cached shell, saved room, cat, and
+   meters render.
+2. Move the cat or décor offline, reconnect, then reload and confirm the queued
+   room change persists.
+3. Attempt a connection-required purchase or care transaction offline and
+   confirm the app keeps the last confirmed balances, explains that it could not
+   save, and succeeds normally after reconnect.
 
-> **▸ Status: core released.** The interruption-safe controller, lasting tap and
-> object actions, saved cat movement, idle animation, and functional low-need cue
-> are present. Autonomous wandering and richer welcome-back choices remain
-> pending their own device-tested pacing pass.
+If any step fails, fix only that bounded persistence path and repeat this test.
 
-### Slice 3 — objects become playable
+### 16.3 Natural-use validation — does not block other slices
 
-- Add approach movement and bowl/bed/toy interactions.
-- Add drag-the-yarn play and lightweight feedback for decorative object taps.
-- Animate meter refills and Care Charge spending so cause and effect are clear.
-- Use the existing eat, cat-only sleep, play, and celebrate sprites; keep the
-  partial signature-bed composites optional until coverage is consistent.
-- Add clear no-charge feedback without guilt.
+- When it occurs naturally, confirm a displayed-full need leaves a nonzero Care
+  Charge untouched.
+- Let the 14-distinct-day Hero gate validate through ordinary use.
+- After a normal week, decide whether 35/25/20 decay, six charges, +20 refills,
+  and symmetric Rest feel balanced.
 
-> **▸ Status: released except drag-the-yarn.** Food, water, rest, play, and décor
-> taps have distinct readable actions; care meters and charges resolve visibly;
-> full/no-charge/save-failure states are explicit. Ordinary yarn taps refill
-> Happiness, but direct yarn dragging and cat-follow behavior remain open.
+### 16.4 Later expansion
 
-### Slice 4 — real-life care loop
-
-- Add Needs, timestamp decay, Care Charges, and quest hooks.
-- Tune decay/refill values from actual use.
-- Connect care to Hero progress.
-
-> **▸ Status: core care released; Hero gate pending release validation.** Hunger,
-> Rest, and Happiness are implemented end-to-end with the locked starting values:
-> a healthy/testable 80 start, 100 maximum, 35/25/20-per-day timestamp decay, a
-> 48-hour return cap, Care Charges capped at 6, and up to +20 per matching
-> food/rest/play object use. Existing
-> Hunger-only cats migrate with fresh 80 Rest/Happiness values rather than taking
-> retroactive decay. Water remains a free neutral interaction. One lowest-need
-> cue highlights a useful placed object (or the stored-item tray) without spending
-> care automatically. A paid play refill also uses 5 Rest, making the locked
-> play→rest rhythm visible without allowing repeated screen taps to drain it.
-> All three need meters and their matching food/rest/play actions passed device
-> testing, including play's 5-Rest cost. Displayed-full needs now preserve Care
-> Charges in the shared rules and UI, including when real-time decay has moved the
-> stored value just below 100. A nonzero-balance phone confirmation remains useful
-> but can happen organically. `heroCareProgress` now uses the atomic distinct-date
-> contract in §11.2; its rules publication and device validation remain before
-> release.
-
-### Slice 5 — animation polish
-
-- Add two-frame idle/walk variants if desired.
-- Add cat-specific timing and small visual effects.
-- Add the optional sound layer and single room snapshot.
-- Improve object-specific reactions without changing core rules.
-
-> **▸ Status:** the two-frame idle, play, eat, walk, and sleep assets and the
-> interruption-safe frame-swapper are complete. Cat-specific timing, sounds,
-> snapshots, and richer object reactions remain optional polish.
-
-### Slice 5B — family feedback and speech bubbles
-
-- Add one durable, one-time child notification queue.
-- Celebrate positive manual point additions with Mom/Abba attribution, amount,
-  and reason through the cat.
-- Make rejected/returned quests visibly reappear with a gentle explanation and
-  optional parent note.
-- Reuse the deterministic bubble for later care hints; do not add AI chat.
-
-### Slice 6 — family visits
-
-- Add selectable Mom, Abba, Sirus, and Arlo visitor avatars.
-- Add safe room placement and simple visitor idle/reaction behavior.
-- Preserve room ownership and spending permissions.
-- Treat real-time multiplayer or shared decorating as a separate later choice.
+- Optional Play-mode yarn drag-and-follow (§8.4), cat-specific timing, optional
+  sound, room snapshot, and richer object reactions.
+- Deterministic family-feedback speech bubbles and returned-quest messages.
+- Selectable Mom, Abba, Sirus, and Arlo visitors.
 
 ## 17. Non-goals for the first build
 
@@ -1158,5 +1113,5 @@ Documentation-only changes (like this file) don't need the stamp.
 
 This combined spec = the product/experience "Interactive Café Goal" (v2) + a
 code-grounded audit of `cat-trainer-v2/` (Aug 2026), reconciled through the live
-three-need care release. Historical one-off fixes are intentionally omitted;
+Hero-care release (PR #38). Historical one-off fixes are intentionally omitted;
 current behavior, durable requirements, decisions, and remaining work are kept.

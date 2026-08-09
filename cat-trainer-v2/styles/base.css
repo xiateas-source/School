@@ -335,6 +335,7 @@ main { padding: 0 16px; }
 .need-cue:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
 .cafe-cat-wrap.mood-sleepy { animation: catSleep 5.5s ease-in-out infinite; }
 .cafe-cat-wrap.mood-happy  { animation: catHappy 2.6s ease-in-out infinite; }
+.cafe-cat-wrap[data-cat-state="wander"],
 .cafe-cat-wrap[data-cat-state="approach"],
 .cafe-cat-wrap[data-cat-state="eat"],
 .cafe-cat-wrap[data-cat-state="drink"],

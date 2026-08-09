@@ -12,6 +12,72 @@ export const CAFE_ACTIONS = Object.freeze({
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
+// A small set of walkable anchors keeps autonomous movement deliberate instead
+// of letting the cat drift to arbitrary pixels. Positions are the top-left of
+// the same 40%-wide wrapper used by drag and tap movement.
+export const CAT_WANDER_SPOTS = Object.freeze([
+  Object.freeze({ x: 4, y: 16 }),
+  Object.freeze({ x: 30, y: 14 }),
+  Object.freeze({ x: 56, y: 17 }),
+  Object.freeze({ x: 5, y: 36 }),
+  Object.freeze({ x: 31, y: 38 }),
+  Object.freeze({ x: 55, y: 37 }),
+  Object.freeze({ x: 4, y: 59 }),
+  Object.freeze({ x: 29, y: 62 }),
+  Object.freeze({ x: 56, y: 58 })
+]);
+
+const rectOverlapArea = (a, b) => {
+  const width = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const height = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  return width * height;
+};
+
+// Pick a bounded destination that is meaningfully different from the current
+// spot and overlaps as little placed decor as possible. `preferred` is used for
+// a gentle low-need seek: the caller can supply the same safe object-side anchor
+// used by directed movement, without starting the object action or spending care.
+export function catWanderDestination({ from, obstacles = [], preferred = null, random = Math.random }) {
+  const start = {
+    x: clamp(Number(from && from.x) || 0, 2, 58),
+    y: clamp(Number(from && from.y) || 0, 12, 68)
+  };
+  const farEnough = (spot) => Math.hypot(spot.x - start.x, spot.y - start.y) >= 12;
+
+  if (preferred && Number.isFinite(Number(preferred.x)) && Number.isFinite(Number(preferred.y))) {
+    const spot = {
+      x: clamp(Number(preferred.x), 2, 58),
+      y: clamp(Number(preferred.y), 12, 68)
+    };
+    return farEnough(spot) ? spot : null;
+  }
+
+  const choices = CAT_WANDER_SPOTS.filter(farEnough).map((spot) => {
+    // The PNG wrapper has generous transparent padding. Score the visible
+    // center/body footprint so a furnished room still has usable destinations.
+    const body = { x: spot.x + 8, y: spot.y + 6, width: 24, height: 22 };
+    const overlap = obstacles.reduce((total, obstacle) => {
+      if (!obstacle) return total;
+      const rect = {
+        x: Number(obstacle.x) || 0,
+        y: Number(obstacle.y) || 0,
+        width: Math.max(0, Number(obstacle.width) || 0),
+        height: Math.max(0, Number(obstacle.height) || 0)
+      };
+      return total + rectOverlapArea(body, rect);
+    }, 0);
+    return { spot, overlap };
+  });
+  if (!choices.length) return null;
+
+  const leastOverlap = Math.min(...choices.map(choice => choice.overlap));
+  const open = choices.filter(choice => choice.overlap === leastOverlap);
+  const roll = Number(random());
+  const fraction = Number.isFinite(roll) ? clamp(roll, 0, 0.999999) : 0;
+  const selected = open[Math.floor(fraction * open.length)];
+  return { x: selected.spot.x, y: selected.spot.y };
+}
+
 export function cafeActionFor(item) {
   return item ? CAFE_ACTIONS[item.role] || null : null;
 }
