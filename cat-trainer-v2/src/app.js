@@ -1,16 +1,17 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=e3284735';
+import { isConfigured } from './firebase.js?v=80d56a9c';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=e3284735';
-import * as store from './store.js?v=e3284735';
-import { CAT_DEFS } from './data/cats.js?v=e3284735';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=e3284735';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=e3284735';
-import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=e3284735';
+} from './auth.js?v=80d56a9c';
+import * as store from './store.js?v=80d56a9c';
+import { CAT_DEFS } from './data/cats.js?v=80d56a9c';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=80d56a9c';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=80d56a9c';
+import { cafeActionFor, catDestinationForObject, catWalkDuration } from './cafe-interactions.js?v=80d56a9c';
+import { QUICK_ACTIONS, HERO_THRESHOLD, QUEST_BOND, isHeroReady } from './shared/rewards.js?v=80d56a9c';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -46,6 +47,9 @@ function navParent(name) {
 function navChild(name) {
   document.querySelectorAll('[data-cscreen]').forEach(s => s.classList.toggle('active', s.dataset.cscreen === name));
   document.querySelectorAll('[data-cgo]').forEach(b => b.classList.toggle('active', b.dataset.cgo === name));
+  // In particular, end an indefinite bed nap when the café is no longer on
+  // screen so its frame timer cannot keep running behind Quests/Cats/Log.
+  if (name !== 'cafe' && catState !== 'idle') settleCatToRest();
   // Leaving the café always drops back to Play mode (never reopen mid-arrange).
   if (name !== 'cafe' && cafeMode !== 'play') { cafeMode = 'play'; cafeUndo = null; updateCafeModeUI(); }
   if (name === 'cafe') catWelcomeBack();
@@ -375,10 +379,22 @@ let cafeMode = 'play';
 let cafeUndo = null;
 
 function setCafeMode(mode) {
+  // Arranging the room takes priority over an in-progress play action. Leave the
+  // cat awake and stable instead of letting an old action finish behind the tray.
+  if (mode === 'decorate' && catState !== 'idle') settleCatToRest();
   cafeMode = mode;
   cafeUndo = null;
   updateCafeModeUI();
   renderChildCafe();
+}
+function cafeDefaultHint() {
+  return cafeMode === 'decorate'
+    ? 'Drag things to arrange · use the tray to add or store · Undo fixes a mistake'
+    : 'Tap a bowl, bed, or toy · tap or drag the cat to interrupt';
+}
+function setCafeHint(message) {
+  const hint = el('c-cafe-hint');
+  if (hint) hint.textContent = message || cafeDefaultHint();
 }
 function updateCafeModeUI() {
   const decorating = cafeMode === 'decorate';
@@ -388,10 +404,7 @@ function updateCafeModeUI() {
   const actions = el('c-decorate-actions'); if (actions) actions.hidden = !decorating;
   const tray = el('c-tray'); if (tray) tray.hidden = !decorating;
   updateCafeUndoBtn();
-  const hint = el('c-cafe-hint');
-  if (hint) hint.textContent = decorating
-    ? 'Drag things to arrange · use the tray to add or store · Undo fixes a mistake'
-    : 'Tap the cat to say hi · drag it to move it around';
+  setCafeHint();
 }
 function setCafeUndo(u) { cafeUndo = u; updateCafeUndoBtn(); }
 function updateCafeUndoBtn() { const b = el('c-undo-btn'); if (b) b.disabled = !cafeUndo; }
@@ -405,12 +418,10 @@ async function applyCafeUndo() {
     toast('Undone.');
   } catch (_) { toast('Could not undo — try again.'); }
 }
-// The cat's resting base position (left %) — a saved spot if Sirus moved it, else
-// the room's default. Used so autonomous strolls return to where he left the cat
 // The café cat's resting look. It stays awake (sitting) by default and gets
 // bright and bouncy after a quest. Sleep is NOT tied to the training Energy stat
 // anymore (that stat is near zero early on, which made the cat look asleep almost
-// always) — real sleep/napping will come from the Rest care-need in Slice 4.
+// always). Explicit bed taps sleep now; need-driven naps arrive with Slice 4.
 function catMood() {
   const id = state.child.activeCatId; const cat = state.cats[id] || {};
   if (cat.evolved) return { pose: null, cls: 'mood-happy' };
@@ -423,11 +434,14 @@ function catMood() {
 // the old "snap back to center / revert the pose" bug (a 900ms settle timer and
 // a separate stroll-return timer both fighting whatever was happening now).
 let catTapCount = 0;
-let catState = 'idle';     // idle | glance | react | dragged
+let catState = 'idle';     // idle | glance | react | dragged | approach | eat | play | sleep
 let catStateTimer = null;  // duration of the current transient state
 let catBeatTimer = null;   // schedules the next autonomous idle beat
 let catAnimTimer = null;   // frame-swap loop for multi-frame poses (eat/play/walk)
 let catAnimStopTimer = null;
+let catTargetId = null;    // placed object currently selected by Sirus
+let catTargetEl = null;
+let catTargetHidden = false;
 const preloadedCatFrames = new Set();
 
 function stopSpriteAnimation() {
@@ -435,6 +449,28 @@ function stopSpriteAnimation() {
   clearTimeout(catAnimStopTimer);
   catAnimTimer = null;
   catAnimStopTimer = null;
+}
+
+function syncCatStateUI() {
+  const wrap = el('c-cafe-cat-wrap');
+  if (wrap) wrap.dataset.catState = catState;
+}
+
+function releaseCatTarget() {
+  if (catTargetEl) catTargetEl.classList.remove('is-cat-target', 'is-in-use');
+  document.querySelectorAll('#c-placed .is-cat-target, #c-placed .is-in-use')
+    .forEach(node => node.classList.remove('is-cat-target', 'is-in-use'));
+  catTargetId = null;
+  catTargetEl = null;
+  catTargetHidden = false;
+}
+
+function markCatTarget(itemEl, hidden = false) {
+  catTargetEl = itemEl || (catTargetId && document.querySelector(`[data-decor="${catTargetId}"]`));
+  catTargetHidden = hidden;
+  if (!catTargetEl) return;
+  catTargetEl.classList.add('is-cat-target');
+  catTargetEl.classList.toggle('is-in-use', hidden);
 }
 
 // Load a selected cat's alternate frames before its first autonomous beat. This
@@ -449,13 +485,16 @@ function preloadCatFrames(def) {
     img.src = src;
   });
 }
-// Art for a café pose. If the cat is "sleeping" and owns + placed its own bed,
-// it naps ON that bed (the cat-on-bed art) instead of the plain curled pose.
-function cafePoseArt(def, poseKey) {
+// Art for a café pose. If the cat is "sleeping" at its own placed bed, it naps
+// ON that bed (the cat-on-bed art) instead of the plain curled pose. Passing a
+// target prevents a different signature bed elsewhere in the room from being
+// shown when Sirus tapped another sleep object.
+function cafePoseArt(def, poseKey, targetItemId = null) {
   if (!def.poses) return def.art;
   if (poseKey === 'sleep' && def.bedItemId && def.bedPose) {
     const rec = ownedCafeRecord(def.bedItemId);
-    if (rec && rec.placed !== false) return def.bedPose;
+    const correctTarget = targetItemId == null || targetItemId === def.bedItemId;
+    if (correctTarget && rec && rec.placed !== false) return def.bedPose;
   }
   return def.poses[poseKey] || def.poses.sit || def.art;
 }
@@ -467,7 +506,10 @@ function renderChildCafe() {
   preloadCatFrames(def);
   const mood = catMood();
   const wrap = el('c-cafe-cat-wrap');
-  if (wrap) wrap.className = `cafe-cat-wrap ${mood.cls}`;
+  if (wrap) {
+    wrap.className = `cafe-cat-wrap ${mood.cls}`;
+    wrap.dataset.catState = catState;
+  }
   // The cat's position is owned by the behavior machine (drag + welcome-back +
   // wander), not re-applied here — a data snapshot must never teleport a cat that
   // has wandered or been dragged back to its base spot.
@@ -478,9 +520,13 @@ function renderChildCafe() {
     el('c-placed').innerHTML = state.ownedItems.filter(o => o.placed !== false).map(o => {
       const item = CAFE_ITEMS[o.id]; if (!item) return '';
       const [x, y] = (o.x != null && o.y != null) ? [o.x, o.y] : cafeSlot(o.id);
-      return `<img class="cafe-decor" src="${item.art}" alt="${esc(item.name)}" data-decor="${o.id}"
-        style="left:${x}%;top:${y}%" draggable="false">`;
+      const selected = o.id === catTargetId;
+      const targetClasses = selected ? ` is-cat-target${catTargetHidden ? ' is-in-use' : ''}` : '';
+      const actionLabel = item.role === 'decor' ? `Look at ${item.name}` : `Ask the cat to use ${item.name}`;
+      return `<img class="cafe-decor${targetClasses}" src="${item.art}" alt="${esc(item.name)}" data-decor="${o.id}"
+        style="left:${x}%;top:${y}%" draggable="false" role="button" tabindex="0" aria-label="${esc(actionLabel)}">`;
     }).join('');
+    if (catTargetId) catTargetEl = el('c-placed').querySelector(`[data-decor="${catTargetId}"]`);
   }
   renderCafeTray();
   el('c-shop').innerHTML = CAFE_ITEM_IDS.map(itemId => {
@@ -543,14 +589,28 @@ function initCafeInteractions() {
       if (!cat) return;
       e.preventDefault();
       const wrap = el('c-cafe-cat-wrap');
-      wrap.style.transition = 'none'; // the wrap normally eases `left`; snap to the finger while dragging
+      const rr = room.getBoundingClientRect();
+      const wr = wrap.getBoundingClientRect();
+      const currentX = ((wr.left - rr.left) / rr.width) * 100;
+      const currentY = ((wr.top - rr.top) / rr.height) * 100;
+      const interrupted = catState !== 'idle';
+      releaseCatTarget();
+      setCafeHint();
+      // Freeze at the currently rendered point before removing an approach
+      // transition; otherwise a mid-walk grab would jump to the old destination.
+      wrap.style.transition = 'none';
+      wrap.style.left = currentX + '%';
+      wrap.style.top = currentY + '%';
+      wrap.style.bottom = 'auto';
       clearTimeout(catStateTimer);
       stopSpriteAnimation();
       const { cat: progress, def } = catCtx();
       cat.src = catRestPoseSrc(progress, def);
       catState = 'dragged'; // a grab beats any pending beat
+      syncCatStateUI();
       cafeDrag = { kind: 'cat', el: wrap, catEl: cat, rect: room.getBoundingClientRect(),
-                   grabX: e.clientX, grabY: e.clientY, moved: false };
+                   grabX: e.clientX, grabY: e.clientY, moved: false,
+                   startX: currentX, startY: currentY, interrupted };
       try { cat.setPointerCapture(e.pointerId); } catch (_) { /* older browsers */ }
     }
   });
@@ -602,18 +662,36 @@ function initCafeInteractions() {
       d.el.style.transition = ''; // restore the gentle ease for autonomous strolls
       try { d.catEl.releasePointerCapture(e.pointerId); } catch (_) { /* no-op */ }
       catState = 'idle';
+      syncCatStateUI();
       if (d.moved && d.lastX != null) {
         const x = round(d.lastX), y = round(d.lastY);
         if (state.child) state.child.cafeCat = { x, y }; // optimistic: no snap-back before the write lands
         try { await store.moveCafeCat(state.familyId, x, y); }
         catch (_) { toast('Could not save that move.'); renderChildCafe(); }
       } else {
+        if (d.interrupted && state.child) {
+          const x = round(d.startX), y = round(d.startY);
+          state.child.cafeCat = { x, y };
+          store.moveCafeCat(state.familyId, x, y).catch(() => {});
+        }
         reactCat(e); // a tap, not a drag → pet/react
       }
     }
   };
   room.addEventListener('pointerup', endDrag);
   room.addEventListener('pointercancel', endDrag);
+  room.addEventListener('click', (e) => {
+    if (cafeMode !== 'play') return;
+    const itemEl = e.target.closest('[data-decor]');
+    if (itemEl) activateCafeItem(itemEl);
+  });
+  room.addEventListener('keydown', (e) => {
+    if (cafeMode !== 'play' || (e.key !== 'Enter' && e.key !== ' ')) return;
+    const itemEl = e.target.closest('[data-decor]');
+    if (!itemEl) return;
+    e.preventDefault();
+    activateCafeItem(itemEl);
+  });
 }
 
 // The cat's mood-resting sprite (Hero art once evolved).
@@ -627,10 +705,16 @@ function catCtx() {
 }
 // Return to the resting look and mark the cat idle again.
 function settleCatToRest() {
-  const { cat, def, catEl } = catCtx();
+  const { cat, def, catEl, wrap } = catCtx();
+  clearTimeout(catStateTimer);
+  catStateTimer = null;
   stopSpriteAnimation(); // stop any frame loop so it can't outlive its state
   if (catEl) catEl.src = catRestPoseSrc(cat, def);
+  if (wrap) wrap.style.transition = '';
   catState = 'idle';
+  syncCatStateUI();
+  releaseCatTarget();
+  setCafeHint();
 }
 // Enter a transient state for `ms`, then run `onEnd` (default: settle to rest).
 // Cancels the old transition and its sprite loop first, so the newest action
@@ -639,28 +723,154 @@ function catTransient(next, ms, onEnd) {
   clearTimeout(catStateTimer);
   stopSpriteAnimation();
   catState = next;
-  catStateTimer = setTimeout(onEnd || settleCatToRest, ms);
+  syncCatStateUI();
+  catStateTimer = ms == null ? null : setTimeout(onEnd || settleCatToRest, ms);
 }
 // Animate a multi-frame pose by cycling its frames. Falls back to a meaningful
 // still under reduced motion or when a pose has no alternate frame. A dedicated
 // stop timer is cleared on every new run so an older hold can never stop a newer
 // animation.
-function playSprite(poseKey, { fps = 3, holdMs = 0 } = {}) {
+function playSprite(poseKey, { fps = 3, holdMs = 0, heroAction = false, targetItemId = null } = {}) {
   const { cat, def, catEl } = catCtx();
   stopSpriteAnimation();
   if (!catEl || !def) return;
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const frames = !cat.evolved && def.frames && def.frames[poseKey];
+  // Hero is a permanent unlock, not an endpoint. Until dedicated Hero action
+  // frames exist, object interactions use the same cat's base action frames and
+  // return to Hero art afterward; ordinary idle reactions keep Hero art.
+  const frames = (!cat.evolved || heroAction) && def.frames && def.frames[poseKey];
   // Keep the special cat-on-bed art when its favored bed is placed. The plain
   // two-frame sleep loop is used only when the cat is sleeping elsewhere.
-  const usesBedPose = poseKey === 'sleep' && cafePoseArt(def, 'sleep') === def.bedPose;
-  const still = cat.evolved
+  const poseArt = cafePoseArt(def, poseKey, targetItemId);
+  const usesBedPose = poseKey === 'sleep' && poseArt === def.bedPose;
+  const still = cat.evolved && !heroAction
     ? def.heroArt
-    : (usesBedPose ? def.bedPose : (frames && frames[0]) || cafePoseArt(def, poseKey));
+    : (usesBedPose ? def.bedPose : (frames && frames[0]) || poseArt);
   if (!frames || frames.length < 2 || reduce || usesBedPose) { catEl.src = still; return; }
   let i = 0; catEl.src = frames[0];
   catAnimTimer = setInterval(() => { i = (i + 1) % frames.length; catEl.src = frames[i]; }, Math.round(1000 / fps));
   if (holdMs) catAnimStopTimer = setTimeout(stopSpriteAnimation, holdMs);
+}
+
+// ---- Placed object → walk → lasting action ---------------------------------
+function pulseCafeItem(itemEl, item) {
+  itemEl.classList.remove('wiggle'); void itemEl.offsetWidth; itemEl.classList.add('wiggle');
+  const room = el('c-cafe-room');
+  if (room) {
+    const rr = room.getBoundingClientRect();
+    const ir = itemEl.getBoundingClientRect();
+    const cx = ((ir.left + ir.width / 2 - rr.left) / rr.width) * 100;
+    const cy = ((ir.top + ir.height / 2 - rr.top) / rr.height) * 100;
+    spawnFx('assets/fx-sparkle.png', room, { count: 2, cx, cy, spread: 8, size: 30, life: 850 });
+  }
+  if (item && item.role === 'decor') toast(`${item.name} looks cozy here.`);
+}
+
+function actionHidesTarget(item, def) {
+  if (item.role === 'food') return true; // eat art already contains a bowl
+  if (item.role === 'play' && (item.id === 'rug' || item.id === 'pinkYarn')) return true;
+  return item.role === 'rest' && item.id === def.bedItemId; // signature nap art contains the bed
+}
+
+function cafeActionHint(item, catName) {
+  if (item.role === 'food') return item.id === 'waterBowl'
+    ? `${catName} is getting a drink.`
+    : `${catName} is eating.`;
+  if (item.role === 'rest') return `${catName} is sleeping · tap the cat or another object to wake up`;
+  return `${catName} is playing!`;
+}
+
+function beginCafeObjectAction(item, destination) {
+  if (catState !== 'approach' || catTargetId !== item.id) return;
+  const action = cafeActionFor(item);
+  if (!action) return settleCatToRest();
+
+  const { def, wrap } = catCtx();
+  if (wrap) wrap.style.transition = '';
+  const liveTarget = el('c-placed').querySelector(`[data-decor="${item.id}"]`) || catTargetEl;
+  markCatTarget(liveTarget, actionHidesTarget(item, def));
+
+  // The destination is now the cat's real location, not a temporary animation
+  // offset. Save it just like a direct drag so reopening the café doesn't snap
+  // back to the old spot; a failed offline write does not cancel the play action.
+  const x = Math.round(destination.x * 10) / 10;
+  const y = Math.round(destination.y * 10) / 10;
+  if (state.child) state.child.cafeCat = { x, y };
+  store.moveCafeCat(state.familyId, x, y).catch(() => {});
+
+  catTransient(action.state, action.durationMs);
+  playSprite(action.pose, {
+    fps: action.state === 'sleep' ? 2 : 3,
+    holdMs: action.durationMs || 0,
+    heroAction: true,
+    targetItemId: item.id
+  });
+  setCafeHint(cafeActionHint(item, def.name));
+
+  const room = el('c-cafe-room');
+  if (room) spawnFx('assets/fx-paw.png', room, {
+    count: 2, cx: destination.x + 20, cy: destination.y + 25,
+    spread: 8, size: 28, life: 800, mode: 'trail'
+  });
+}
+
+function activateCafeItem(itemEl) {
+  const item = CAFE_ITEMS[itemEl.dataset.decor];
+  if (!item) return;
+  pulseCafeItem(itemEl, item);
+  const action = cafeActionFor(item);
+  if (!action) return; // decorative things acknowledge the tap but do not fake care
+
+  // Repeated taps on the same active object acknowledge without restarting its
+  // timer or flashing between walk/action frames. A different target interrupts.
+  if (catTargetId === item.id && catState !== 'idle') return;
+
+  const room = el('c-cafe-room');
+  const { def, wrap } = catCtx();
+  if (!room || !wrap || !def) return;
+  releaseCatTarget();
+  catTargetId = item.id;
+  markCatTarget(itemEl);
+
+  const rr = room.getBoundingClientRect();
+  const ir = itemEl.getBoundingClientRect();
+  const wr = wrap.getBoundingClientRect();
+  const from = {
+    x: ((wr.left - rr.left) / rr.width) * 100,
+    y: ((wr.top - rr.top) / rr.height) * 100
+  };
+  const destination = catDestinationForObject({
+    role: item.role,
+    itemLeft: ((ir.left - rr.left) / rr.width) * 100,
+    itemTop: ((ir.top - rr.top) / rr.height) * 100,
+    itemWidth: (ir.width / rr.width) * 100
+  });
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const travelMs = catWalkDuration(from, destination, reduce);
+
+  // Convert the current rendered location to left/top before removing `bottom`;
+  // this prevents the first walk from jumping a few pixels at its start.
+  wrap.style.transition = 'none';
+  wrap.style.left = from.x + '%';
+  wrap.style.top = from.y + '%';
+  wrap.style.bottom = 'auto';
+  void wrap.offsetWidth;
+
+  catTransient('approach', travelMs, () => beginCafeObjectAction(item, destination));
+  playSprite('walk', { fps: 4, heroAction: true });
+  setCafeHint(`${def.name} is walking to ${item.name}…`);
+
+  if (travelMs === 0) {
+    wrap.style.left = destination.x + '%';
+    wrap.style.top = destination.y + '%';
+  } else {
+    wrap.style.transition = `left ${travelMs}ms linear, top ${travelMs}ms linear`;
+    requestAnimationFrame(() => {
+      if (catState !== 'approach' || catTargetId !== item.id) return;
+      wrap.style.left = destination.x + '%';
+      wrap.style.top = destination.y + '%';
+    });
+  }
 }
 
 // ---- Direct interaction: a pet/react ---------------------------------------

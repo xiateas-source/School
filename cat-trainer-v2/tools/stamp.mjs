@@ -40,6 +40,7 @@ const FILES = [
   'src/auth.js',
   'src/store.js',
   'src/firebase.js',
+  'src/cafe-interactions.js',
   'src/data/cats.js',
   'src/data/quests.js',
   'src/data/cafe-items.js',

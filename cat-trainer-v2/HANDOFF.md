@@ -154,7 +154,7 @@ on the first-run family existence check. Keep this ordering if you touch setup.
 
 ## 7. Assets
 
-61 PNGs in `assets/`, transparent except `cafe-room.png` and the app-icon tiles
+79 PNGs in `assets/`, transparent except `cafe-room.png` and the app-icon tiles
 (intentionally opaque). Source of truth = Google Drive **"Cat Trainer Artwork"**
 folder (owner `sirusxclass@gmail.com`), with subfolders: Pets, Hero Forms, Cat
 Cafe, Activity Poses, Effects, UI Icons, Family. To replace/add one, download from
@@ -168,8 +168,11 @@ Added 2026-08-07 from Drive: 6 café items (`bunting-pastel`, `pet-house-green`,
 (`{nova,ember,moss}-{sit,play,eat,sleep,celebrate}`); the on-bed nap poses
 (`{nova-blue-star,ember-green-paw,moss-pink-heart}-bed`, shown when the cat's
 signature bed is placed); 4 effects (`fx-{sparkle,starburst,confetti,paw}`); and
-section/reward icons (`night-routine`, `tidy-and-help`, `game-time-star`). The
-café cat's tap cycle is sit→play→eat→sleep→celebrate; `fx-paw` is the drag trail.
+section/reward icons (`night-routine`, `tidy-and-help`, `game-time-star`). Added
+2026-08-09: 18 second animation frames for two-frame blink/play/eat/walk/sleep
+loops across Nova, Ember, and Moss. Cat taps alternate play/celebrate reactions;
+placed usable objects now select the matching lasting action. `fx-paw` is the
+drag trail.
 Still unused in Drive if wanted later: the Family-folder portraits and the
 `.zip` bundles (bulk sources only).
 
@@ -192,6 +195,12 @@ evolution won't feel special. Candidate for a fresher Drive asset.
       Place items from the shop. New items land in a stable default slot until moved.
       _(shipped 2026-08-07; **drag/put-away/place pending the rules re-publish** in §6
       — tap reactions work without it)_
+- [x] **Café object actions (Slice 3A)**: placed bowls, beds/pillows/houses, and
+      toys are role-tagged. In Play mode the cat walks to the newest tapped object,
+      then visibly eats, sleeps, or plays; a new object or direct cat touch cleanly
+      interrupts. Sleep persists until interrupted, Hero cats participate, and
+      reduced-motion users get meaningful still poses. Decorative taps acknowledge
+      without claiming a care refill. Needs/Care Charges remain Slice 4.
 - [x] **Notes on point changes**: Mom/Abba can attach a free-text note to any add,
       subtract, or screen-time redemption from the parent portal; it shows as a
       second line in the ledger. (No rules change.)

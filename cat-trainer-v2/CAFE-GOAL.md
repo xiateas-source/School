@@ -148,21 +148,21 @@ assumptions:
   sitting pose read as gliding, so Slice 2.1 correctly removed autonomous travel
   and the unsupported "glance up" welcome. The follow-up animation pass has now
   added and mapped two-frame idle, play, eat, walk, and sleep art for all three
-  cats. Idle blinks and autonomous play use it now; walk/eat/sleep are available
-  for the destination and care rules in Slices 3–4. Autonomous travel remains
-  disabled until those interruption rules are implemented.
+  cats. Idle blinks and autonomous play use it; Slice 3 now uses walk/eat/play/
+  sleep for object-directed actions. Autonomous wandering remains disabled until
+  its destination choice and pacing receive their own device-test pass.
 - **Resting pose must NOT key off the training `energy` stat.** It made the cat
   look asleep almost always (Energy is near zero early). The café cat now defaults
-  to **awake/sitting**, bouncier after a quest; **real sleep/napping comes only
-  from the Rest care-need in Slice 4** (and the cat-on-bed art returns then).
-  *(Fixed in Slice 2.1.)*
-- Implication for **Slice 3**: object interactions are **pose swaps + a hop toward
-  the item's side of the room**, not a walked approach. The `APPROACH_OBJECT`
-  state should be a short hop/settle at the object, not a walk animation.
+  to **awake/sitting**, bouncier after a quest. An explicit bed tap may start a
+  nap in Slice 3; automatic low-Rest sleeping waits for the care need in Slice 4.
+  *(The training-stat bug was fixed in Slice 2.1.)*
+- Implication for **Slice 3**: object interactions now use the completed
+  front-3/4 walk loop while translating to the selected object. Reduced-motion
+  mode moves directly to the destination and shows the action's meaningful still.
 
 **Animation plan:** **`ART-ANIMATION.md`** records the frame manifest, generation
-prompts, and frame-swapper wiring. All three tiers are now present and mapped;
-the remaining work is to call the ready eat/walk/sleep loops from Slices 3–4.
+prompts, and frame-swapper wiring. All three tiers are present and mapped; object
+actions now call them, while need-driven care behavior remains for Slice 4.
 
 ---
 
@@ -978,6 +978,12 @@ The MVP is complete when all of the following work together:
 - Animate meter refills and Care Charge spending so cause and effect are clear.
 - Use the existing eat, sleep, play, celebrate, and cat-on-bed sprites.
 - Add clear no-charge feedback without guilt.
+
+> **▸ Current sub-slice:** placed food/rest/play objects now run the interruption-
+> safe walk → eat/sleep/play loop, including Hero cats and signature-bed art;
+> decorative objects acknowledge taps without implying a refill. Drag-the-yarn,
+> Care Charges, meters, and no-charge messaging remain for the next sub-slice /
+> Slice 4 boundary so the app does not display a care economy before it exists.
 
 ### Slice 4 — real-life care loop
 
