@@ -1,33 +1,33 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=4cdc9e6c';
+import { isConfigured } from './firebase.js?v=3a55d923';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=4cdc9e6c';
-import * as store from './store.js?v=4cdc9e6c';
-import { CAT_DEFS } from './data/cats.js?v=4cdc9e6c';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=4cdc9e6c';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=4cdc9e6c';
+} from './auth.js?v=3a55d923';
+import * as store from './store.js?v=3a55d923';
+import { CAT_DEFS } from './data/cats.js?v=3a55d923';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=3a55d923';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=3a55d923';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=4cdc9e6c';
+} from './cafe-interactions.js?v=3a55d923';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=4cdc9e6c';
+} from './care.js?v=3a55d923';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=4cdc9e6c';
+} from './shared/rewards.js?v=3a55d923';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, correctedOriginalIds
-} from './shared/ledger.js?v=4cdc9e6c';
+} from './shared/ledger.js?v=3a55d923';
 import {
   localDate, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=4cdc9e6c';
+} from './shared/dates.js?v=3a55d923';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -44,7 +44,8 @@ const state = {
   dayFilter: 'all',               // all | earned | used | room_to_grow | correction
   selectedDayTxns: [],            // raw rows for selectedDate (unioned query)
   weekActivity: new Set(),        // dates in the visible range that have activity
-  expandedTxn: null               // id of the row expanded for detail
+  expandedTxn: null,              // id of the row expanded for detail
+  completedOpen: false            // is the child's "Completed today" drawer open
 };
 
 // Selected-day + week-activity subscriptions live outside the main snapshot fan-
@@ -647,8 +648,11 @@ function renderChildQuests() {
     ? '<div class="empty">All done — great job! 🎉</div>'
     : '<div class="empty">No quests yet.</div>');
 
+  // Open state is controlled by app state, not left to the native element, so a
+  // background re-render (an approval landing, the café cat saving its position)
+  // can't snap the drawer shut while Sirus has it open.
   const finishedHtml = finished.length
-    ? `<details class="completed-quests"><summary>✓ Completed today <span class="done-count">${finished.length}</span></summary>
+    ? `<details class="completed-quests"${state.completedOpen ? ' open' : ''}><summary data-toggle-completed>✓ Completed today <span class="done-count">${finished.length}</span></summary>
         <div class="completed-body">${finished.map(childQuestCard).join('')}</div></details>`
     : '';
 
@@ -1729,6 +1733,11 @@ function bindEvents() {
     if (filter) { setDayFilter(filter.dataset.dayFilter); return; }
     const toggle = e.target.closest('[data-txn-toggle]');
     if (toggle) { state.expandedTxn = state.expandedTxn === toggle.dataset.txnToggle ? null : toggle.dataset.txnToggle; renderDayViews(); return; }
+
+    // "Completed today" drawer: drive the open state ourselves so a re-render
+    // preserves it. preventDefault stops the native <details> from also toggling.
+    const completedToggle = e.target.closest('[data-toggle-completed]');
+    if (completedToggle) { e.preventDefault(); state.completedOpen = !state.completedOpen; renderChildQuests(); return; }
 
     const quick = e.target.closest('[data-quick]');
     if (quick) { const note = el('point-note').value.trim(); try { await store.adjustPoints(state.familyId, state.uid, { reasonCode: quick.dataset.quick, note }); const a = QUICK_ACTIONS.find(x=>x.code===quick.dataset.quick); el('point-note').value = ''; toast(`${a.amount>0?'+':''}${a.amount} · ${a.label}`); } catch (err) { toast('Could not save — check connection.'); } return; }
