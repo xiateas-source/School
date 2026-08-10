@@ -51,17 +51,17 @@ function syncPolishSemantics() {
   syncCafeCopy();
 }
 
-// Presentation-only busy feedback. The original app handler receives the first
-// click. This layer marks the control busy after that event, then blocks only
-// repeated clicks at capture-time until the app's existing toast reports a result.
-// It never toggles the app's own native disabled state or wraps a store write.
+// Presentation-only busy feedback. Capture phase marks the first activation busy
+// but deliberately lets that event continue to app.js. Later activations of the
+// same control are blocked until the app's existing success/error toast reports a
+// result. This avoids a microtask race without touching native disabled state or
+// wrapping any store operation.
 //
-// Only actions that already have their own try/catch + toast in app.js are listed
-// here. Legacy dialog saves remain untouched until their handler-level catches are
-// addressed in their owning slice; this polish layer does not pretend to own them.
+// Only direct actions that already own a local try/catch + toast in app.js are
+// included. Confirmation-driven actions and legacy handlers without local catches
+// stay outside this layer so cancel/failure paths cannot become visually stuck.
 const asyncActionSelector = [
   '[data-quick]',
-  '[data-train]',
   '[data-complete]',
   '[data-buy]',
   '[data-putaway]',
@@ -70,9 +70,7 @@ const asyncActionSelector = [
   '[data-store]',
   '[data-toggle-quest]',
   '[data-approve]',
-  '#undo-btn',
-  '#make-code-btn',
-  '#make-coparent-code-btn'
+  '#undo-btn'
 ].join(',');
 
 const busyButtons = new Set();
@@ -105,24 +103,19 @@ function markBusy(button) {
   busyTimers.set(button, setTimeout(() => releaseBusy(button), 8000));
 }
 
-// Block only repeated activation of a control already marked busy. Capture phase
-// ensures the second click never reaches app.js; the first click is unaffected.
-document.addEventListener('click', (event) => {
-  const busy = event.target.closest('[data-polish-busy="true"]');
-  if (!busy) return;
-  event.preventDefault();
-  event.stopImmediatePropagation();
-}, true);
-
+// First activation: mark busy and allow the event through. Repeated activation:
+// stop before app.js so a double-tap cannot submit the same operation twice.
 document.addEventListener('click', (event) => {
   const button = event.target.closest(asyncActionSelector);
-  if (!button || button.disabled) return;
-  // Deferring one microtask is intentional: the original app handler gets the
-  // click first, so this layer can never block the action it is decorating.
-  queueMicrotask(() => {
-    if (button.isConnected && !button.disabled) markBusy(button);
-  });
-});
+  if (!button) return;
+  if (button.dataset.polishBusy === 'true') {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return;
+  }
+  if (button.disabled) return;
+  markBusy(button);
+}, true);
 
 // The app already reports the result of these operations through one shared
 // toast. Treat that as the presentation-level completion signal.
