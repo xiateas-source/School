@@ -350,15 +350,43 @@ service cloud.firestore {
       }
 
       // --- Point ledger ----------------------------------------------------
+      // Schema-v2 shape check for a new ledger row. This does NOT re-derive
+      // preset math (points/Bond) — that stays behind the trusted-parent
+      // boundary — but it does pin the classification, amount-integrity, actor,
+      // and date fields the day-based views rely on, and forces the actor to be
+      // the authenticated writer stamped with a server time (§11, §514).
+      function validPointCategory(c) {
+        return c == 'earned' || c == 'used' || c == 'room_to_grow' || c == 'correction';
+      }
+      function validPointKind(k) {
+        return k == 'adjust' || k == 'quest' || k == 'redeem' || k == 'correction';
+      }
+      function validNewPointTransaction() {
+        let d = request.resource.data;
+        return d.schemaVersion == 2
+          && d.childId is string
+          && validPointKind(d.kind)
+          && validPointCategory(d.category)
+          && d.requestedAmount is number
+          && d.amount is number
+          && d.activityDate is string
+          && d.activityDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && d.createdBy == request.auth.uid
+          && d.createdAt == request.time;
+      }
       match /pointTransactions/{txnId} {
         allow read: if isMember(fid);
-        // Parent-only: every ledger row (adjust / redeem / correction, and the
-        // quest-earned row written when the parent approves a completion). The
-        // child no longer writes the ledger — earning flows through approval.
-        allow create: if isParent(fid);
-        // Entries are never edited. A parent may delete an entry (the app
-        // reverses its effect on the balance in the same transaction).
+        // Parent-only, and now schema-validated: every ledger row (adjust /
+        // redeem / correction, and the quest-earned row written when the parent
+        // approves a completion). The child never writes the ledger — earning
+        // flows through approval.
+        allow create: if isParent(fid) && validNewPointTransaction();
+        // Entries are financial truth and are never edited; corrected status is
+        // derived from a linked correction, not written onto the original (§11).
         allow update: if false;
+        // Delete remains a parent action for now (the app reverses the entry's
+        // balance effect in the same transaction). Slice 3 replaces it with a
+        // linked correction once D-07 is confirmed.
         allow delete: if isParent(fid);
       }
 
