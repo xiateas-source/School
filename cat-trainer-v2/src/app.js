@@ -1,33 +1,34 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=3a55d923';
+import { isConfigured } from './firebase.js?v=b44b0891';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=3a55d923';
-import * as store from './store.js?v=3a55d923';
-import { CAT_DEFS } from './data/cats.js?v=3a55d923';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=3a55d923';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=3a55d923';
+} from './auth.js?v=b44b0891';
+import * as store from './store.js?v=b44b0891';
+import { CAT_DEFS } from './data/cats.js?v=b44b0891';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=b44b0891';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=b44b0891';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=3a55d923';
+} from './cafe-interactions.js?v=b44b0891';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=3a55d923';
+} from './care.js?v=b44b0891';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=3a55d923';
+} from './shared/rewards.js?v=b44b0891';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, correctedOriginalIds
-} from './shared/ledger.js?v=3a55d923';
+} from './shared/ledger.js?v=b44b0891';
 import {
   localDate, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=3a55d923';
+} from './shared/dates.js?v=b44b0891';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=b44b0891';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -45,12 +46,36 @@ const state = {
   selectedDayTxns: [],            // raw rows for selectedDate (unioned query)
   weekActivity: new Set(),        // dates in the visible range that have activity
   expandedTxn: null,              // id of the row expanded for detail
-  completedOpen: false            // is the child's "Completed today" drawer open
+  completedOpen: false,           // is the child's "Completed today" drawer open
+  feedbackEvents: [],             // unseen family-feedback events (child only)
+  clientId: null                  // stable per-install id for the claim lease
 };
 
 // Selected-day + week-activity subscriptions live outside the main snapshot fan-
 // out so navigating dates only re-listens to what changed (§12).
 let daySubUnsub = null, weekSubUnsub = null, daySubToken = 0, weekSubToken = 0;
+// Family-feedback delivery: one shared subscription + a re-entrancy guard so only
+// one card shows at a time (§7.0).
+let feedbackUnsub = null, feedbackShowing = false;
+
+// Reduced-motion is honored everywhere the celebration animates (§7.4).
+const prefersReducedMotion = () =>
+  window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// A stable per-install id (not the coarse phone/tablet label) so the claim lease
+// can tell "this device already holds it" from "another device does" (§11).
+function getClientId() {
+  try {
+    let id = localStorage.getItem('ct-client-id');
+    if (!id) {
+      id = 'c_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem('ct-client-id', id);
+    }
+    return id;
+  } catch (_) {
+    return 'c_' + Math.random().toString(36).slice(2);
+  }
+}
 
 function toast(msg) {
   const t = el('toast'); t.textContent = msg; t.classList.add('show');
@@ -102,8 +127,15 @@ async function enterParent(familyId, user, name) {
 }
 async function enterChild(familyId, uid) {
   state.role = 'child'; state.familyId = familyId; state.uid = uid;
+  state.clientId = getClientId();
   showShell('child'); navChild('home');
   await subscribeAll();
+  // The child owns delivery of the one shared family-feedback queue (§0.2).
+  if (feedbackUnsub) feedbackUnsub();
+  feedbackUnsub = await store.subscribeFeedback(familyId, store.CHILD_ID, evs => {
+    state.feedbackEvents = evs;
+    processFeedback();
+  });
   startCareClock();
   scheduleCatBeat(); // the café cat ambles/glances on its own while Sirus watches
 }
@@ -196,7 +228,9 @@ function detectApproval(newCompletions) {
       const mins = q ? q.points : 0;
       confettiBurst();
       if (navigator.vibrate) { try { navigator.vibrate([10, 40, 10]); } catch (_) {} }
-      toast(`Mom said yes! +${mins}m ⭐`);
+      // Name the actual approving parent, never a hard-coded "Mom" (§7.1).
+      const approver = (c.approvedBy && state.members[c.approvedBy] && state.members[c.approvedBy].displayName) || 'A parent';
+      toast(`${approver} said yes! +${mins}m ⭐`);
     }
   }
   state.prevCompletions = next;
@@ -219,6 +253,164 @@ function showEvolution(catId) {
   const card = el('evolution-dialog').querySelector('.modal-card');
   spawnFx('assets/fx-starburst.png', card, { count: 1, cx: 50, cy: 42, spread: 0, size: 220, life: 900, mode: 'pop' });
   spawnFx('assets/fx-confetti.png', card, { count: 8, cx: 50, cy: 8, spread: 40, size: 40, life: 1500, mode: 'fall' });
+}
+
+// ---- Family-feedback delivery (child) --------------------------------------
+// One shared queue drives both the real-time "active child" case and the
+// "returning child" case: whatever accumulated while Sirus was away is delivered
+// when he reconnects and the tab is visible. Positive recognitions bundle into
+// one card; returned-quest messages stay separate and gentle (§7.2, §7.3).
+function processFeedback() {
+  if (state.role !== 'child' || feedbackShowing || document.hidden) return;
+  const { recognitions, returns } = partitionFeedback(state.feedbackEvents, state.clientId, Date.now());
+  if (recognitions.length) return showRecognitionCard(recognitions);
+  if (returns.length) return showReturnedCard(returns);
+}
+function scheduleReprocess() { setTimeout(processFeedback, 300); }
+
+async function showRecognitionCard(recognitions) {
+  feedbackShowing = true;
+  let claimed;
+  try { claimed = await store.claimFeedback(state.familyId, recognitions.map(e => e.id), state.clientId); }
+  catch (_) { feedbackShowing = false; return; }
+  if (!claimed.length) { feedbackShowing = false; scheduleReprocess(); return; } // another device took them
+  const model = bundleRecognitions(claimed);
+  const cardEl = buildRecognitionCard(model);
+  document.body.appendChild(cardEl);
+  requestAnimationFrame(() => {
+    cardEl.classList.add('show');
+    recognitionFx(model, cardEl);
+    // Displayed → mark seen so a reload/navigation/reconnect can't replay it
+    // (§7.3). The minutes were already credited; this is only the celebration.
+    store.markFeedbackSeen(state.familyId, model.ids).catch(() => {});
+  });
+  cardEl.__auto = setTimeout(() => dismissFeedbackCard(cardEl), 6500);
+}
+
+async function showReturnedCard(returns) {
+  feedbackShowing = true;
+  let claimed;
+  try { claimed = await store.claimFeedback(state.familyId, returns.map(e => e.id), state.clientId); }
+  catch (_) { feedbackShowing = false; return; }
+  if (!claimed.length) { feedbackShowing = false; scheduleReprocess(); return; }
+  const cardEl = buildReturnedCard(claimed);
+  document.body.appendChild(cardEl);
+  requestAnimationFrame(() => {
+    cardEl.classList.add('show');
+    store.markFeedbackSeen(state.familyId, claimed.map(e => e.id)).catch(() => {});
+  });
+  cardEl.__auto = setTimeout(() => dismissFeedbackCard(cardEl), 7000);
+}
+
+function buildRecognitionCard(model) {
+  const card = document.createElement('div');
+  card.className = 'feedback-card recognition';
+  card.setAttribute('role', 'status');
+  const heading = model.bundled ? `You were noticed ${model.count} times!` : 'You were noticed!';
+  const lines = model.lines.map(l => {
+    const reason = l.reasonLabel ? `: <strong>${esc(l.reasonLabel)}</strong>` : '';
+    const note = l.parentNote ? ` <span class="fb-note">“${esc(l.parentNote)}”</span>` : '';
+    return `<li>${esc(l.actorName)} noticed${reason}${note}</li>`;
+  }).join('');
+  const minutes = `+${model.totalAmount} ${model.totalAmount === 1 ? 'minute' : 'minutes'}`;
+  card.innerHTML = `
+    <button class="fb-close" data-fb-dismiss aria-label="Close">✕</button>
+    <div class="fb-star"><img src="assets/game-time-star.png" alt=""><span class="fb-amount">+${model.totalAmount}</span></div>
+    <h3 class="fb-title">${esc(heading)}</h3>
+    <ul class="fb-lines">${lines}</ul>
+    <p class="fb-min">${esc(minutes)}</p>
+    <button class="primary-button fb-progress" data-fb-progress>See today's progress</button>`;
+  return card;
+}
+
+function buildReturnedCard(events) {
+  const card = document.createElement('div');
+  card.className = 'feedback-card returned';
+  card.setAttribute('role', 'status');
+  const many = events.length > 1;
+  const heading = many ? 'A few quests came back' : 'A quest came back';
+  const lines = events.map(e => `<li>${esc(e.reasonLabel || 'Quest')}</li>`).join('');
+  // Gentle and non-celebratory: no points move, nothing is taken away (§7.3).
+  card.innerHTML = `
+    <button class="fb-close" data-fb-dismiss aria-label="Close">✕</button>
+    <h3 class="fb-title">${esc(heading)}</h3>
+    <ul class="fb-lines">${lines}</ul>
+    <p class="fb-min soft">You can try ${many ? 'them' : 'it'} again whenever you're ready.</p>
+    <button class="primary-button fb-progress" data-fb-dismiss>Okay</button>`;
+  return card;
+}
+
+function dismissFeedbackCard(cardEl) {
+  if (!cardEl || cardEl.__dismissed) return;
+  cardEl.__dismissed = true;
+  clearTimeout(cardEl.__auto);
+  cardEl.classList.remove('show');
+  setTimeout(() => cardEl.remove(), 260);
+  feedbackShowing = false;
+  scheduleReprocess();
+}
+
+// The celebration animation. Everything here is optional decoration on top of an
+// already-credited point and an already-shown card, so it degrades cleanly:
+// reduced motion shows neither flying numbers nor a pose (§7.4).
+function recognitionFx(model, cardEl) {
+  if (navigator.vibrate) { try { navigator.vibrate(12); } catch (_) {} }
+  if (prefersReducedMotion()) return;
+  spawnFx('assets/fx-starburst.png', cardEl, { count: 1, cx: 50, cy: 20, spread: 0, size: 120, life: 800, mode: 'pop' });
+  spawnFx('assets/fx-sparkle.png', cardEl, { count: 3, cx: 50, cy: 20, spread: 34, size: 28, life: 900 });
+  flyPointsToAvailable(model.totalAmount);
+  celebrateActiveCat();
+}
+
+// Animate the earned minutes toward the Available Now badge, when it's on screen
+// (§7.2). Best-effort: if the badge isn't visible on the current screen, the
+// card's own "+N minutes" still communicates the credit.
+function flyPointsToAvailable(amount) {
+  const target = el('c-available');
+  if (!target) return;
+  const rect = target.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const startX = window.innerWidth / 2, startY = window.innerHeight * 0.28;
+  const fly = document.createElement('div');
+  fly.className = 'fb-fly';
+  fly.textContent = `+${amount}`;
+  fly.style.left = startX + 'px';
+  fly.style.top = startY + 'px';
+  document.body.appendChild(fly);
+  requestAnimationFrame(() => {
+    fly.style.transform = `translate(${rect.left + rect.width / 2 - startX}px, ${rect.top + rect.height / 2 - startY}px) scale(.5)`;
+    fly.style.opacity = '0';
+  });
+  setTimeout(() => fly.remove(), 850);
+}
+
+// The optional cat celebrate pose, subordinate to Café state priority: a drag, a
+// still-resolving eat/play/rest, a Hero event, or any non-idle state outranks it,
+// so we render nothing rather than interrupt (§7.0, §7.2, §13).
+function celebrateActiveCat() {
+  const onCafe = document.querySelector('[data-cscreen="cafe"]')?.classList.contains('active');
+  if (onCafe) {
+    if (catState === 'idle' && cafeMode === 'play' && !cafeDrag) {
+      const { cat, def } = catCtx();
+      if (cat && def && !cat.evolved && def.poses && def.poses.celebrate) {
+        catTransient('react', 3500);
+        playSprite('celebrate', { fps: 3, holdMs: 3500 });
+      }
+    }
+    return;
+  }
+  // On the home screen the portrait is a still image; briefly swap it to the
+  // celebrate pose, then let a re-render restore it.
+  const onHome = document.querySelector('[data-cscreen="home"]')?.classList.contains('active');
+  const art = el('c-cat-art');
+  if (onHome && art && state.child) {
+    const def = CAT_DEFS[state.child.activeCatId];
+    const cat = state.cats[state.child.activeCatId];
+    if (def && def.poses && def.poses.celebrate && !(cat && cat.evolved)) {
+      art.src = def.poses.celebrate;
+      setTimeout(() => { if (state.role === 'child') renderChildHome(); }, 3200);
+    }
+  }
 }
 
 // ---- Rendering --------------------------------------------------------------
@@ -1721,6 +1913,12 @@ function bindEvents() {
     const needCue = e.target.closest('#c-need-cue');
     if (needCue && needCue.dataset.need) { guideCareNeed(needCue.dataset.need); return; }
 
+    // Family-feedback card controls.
+    const fbProgress = e.target.closest('[data-fb-progress]');
+    if (fbProgress) { dismissFeedbackCard(fbProgress.closest('.feedback-card')); navChild('log'); return; }
+    const fbDismiss = e.target.closest('[data-fb-dismiss]');
+    if (fbDismiss) { dismissFeedbackCard(fbDismiss.closest('.feedback-card')); return; }
+
     // ---- Day-based ledger navigation (My Progress + Point Ledger) ----
     if (e.target.closest('[data-day-prev]')) { setSelectedDate(addDays(state.selectedDate, -1)); return; }
     if (e.target.closest('[data-day-next]')) { setSelectedDate(addDays(state.selectedDate, 1)); return; }
@@ -1819,7 +2017,7 @@ function bindEvents() {
       if (!c) return;
       const title = (c && c.questTitle) || 'this quest';
       if (confirm(`Reject “${title}”? The points disappear and the quest is given back to Sirus to do again.`)) {
-        try { await store.rejectCompletion(state.familyId, c.id); toast('Sent back to Sirus.'); }
+        try { await store.rejectCompletion(state.familyId, state.uid, c); toast('Sent back to Sirus.'); }
         catch (err) { toast('Could not reject — try again.'); }
       }
       return;
@@ -1855,6 +2053,10 @@ function bindEvents() {
     const cal = e.target.closest('.day-calendar');
     if (cal && cal.value) setSelectedDate(cal.value);
   });
+
+  // Deliver any waiting recognition the moment Sirus returns to the tab, so a
+  // point earned while he was away shows once he's actually present (§7.3).
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) processFeedback(); });
 
   // Keyboard access for expanding a ledger row (rows are role="button").
   document.addEventListener('keydown', (e) => {
