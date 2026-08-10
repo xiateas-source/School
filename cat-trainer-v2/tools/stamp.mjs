@@ -49,6 +49,7 @@ const FILES = [
   'src/data/cafe-items.js',
   'src/shared/rewards.js',
   'src/shared/ledger.js',
+  'src/shared/feedback.js',
   'src/shared/dates.js'
 ];
 

@@ -2,24 +2,27 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=3a55d923';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=3a55d923';
-import { seededQuests } from './data/quests.js?v=3a55d923';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=3a55d923';
+import { initFirebase, db, dbSdk } from './firebase.js?v=b44b0891';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=b44b0891';
+import { seededQuests } from './data/quests.js?v=b44b0891';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=b44b0891';
 import {
   CARE_NEEDS, areCareNeedsOkay, careCharges, freshCatNeeds, grantCareCharge,
   needsAt, refillNeed
-} from './care.js?v=3a55d923';
+} from './care.js?v=b44b0891';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=3a55d923';
+} from './shared/rewards.js?v=b44b0891';
 import {
   SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
   normalizeTransaction, summarizeDay
-} from './shared/ledger.js?v=3a55d923';
-import { localDate, localTimeLabel } from './shared/dates.js?v=3a55d923';
+} from './shared/ledger.js?v=b44b0891';
+import {
+  FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable
+} from './shared/feedback.js?v=b44b0891';
+import { localDate, localTimeLabel } from './shared/dates.js?v=b44b0891';
 
 export const CHILD_ID = 'sirus';
 
@@ -68,6 +71,8 @@ function paths(sdk, database, fid) {
     txn: (id) => doc(database, ...famRoot, 'pointTransactions', id),
     completion: (id) => doc(database, ...famRoot, 'questCompletions', id),
     completions: () => collection(database, ...famRoot, 'questCompletions'),
+    feedback: (id) => doc(database, ...famRoot, 'familyFeedback', id),
+    feedbacks: () => collection(database, ...famRoot, 'familyFeedback'),
     pairing: (code) => doc(database, 'pairings', code)
   };
 }
@@ -199,7 +204,9 @@ export async function subscribe(familyId, handlers = {}) {
     query(p.completions(), where('localDate', '==', today)),
     // Carry status so the child UI can tell "waiting for Mom" (pending) apart from
     // approved. Legacy docs predate the field, so a missing status reads approved.
-    s => handlers.onTodayCompletions(s.docs.map(d => ({ questId: d.data().questId, status: d.data().status || 'approved' })))
+    // approvedBy lets the child's approval toast name the actual approving parent
+    // instead of a hard-coded "Mom" (§7.1).
+    s => handlers.onTodayCompletions(s.docs.map(d => ({ questId: d.data().questId, status: d.data().status || 'approved', approvedBy: d.data().approvedBy || null })))
   ));
   // Pending approvals across all days (a completion could span local midnight
   // before a parent reviews it). Filter on the status field; sort newest-first in
@@ -308,6 +315,10 @@ export async function adjustPoints(familyId, uid, { amount, reasonCode, reasonLa
   // An immediate parent point uses the selected activity date, defaulting to
   // today (§9.1); posted time is always now.
   const activityDate = activityDateInput || localDate();
+  // Generate the transaction id up front so the linked recognition event has a
+  // stable, source-derived id even if the transaction retries internally — a
+  // retry can never mint a second event (§11).
+  const txnRef = doc(collection(database, 'families', familyId, 'pointTransactions'));
 
   await runTransaction(database, async (tx) => {
     const createdByName = await readMemberName(tx, p, uid);
@@ -333,7 +344,6 @@ export async function adjustPoints(familyId, uid, { amount, reasonCode, reasonLa
 
     const rewardRequested = { ...ZERO_REWARD, bond: bondRequested };
     const rewardApplied = { ...ZERO_REWARD, bond: bondApplied };
-    const txnRef = doc(collection(database, 'families', familyId, 'pointTransactions'));
     tx.set(txnRef, {
       schemaVersion: SCHEMA_VERSION,
       childId: CHILD_ID,
@@ -356,6 +366,33 @@ export async function adjustPoints(familyId, uid, { amount, reasonCode, reasonLa
       // the actually-applied values, never the pre-cap request.
       bond: bondApplied, coins: 0, brain: 0, energy: 0
     });
+
+    // An immediate POSITIVE recognition (Good Choice, Yes ma'am/sir, a custom
+    // +1, Hero's Reset) atomically creates one durable "You were noticed!" event
+    // linked to this transaction (§7.1). Behavior deductions, screen time, and
+    // corrections never do. The point is already credited above — this event is
+    // only the celebration's delivery record, keyed to the transaction so a
+    // retry can't duplicate it.
+    if (requestedDelta > 0) {
+      tx.set(p.feedback(recognitionEventId(txnRef.id)), {
+        recipientChildId: CHILD_ID,
+        type: FEEDBACK_TYPE.RECOGNITION,
+        sourceTransactionId: txnRef.id,
+        sourceQuestCompletionId: null,
+        sourceQuestAttemptId: null,
+        actorId: uid,
+        actorName: createdByName,
+        amount: requestedDelta,
+        reasonLabel: label,
+        parentNote: note || '',
+        activityDate,
+        createdAt: serverTimestamp(),
+        deliveryStatus: DELIVERY.PENDING,
+        claimedByClientId: null,
+        claimedAt: null,
+        seenAt: null
+      });
+    }
   });
 }
 
@@ -652,15 +689,111 @@ export async function parentCompleteQuest(familyId, uid, questId) {
   });
 }
 
-// Parent rejects a pending completion → discard it so the quest reappears for
-// Sirus. An immediate Care Charge is deliberately not clawed back; the care plan
-// treats already-given care as safe even when a completion is later rejected.
-export async function rejectCompletion(familyId, completionId) {
+// Parent rejects a pending completion → return it to Sirus. Slice 2 makes this
+// atomic: one gentle `quest_returned` feedback event is created BEFORE the
+// pending completion is removed, so the "sent back" message can never be lost by
+// the delete winning a race (§7.0, D-12). The event keys on the unique attempt
+// id (the completion doc id is reusable on same-day retry), so a later retry of
+// the same quest can't collide with this return notice. No point/correction row
+// is written and the already-granted Care Charge is never clawed back.
+export async function rejectCompletion(familyId, uid, completion) {
+  const completionId = completion && (completion.id || completion);
   if (!completionId) return;
   const { database, sdk } = await fs();
-  const { deleteDoc } = sdk;
+  const { runTransaction, serverTimestamp } = sdk;
   const p = paths(sdk, database, familyId);
-  await deleteDoc(p.completion(completionId));
+
+  await runTransaction(database, async (tx) => {
+    const compSnap = await tx.get(p.completion(completionId));
+    if (!compSnap.exists()) return; // already gone — nothing to return
+    const comp = compSnap.data();
+    if (comp.status && comp.status !== 'pending') return; // only a pending attempt is returned
+    const createdByName = await readMemberName(tx, p, uid);
+    // Fall back to a fresh attempt id only for a legacy completion filed before
+    // attempt ids shipped, so the event still has a stable, unique identity.
+    const attemptId = comp.attemptId || newAttemptId();
+
+    tx.set(p.feedback(questReturnedEventId(attemptId)), {
+      recipientChildId: CHILD_ID,
+      type: FEEDBACK_TYPE.QUEST_RETURNED,
+      sourceTransactionId: null,
+      sourceQuestCompletionId: completionId,
+      sourceQuestAttemptId: attemptId,
+      actorId: uid || null,
+      actorName: createdByName,
+      amount: 0,
+      reasonLabel: comp.questTitle || 'Quest',
+      parentNote: '',
+      activityDate: comp.localDate || localDate(),
+      createdAt: serverTimestamp(),
+      deliveryStatus: DELIVERY.PENDING,
+      claimedByClientId: null,
+      claimedAt: null,
+      seenAt: null
+    });
+    tx.delete(p.completion(completionId));
+  });
+}
+
+// --- Family feedback delivery (child) ---------------------------------------
+// Child-only subscription to UNSEEN feedback. Filter on deliveryStatus (a single
+// `in`, auto-indexed) so the result set stays bounded to what's still to show;
+// the recipient filter and ordering happen in memory (one child, small volume),
+// so no composite index is needed (§12).
+export async function subscribeFeedback(familyId, childId, cb) {
+  const { database, sdk } = await fs();
+  const { onSnapshot, query, where } = sdk;
+  const p = paths(sdk, database, familyId);
+  const q = query(p.feedbacks(), where('deliveryStatus', 'in', [DELIVERY.PENDING, DELIVERY.CLAIMED]));
+  return onSnapshot(q, s => {
+    const events = s.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(e => e.recipientChildId === childId);
+    cb(events);
+  }, () => cb([]));
+}
+
+// Atomically claim a set of events for display. Only events still claimable by
+// this client (pending, mine, or stale) are taken, so two devices can't show the
+// same event; a crashed client's claim goes stale and recovers (§7.0). Returns
+// the events actually claimed by this call.
+export async function claimFeedback(familyId, eventIds, clientId) {
+  if (!eventIds || !eventIds.length) return [];
+  const { database, sdk } = await fs();
+  const { runTransaction, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+  const nowMs = Date.now();
+  return runTransaction(database, async (tx) => {
+    const reads = [];
+    for (const id of eventIds) reads.push({ id, snap: await tx.get(p.feedback(id)) });
+    const claimed = [];
+    for (const { id, snap } of reads) {
+      if (!snap.exists()) continue;
+      const ev = snap.data();
+      if (!isClaimable(ev, clientId, nowMs)) continue;
+      tx.update(p.feedback(id), {
+        deliveryStatus: DELIVERY.CLAIMED,
+        claimedByClientId: clientId,
+        claimedAt: serverTimestamp()
+      });
+      claimed.push({ id, ...ev });
+    }
+    return claimed;
+  });
+}
+
+// Mark events seen once their card has actually rendered, so a transaction never
+// celebrates again after reload, navigation, or reconnect (§7.3, §12).
+export async function markFeedbackSeen(familyId, eventIds) {
+  if (!eventIds || !eventIds.length) return;
+  const { database, sdk } = await fs();
+  const { writeBatch, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+  const batch = writeBatch(database);
+  for (const id of eventIds) {
+    batch.update(p.feedback(id), { deliveryStatus: DELIVERY.SEEN, seenAt: serverTimestamp() });
+  }
+  await batch.commit();
 }
 
 // Parent records screen time used — draws down the available balance. An

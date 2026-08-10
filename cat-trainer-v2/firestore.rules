@@ -402,6 +402,31 @@ service cloud.firestore {
         // Parent approves (update to 'approved') or rejects (delete).
         allow update, delete: if isParent(fid);
       }
+
+      // --- Family feedback (the app's one shared delivery queue) ------------
+      // Created only inside trusted parent writes (a positive recognition, or a
+      // quest return). The child never creates an event, and may change ONLY the
+      // narrow delivery fields — claim lease and seen transition — so it can drive
+      // one-time display without touching the actor, amount, reason, or source
+      // (§7.0, §11).
+      function validNewFeedback() {
+        let d = request.resource.data;
+        return (d.type == 'point_recognition' || d.type == 'quest_returned')
+          && d.recipientChildId is string
+          && d.actorId == request.auth.uid
+          && d.deliveryStatus == 'pending'
+          && d.createdAt == request.time;
+      }
+      function validChildDelivery() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['deliveryStatus', 'claimedByClientId', 'claimedAt', 'seenAt']);
+      }
+      match /familyFeedback/{eventId} {
+        allow read: if isMember(fid);
+        allow create: if isParent(fid) && validNewFeedback();
+        allow update: if isParent(fid) || (isChild(fid) && validChildDelivery());
+        allow delete: if isParent(fid);
+      }
     }
   }
 }
