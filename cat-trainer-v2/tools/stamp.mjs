@@ -34,9 +34,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FILES = [
   'index.html',
   'styles/base.css',
+  'styles/polish.css',
   'sw.js',
   'firebase-config.js',
   'src/app.js',
+  'src/polish.js',
   'src/auth.js',
   'src/store.js',
   'src/firebase.js',
@@ -46,6 +48,7 @@ const FILES = [
   'src/data/quests.js',
   'src/data/cafe-items.js',
   'src/shared/rewards.js',
+  'src/shared/ledger.js',
   'src/shared/dates.js'
 ];
 
@@ -77,12 +80,15 @@ function restampSw(clean, version) {
   );
 }
 
-// --- index.html: the entry module and the stylesheet ------------------------
+// --- index.html: every local entry module + stylesheet ----------------------
+// Matches any local <script src="src/*.js"> and <link href="styles/*.css">, so
+// the presentation layer (polish.js / polish.css) is versioned alongside the app
+// entry instead of having its ?v= stripped by unstamp and never re-applied.
 function restampHtml(clean, version) {
   return clean
-    .replace(/(<script\b[^>]*\bsrc=")(src\/app\.js)(")/g,
+    .replace(/(<script\b[^>]*\bsrc=")((?:src|styles)\/[^"?]+?\.js)(")/g,
       (_m, pre, spec, post) => `${pre}${spec}?v=${version}${post}`)
-    .replace(/(<link\b[^>]*\bhref=")(styles\/base\.css)(")/g,
+    .replace(/(<link\b[^>]*\bhref=")(styles\/[^"?]+?\.css)(")/g,
       (_m, pre, spec, post) => `${pre}${spec}?v=${version}${post}`);
 }
 

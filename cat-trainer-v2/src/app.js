@@ -1,33 +1,33 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=72db753b';
+import { isConfigured } from './firebase.js?v=e5b710f2';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=72db753b';
-import * as store from './store.js?v=72db753b';
-import { CAT_DEFS } from './data/cats.js?v=72db753b';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=72db753b';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=72db753b';
+} from './auth.js?v=e5b710f2';
+import * as store from './store.js?v=e5b710f2';
+import { CAT_DEFS } from './data/cats.js?v=e5b710f2';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=e5b710f2';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=e5b710f2';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=72db753b';
+} from './cafe-interactions.js?v=e5b710f2';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=72db753b';
+} from './care.js?v=e5b710f2';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=72db753b';
+} from './shared/rewards.js?v=e5b710f2';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, correctedOriginalIds
-} from './shared/ledger.js?v=72db753b';
+} from './shared/ledger.js?v=e5b710f2';
 import {
   localDate, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=72db753b';
+} from './shared/dates.js?v=e5b710f2';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
