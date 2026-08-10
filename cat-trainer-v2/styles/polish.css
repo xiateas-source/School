@@ -1,0 +1,224 @@
+/* Cat Trainer — safe UI polish overrides.
+   This layer intentionally avoids game/state mechanics. Sirus uses a tablet;
+   Mom's dense parent surfaces are checked phone-first on a Pixel. */
+
+/* Dynamic viewport + device safe areas. */
+.screen[data-screen].active {
+  min-height: 100dvh;
+  padding-top: max(24px, env(safe-area-inset-top));
+  padding-right: max(24px, env(safe-area-inset-right));
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  padding-left: max(24px, env(safe-area-inset-left));
+}
+
+.app-shell {
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+}
+
+.topbar {
+  padding-top: max(16px, env(safe-area-inset-top));
+  padding-right: max(18px, env(safe-area-inset-right));
+  padding-left: max(18px, env(safe-area-inset-left));
+}
+
+.bottom-nav {
+  padding-right: max(6px, env(safe-area-inset-right));
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+  padding-left: max(6px, env(safe-area-inset-left));
+}
+
+.toast {
+  bottom: calc(96px + env(safe-area-inset-bottom));
+}
+
+/* Parent dialogs remain reachable above a phone keyboard / short viewport. */
+.modal {
+  max-height: min(88dvh, 720px);
+}
+
+.modal-card {
+  max-height: inherit;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: max(22px, env(safe-area-inset-bottom));
+}
+
+/* Comfortable touch boxes without making the visual controls feel oversized. */
+.text-button,
+.icon-btn,
+.lock-toggle,
+.pill-btn,
+.nav-item,
+.ghost-btn,
+.shop-item button,
+.tray-item button,
+#c-done-btn,
+#c-undo-btn,
+#c-decorate-btn {
+  min-height: 44px;
+}
+
+.icon-btn,
+.need-cue {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.need-cue {
+  width: 44px;
+  height: 44px;
+}
+
+.tray-item button {
+  padding: 9px 7px;
+}
+
+/* Selected navigation is visible without relying on purple alone. */
+.nav-item {
+  border-radius: 12px;
+}
+
+.nav-item.active {
+  background: #f3eefb;
+  color: #6b5bb0;
+  font-weight: 700;
+}
+
+/* One consistent keyboard focus treatment across parent + child controls. */
+:where(
+  button,
+  input,
+  select,
+  summary,
+  [role="button"],
+  [role="switch"]
+):focus-visible {
+  outline: 3px solid #6b5bb0;
+  outline-offset: 3px;
+}
+
+input:focus-visible,
+select:focus-visible {
+  border-color: var(--purple);
+}
+
+/* Disabled controls should read as intentionally unavailable. */
+button:disabled {
+  cursor: default;
+  opacity: .58;
+}
+
+/* Async actions keep their normal label but visibly settle while the existing
+   app handler saves. `polish.js` clears this state on the app's toast response. */
+button[data-polish-busy="true"] {
+  cursor: wait;
+  opacity: .72;
+  filter: saturate(.7);
+}
+button[data-polish-busy="true"]::after {
+  content: ' …';
+  font-weight: 700;
+}
+
+/* Let system text scaling grow labels without clipping important actions. */
+.q-body,
+.card-head,
+.care-need-label,
+.nav-item,
+.shop-item,
+.tray-item {
+  min-width: 0;
+}
+
+.q-title,
+.q-body strong,
+.shop-item strong,
+.tray-item small,
+.care-need-label span,
+.hero-hint,
+.muted {
+  overflow-wrap: anywhere;
+}
+
+/* Pixel-phone parent rows: preserve labels before shrinking controls. */
+@media (max-width: 420px) {
+  .parent-quest-row,
+  .approval-row,
+  .sirus-today-row,
+  .card-head {
+    flex-wrap: wrap;
+  }
+
+  .parent-quest-row .q-body,
+  .approval-row .q-body,
+  .sirus-today-row .q-body {
+    flex: 1 1 calc(100% - 54px);
+  }
+
+  .card-head > h3 {
+    min-width: 0;
+    flex: 1 1 180px;
+  }
+
+  .btn-row {
+    flex-wrap: wrap;
+  }
+
+  .btn-row > * {
+    flex: 1 1 140px;
+  }
+
+  /* Ledger rows keep the reason readable instead of squeezing it between the
+     amount, timestamp, and delete button on Mom's Pixel. */
+  .ledger-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'delta text delete'
+      '. time time';
+    row-gap: 4px;
+  }
+
+  .ledger-delta { grid-area: delta; }
+  .ledger-text { grid-area: text; overflow-wrap: anywhere; }
+  .ledger-item time { grid-area: time; justify-self: start; }
+  .del-txn { grid-area: delete; }
+
+  #settings-email,
+  .ledger-note {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Finish reduced-motion support: keep confirmation, remove travel/zoom effects. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+
+  .fx-rise,
+  .fx-fall,
+  .fx-pop,
+  .fx-trail,
+  .completed-quests > summary::after,
+  .quest-section > summary::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .fx-sprite {
+    display: none;
+  }
+
+  .meter i,
+  .toast,
+  .cafe-decor,
+  .care-meter i {
+    transition: none !important;
+  }
+
+  .toast.show {
+    transform: translateX(-50%);
+  }
+}
