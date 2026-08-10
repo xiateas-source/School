@@ -222,3 +222,163 @@ button[data-polish-busy="true"]::after {
     transform: translateX(-50%);
   }
 }
+
+/* ---------- Child tablet composition ----------
+   Sirus's child app can use the tablet width without making Mom's phone UI wider. */
+@media (min-width: 680px) {
+  .app-shell.child {
+    max-width: 760px;
+  }
+
+  .app-shell.child > main {
+    padding-right: 22px;
+    padding-left: 22px;
+  }
+
+  .app-shell.child .bottom-nav {
+    max-width: 760px;
+  }
+
+  /* Landscape/tablet Home uses the horizontal space instead of stacking the
+     screen-time badge above a large cat portrait. */
+  .app-shell.child .child-hero {
+    display: grid;
+    grid-template-columns: auto auto;
+    grid-template-areas:
+      'time cat'
+      'earned earned';
+    justify-content: center;
+    align-items: center;
+    column-gap: 30px;
+    row-gap: 0;
+    padding: 4px 0 8px;
+  }
+
+  .app-shell.child .time-badge {
+    grid-area: time;
+    margin: 0;
+  }
+
+  .app-shell.child .child-cat-art {
+    grid-area: cat;
+    width: 170px;
+    height: 170px;
+    margin: 0;
+  }
+
+  .app-shell.child .earned-note {
+    grid-area: earned;
+    margin: 0 0 10px;
+  }
+
+  /* Prevent labels such as Care days from wrapping while the meter itself grows. */
+  .app-shell.child .meter-row {
+    grid-template-columns: 104px minmax(0, 1fr) 56px;
+  }
+
+  .app-shell.child .quest-card {
+    gap: 16px;
+    padding: 11px 16px;
+  }
+
+  .app-shell.child .q-reward {
+    color: #7c6e60;
+    font-size: .78rem;
+    line-height: 1.35;
+    word-spacing: .08em;
+  }
+
+  .app-shell.child .quest-group h3 {
+    margin-top: 4px;
+  }
+}
+
+/* ---------- Café chrome cleanup ----------
+   Keep the pixel-art room dominant; wallets, mode controls, and prices stay quiet. */
+[data-cscreen="cafe"] .cafe-wallets {
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+[data-cscreen="cafe"] .coin-pill,
+[data-cscreen="cafe"] .care-charge-pill {
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: none;
+  font-size: .8rem;
+}
+
+[data-cscreen="cafe"] .coin-pill .coin-ico {
+  width: 14px;
+  height: 14px;
+}
+
+[data-cscreen="cafe"] .care-charge-pill > span:last-child {
+  font-size: .72rem;
+}
+
+[data-cscreen="cafe"] #c-care-charges {
+  font-size: .78rem;
+}
+
+/* Base CSS explicitly sets this span to inline-flex; restore the semantic hidden
+   state so Play mode never shows Undo/Done beside Decorate. */
+#c-decorate-actions[hidden] {
+  display: none !important;
+}
+
+[data-cscreen="cafe"] .cafe-modebar {
+  min-height: 0;
+  gap: 6px;
+  margin: 0 2px 6px;
+}
+
+[data-cscreen="cafe"] .cafe-modebar button {
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid #ddd3e9;
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+[data-cscreen="cafe"] .cafe-modebar button:disabled {
+  background: var(--cream);
+}
+
+[data-cscreen="cafe"] .shop-item {
+  padding: 10px;
+}
+
+[data-cscreen="cafe"] .shop-item > img {
+  width: 64px;
+  height: 64px;
+}
+
+/* The generic `.shop-item img` rule was also scaling the tiny inline price coin
+   to product-art size. Give the price icon its own explicit dimensions. */
+[data-cscreen="cafe"] .shop-item small {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 3px 0 6px;
+  line-height: 1;
+}
+
+[data-cscreen="cafe"] .shop-item small img.coin-ico {
+  width: 16px !important;
+  height: 16px !important;
+  flex: 0 0 16px;
+}
+
+[data-cscreen="cafe"] .shop-item button {
+  min-height: 40px;
+  padding: 7px 8px;
+  font-size: .82rem;
+}
