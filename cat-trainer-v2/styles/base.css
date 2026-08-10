@@ -462,3 +462,92 @@ main { padding: 0 16px; }
   .quick-actions { grid-template-columns: 1fr 1fr; }
   .inline-form { grid-template-columns: 1fr; }
 }
+
+/* ---------- Day-based ledger (My Progress + Point Ledger) ---------- */
+.progress-view { display: flex; flex-direction: column; gap: 14px; }
+
+/* Available Now is kept visually separate from a day's totals because the
+   balance carries across days (§6.1). */
+.available-banner {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--paper); border-radius: 16px; box-shadow: var(--shadow); padding: 12px 16px;
+}
+.available-banner span { color: var(--muted); font-size: .82rem; letter-spacing: .04em; }
+.available-banner strong { font-family: var(--font-display); font-size: 1.3rem; color: var(--gold); }
+.available-banner.subtle { box-shadow: none; background: var(--cream); }
+
+/* Date navigator */
+.day-nav { display: flex; flex-direction: column; gap: 10px; }
+.day-nav-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.day-nav-row.secondary { justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+.day-current { font-weight: 800; font-size: 1.02rem; text-align: center; flex: 1; }
+.day-arrow {
+  flex: 0 0 auto; width: 40px; height: 40px; border: 2px solid var(--line); background: var(--paper);
+  border-radius: 12px; font-size: 1.3rem; line-height: 1; color: var(--ink); cursor: pointer;
+}
+.day-arrow:disabled { opacity: .35; cursor: default; }
+.calendar-btn { display: inline-flex; align-items: center; cursor: pointer; position: relative; font-size: 1.05rem; }
+.calendar-btn .day-calendar {
+  position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;
+  border: 0; padding: 0;
+}
+.day-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.day-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 6px;
+  border: 2px solid transparent; border-radius: 12px; background: var(--cream); cursor: pointer;
+  font: inherit; color: var(--ink); position: relative; min-height: 52px;
+}
+.day-cell .day-wd { font-size: .64rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.day-cell .day-num { font-weight: 800; font-size: .98rem; }
+.day-cell.active { border-color: var(--purple); background: #f3f0fc; }
+.day-cell:disabled { opacity: .3; cursor: default; }
+.day-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); position: absolute; bottom: 4px; }
+
+/* Daily summary — three (or four) independent totals, never a net score. */
+.day-summary { display: flex; gap: 8px; }
+.sum { flex: 1; background: var(--paper); border-radius: 14px; box-shadow: var(--shadow); padding: 12px 8px; text-align: center; }
+.sum strong { display: block; font-size: 1rem; }
+.sum span { display: block; color: var(--muted); font-size: .78rem; margin-top: 2px; }
+.sum.earned strong { color: var(--green); }
+.sum.used strong { color: var(--blue); }
+.sum.rtg strong { color: var(--orange); }
+.sum.correction strong { color: var(--muted); }
+
+/* Filter chips */
+.day-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  border: 2px solid var(--line); background: var(--paper); border-radius: 999px;
+  padding: 5px 12px; font: inherit; font-size: .8rem; font-weight: 700; color: var(--muted); cursor: pointer;
+}
+.chip.active { border-color: var(--purple); color: var(--purple); background: #f3f0fc; }
+
+/* Event rows */
+.day-list { display: flex; flex-direction: column; gap: 8px; }
+.prog-row { background: var(--cream); border-radius: 12px; border-left: 4px solid var(--line); cursor: pointer; }
+.prog-row.earned { border-left-color: var(--green); }
+.prog-row.used { border-left-color: var(--blue); }
+.prog-row.rtg { border-left-color: var(--orange); }
+.prog-row.correction, .prog-row.other { border-left-color: var(--muted); }
+.prog-row.is-corrected { opacity: .6; }
+.prog-main { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 11px 12px; }
+.prog-delta { font-weight: 800; font-size: 1.05rem; min-width: 52px; text-align: center; white-space: nowrap; }
+.prog-delta.earned { color: var(--green); }
+.prog-delta.used { color: var(--blue); }
+.prog-delta.rtg { color: var(--orange); }
+.prog-delta.correction, .prog-delta.other { color: var(--muted); }
+.prog-text { min-width: 0; }
+.prog-text p { margin: 0; font-size: .92rem; }
+.row-note { display: block; color: var(--muted); font-size: .76rem; margin-top: 2px; }
+.prog-chip { flex-shrink: 0; border-radius: 999px; font-size: .68rem; font-weight: 800; padding: 4px 9px; white-space: nowrap; background: #fff; border: 2px solid var(--line); color: var(--muted); }
+.prog-chip.earned { border-color: #cfe8c6; color: #4f8442; background: #eef7ea; }
+.prog-chip.used { border-color: #cfe6f3; color: #3d80a8; background: #ecf5fb; }
+.prog-chip.rtg { border-color: #f6ddc0; color: #c07b32; background: #fdf3e8; }
+.row-badge { display: inline-block; border-radius: 999px; font-size: .64rem; font-weight: 800; padding: 2px 7px; vertical-align: middle; }
+.row-badge.reset { background: #eef7ea; color: #4f8442; }
+.row-badge.corrected { background: #f0ece0; color: var(--muted); }
+.prog-detail { margin: 0; padding: 4px 14px 12px; display: grid; gap: 4px; }
+.prog-detail > div { display: grid; grid-template-columns: 42% 58%; gap: 8px; font-size: .82rem; }
+.prog-detail dt { margin: 0; color: var(--muted); }
+.prog-detail dd { margin: 0; word-break: break-word; }
+
+.field-error { color: #c0562f; font-size: .84rem; margin: 0; }

@@ -2,22 +2,47 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=ec69d8c2';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=ec69d8c2';
-import { seededQuests } from './data/quests.js?v=ec69d8c2';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=ec69d8c2';
+import { initFirebase, db, dbSdk } from './firebase.js?v=72db753b';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=72db753b';
+import { seededQuests } from './data/quests.js?v=72db753b';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=72db753b';
 import {
   CARE_NEEDS, areCareNeedsOkay, careCharges, freshCatNeeds, grantCareCharge,
   needsAt, refillNeed
-} from './care.js?v=ec69d8c2';
+} from './care.js?v=72db753b';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
-  clamp, isHeroReady, applyBalanceDelta, recordHeroCareActivity,
+  clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=ec69d8c2';
-import { localDate, localTimeLabel } from './shared/dates.js?v=ec69d8c2';
+} from './shared/rewards.js?v=72db753b';
+import {
+  SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
+  normalizeTransaction, summarizeDay
+} from './shared/ledger.js?v=72db753b';
+import { localDate, localTimeLabel } from './shared/dates.js?v=72db753b';
 
 export const CHILD_ID = 'sirus';
+
+// A stable, unique id for one quest attempt. The completion *document* id is
+// reusable (child_quest_day) — Sirus can retry the same quest the same day after
+// a rejection — so retry-safe feedback (Slice 2) needs an identity that never
+// collides. Recorded on the completion and copied onto the approved ledger row.
+function newAttemptId() {
+  try { if (globalThis.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (_) {}
+  return `att_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// Resolve the acting parent's display name from their member record so each row
+// carries a historical Mom/Abba snapshot instead of trusting a device label
+// (§11). Must be called before any transaction write (all reads precede writes).
+async function readMemberName(tx, p, uid) {
+  try {
+    const snap = await tx.get(p.member(uid));
+    return (snap.exists() && snap.data().displayName) || 'Parent';
+  } catch (_) { return 'Parent'; }
+}
+
+const ZERO_REWARD = { bond: 0, brain: 0, energy: 0, coins: 0 };
 
 async function fs() {
   await initFirebase();
@@ -155,6 +180,11 @@ export async function subscribe(familyId, handlers = {}) {
   const unsubs = [];
 
   if (handlers.onChild) unsubs.push(onSnapshot(p.child(), s => handlers.onChild(s.data())));
+  // Family members power the Mom/Abba attribution map (legacy rows store only a
+  // UID; new rows carry a name snapshot but fall back to this live map).
+  if (handlers.onMembers) unsubs.push(onSnapshot(p.members(), s => {
+    const members = {}; s.forEach(d => { members[d.id] = d.data(); }); handlers.onMembers(members);
+  }));
   if (handlers.onCats) unsubs.push(onSnapshot(p.cats(), s => {
     const cats = {}; s.forEach(d => { cats[d.id] = d.data(); }); handlers.onCats(cats);
   }));
@@ -182,6 +212,9 @@ export async function subscribe(familyId, handlers = {}) {
       handlers.onPendingApprovals(items);
     }
   ));
+  // Compact "recent activity" feed only (dashboard's six rows). It is NO LONGER
+  // the source of full history — the day view uses subscribeDay below, which has
+  // no 50-row ceiling for a selected day.
   if (handlers.onRecentTxns) unsubs.push(onSnapshot(
     query(p.txns(), orderBy('createdAt', 'desc'), limit(50)),
     s => handlers.onRecentTxns(s.docs.map(d => ({ id: d.id, ...d.data() })))
@@ -190,56 +223,138 @@ export async function subscribe(familyId, handlers = {}) {
   return () => unsubs.forEach(u => u());
 }
 
+// Live history for ONE activity date, with no row ceiling. Legacy rows carry
+// only `localDate`, so we union an activityDate query with a localDate query and
+// let the caller place each row by its normalized activity date — a new quest
+// approved the next day matches localDate for the approval day but still belongs
+// under its completion day. Both are single-field equality queries (auto
+// indexed); rows are merged by id and the caller sorts, so no composite index is
+// needed. Returns an unsubscribe that tears down BOTH listeners (§12).
+export async function subscribeDay(familyId, date, cb) {
+  const { database, sdk } = await fs();
+  const { onSnapshot, query, where } = sdk;
+  const p = paths(sdk, database, familyId);
+  let byActivity = null, byLocal = null;
+  const toRows = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
+  const emit = () => {
+    if (byActivity === null || byLocal === null) return; // wait for both first snapshots
+    const merged = new Map();
+    for (const d of byActivity) merged.set(d.id, d);
+    for (const d of byLocal) if (!merged.has(d.id)) merged.set(d.id, d);
+    cb([...merged.values()]);
+  };
+  const uA = onSnapshot(query(p.txns(), where('activityDate', '==', date)), s => { byActivity = toRows(s); emit(); });
+  const uL = onSnapshot(query(p.txns(), where('localDate', '==', date)), s => { byLocal = toRows(s); emit(); });
+  return () => { uA(); uL(); };
+}
+
+// Which dates in a visible range contain activity, for the calendar/strip dots.
+// Same activityDate ∪ localDate union so legacy rows still light up their day.
+export async function subscribeRangeActivity(familyId, dates, cb) {
+  const { database, sdk } = await fs();
+  const { onSnapshot, query, where } = sdk;
+  const p = paths(sdk, database, familyId);
+  if (!dates.length) { cb(new Set()); return () => {}; }
+  let a = null, l = null;
+  const emit = () => {
+    if (a === null || l === null) return;
+    const marked = new Set();
+    for (const d of [...a, ...l]) {
+      const day = d.activityDate || d.localDate;
+      if (day && dates.includes(day)) marked.add(day);
+    }
+    cb(marked);
+  };
+  const toRows = s => s.docs.map(d => d.data());
+  const uA = onSnapshot(query(p.txns(), where('activityDate', 'in', dates)), s => { a = toRows(s); emit(); });
+  const uL = onSnapshot(query(p.txns(), where('localDate', 'in', dates)), s => { l = toRows(s); emit(); });
+  return () => { uA(); uL(); };
+}
+
 // Derived "today" totals for the dashboard, computed from the ledger so there is
-// never a reset counter to get out of sync.
+// never a reset counter to get out of sync. "Used" now means SCREEN TIME ONLY —
+// behavior deductions and corrections are excluded (§8.2). Rows are placed by
+// activity date to match the day view.
 export function todayTotals(recentTxns) {
   const today = localDate();
-  let earned = 0, spent = 0;
-  for (const t of recentTxns) {
-    if (t.localDate !== today) continue;
-    if (t.amount > 0) earned += t.amount;
-    else spent += -t.amount;
-  }
-  return { earned, spent };
+  const day = recentTxns
+    .map(t => normalizeTransaction(t))
+    .filter(t => t.activityDate === today);
+  const s = summarizeDay(day);
+  return {
+    earned: s.earnedPoints,
+    used: s.usedMinutes,
+    roomToGrow: s.roomToGrowPoints,
+    corrections: s.corrections
+  };
 }
 
 // --- Writes ------------------------------------------------------------------
 
 // Parent point adjustment (quick action or custom). Positive changes build Bond
 // on the active cat.
-export async function adjustPoints(familyId, uid, { amount, reasonCode, reasonLabel, note = '', deviceId = 'phone' }) {
+export async function adjustPoints(familyId, uid, { amount, reasonCode, reasonLabel, note = '', deviceId = 'phone', activityDate: activityDateInput } = {}) {
   const { database, sdk } = await fs();
   const { runTransaction, serverTimestamp, doc, collection } = sdk;
   const p = paths(sdk, database, familyId);
 
+  const code = reasonCode || 'custom';
   const preset = reasonCode ? QUICK_ACTION_BY_CODE[reasonCode] : null;
-  const delta = preset ? preset.amount : Number(amount) || 0;
+  // requestedDelta is the FULL rule amount. The applied delta may be smaller
+  // when the zero floor absorbs part of a deduction — but the row still records
+  // the full rule so the growth record never shows -1/+0 for a -2 event.
+  const requestedDelta = preset ? preset.amount : Number(amount) || 0;
   const label = reasonLabel || (preset ? preset.label : 'Custom adjustment');
+  // An immediate parent point uses the selected activity date, defaulting to
+  // today (§9.1); posted time is always now.
+  const activityDate = activityDateInput || localDate();
 
   await runTransaction(database, async (tx) => {
+    const createdByName = await readMemberName(tx, p, uid);
     const childSnap = await tx.get(p.child());
     const child = childSnap.data();
-    const allowNegative = false;
-    const before = child.available || 0;
-    const after = applyBalanceDelta(before, delta, { allowNegative });
-    const applied = after - before;
+    const integrity = amountIntegrity(child.available || 0, requestedDelta, { allowNegative: false });
 
-    let bond = 0;
-    if (applied > 0) {
-      bond = preset ? preset.bond : CUSTOM_POSITIVE_BOND;
-      const catRef = p.cat(child.activeCatId);
+    // Positive recognition builds Bond on the active cat; record configured vs
+    // actually-applied so a future correction can reverse only the real delta.
+    let catId = null, bondRequested = 0, bondApplied = 0;
+    if (integrity.amount > 0) {
+      catId = child.activeCatId;
+      bondRequested = preset ? preset.bond : CUSTOM_POSITIVE_BOND;
+      const catRef = p.cat(catId);
       const catSnap = await tx.get(catRef);
       const cat = catSnap.data();
-      tx.update(catRef, { bond: clamp((cat.bond || 0) + bond, 0, CAPS.bond) });
+      const bondBefore = cat.bond || 0;
+      const bondAfter = clamp(bondBefore + bondRequested, 0, CAPS.bond);
+      bondApplied = bondAfter - bondBefore;
+      tx.update(catRef, { bond: bondAfter });
     }
-    tx.update(p.child(), { available: after });
+    tx.update(p.child(), { available: integrity.balanceAfter });
+
+    const rewardRequested = { ...ZERO_REWARD, bond: bondRequested };
+    const rewardApplied = { ...ZERO_REWARD, bond: bondApplied };
     const txnRef = doc(collection(database, 'families', familyId, 'pointTransactions'));
     tx.set(txnRef, {
-      childId: CHILD_ID, amount: applied, kind: 'adjust',
-      reasonCode: reasonCode || 'custom', reasonLabel: label, note: note || '',
-      bond, coins: 0, brain: 0, energy: 0, catId: child.activeCatId,
-      createdBy: uid, deviceId, createdAt: serverTimestamp(),
-      localDate: localDate(), timeLabel: localTimeLabel()
+      schemaVersion: SCHEMA_VERSION,
+      childId: CHILD_ID,
+      kind: 'adjust',
+      category: classifyTransaction({ kind: 'adjust', reasonCode: code, requestedAmount: requestedDelta }),
+      reasonCode: code, reasonLabel: label, note: note || '',
+      requestedAmount: integrity.requestedAmount,
+      amount: integrity.amount,
+      balanceBefore: integrity.balanceBefore,
+      balanceAfter: integrity.balanceAfter,
+      activityDate,
+      createdBy: uid, createdByName, deviceId,
+      createdAt: serverTimestamp(),
+      localDate: localDate(), timeLabel: localTimeLabel(),
+      questCompletionId: null, questAttemptId: null,
+      relatedTransactionId: null, reversesTransactionId: null,
+      catId,
+      rewardRequested, rewardApplied,
+      // Legacy scalar mirrors so any un-migrated reader still balances. These are
+      // the actually-applied values, never the pre-cap request.
+      bond: bondApplied, coins: 0, brain: 0, energy: 0
     });
   });
 }
@@ -288,6 +403,10 @@ export async function completeQuest(familyId, uid, questId, { deviceId = 'tablet
       localDate: today, status: 'pending', activeCatId: child.activeCatId,
       rewards: { points, brain, energy, coins, bond: QUEST_BOND },
       careChargeGranted: charge.granted,
+      // Unique per attempt (the document id is reusable on retry). Approval
+      // copies this onto the ledger row so returned-quest feedback (Slice 2)
+      // can never collide with a later retry.
+      attemptId: newAttemptId(),
       createdBy: uid, createdAt: serverTimestamp()
     });
     return { careChargeGranted: charge.granted, careCharges: charge.after };
@@ -323,6 +442,7 @@ export async function approveCompletion(familyId, uid, completion) {
     const energy = Math.max(0, Number(quest ? quest.energy : snap.energy) || 0);
     const coins = Math.max(0, Number(quest ? quest.coins : snap.coins) || 0);
 
+    const createdByName = await readMemberName(tx, p, uid);
     const childSnap = await tx.get(p.child());
     const child = childSnap.data();
     // Pending completions created before Care Charges shipped have no boolean
@@ -353,8 +473,10 @@ export async function approveCompletion(familyId, uid, completion) {
     if (!nextCat.evolved && isHeroReady(nextCat)) nextCat.evolved = true;
 
     tx.update(catRef, nextCat);
+    const availableBefore = child.available || 0;
+    const availableAfter = availableBefore + points;
     const childUpdate = {
-      available: (child.available || 0) + points,
+      available: availableAfter,
       coins: (child.coins || 0) + coins
     };
     if (legacyCharge.granted) {
@@ -369,14 +491,40 @@ export async function approveCompletion(familyId, uid, completion) {
       approvedBy: uid, approvedAt: serverTimestamp()
     });
     // Ledger row is stamped at approval time — the moment the minutes actually
-    // become available — so the dashboard's "earned today" reflects real credit.
+    // become available — but filed under the quest's ACTIVITY date (its
+    // completion day), even when approved after midnight (§9.3). rewardApplied
+    // records the true capped deltas so a future correction never subtracts cat
+    // progress that a cap prevented from ever landing.
+    const rewardRequested = { bond: QUEST_BOND, brain, energy, coins };
+    const rewardApplied = {
+      bond: nextCat.bond - (cat.bond || 0),
+      brain: nextCat.brain - (cat.brain || 0),
+      energy: nextCat.energy - (cat.energy || 0),
+      coins
+    };
     const txnRef = doc(collection(database, 'families', familyId, 'pointTransactions'));
     tx.set(txnRef, {
-      childId: CHILD_ID, amount: points, kind: 'quest', questId: comp.questId,
-      reasonCode: 'quest', reasonLabel: `Quest: ${title}`,
-      bond: QUEST_BOND, coins, brain, energy, catId,
-      createdBy: uid, deviceId: 'phone', createdAt: serverTimestamp(),
-      localDate: approvalDate, timeLabel: localTimeLabel(new Date(nowMs))
+      schemaVersion: SCHEMA_VERSION,
+      childId: CHILD_ID,
+      kind: 'quest',
+      category: CATEGORY.EARNED,
+      questId: comp.questId,
+      reasonCode: 'quest', reasonLabel: `Quest: ${title}`, note: '',
+      requestedAmount: points,
+      amount: points,
+      balanceBefore: availableBefore,
+      balanceAfter: availableAfter,
+      activityDate: comp.localDate || approvalDate,
+      createdBy: uid, createdByName, deviceId: 'phone',
+      createdAt: serverTimestamp(),
+      localDate: approvalDate, timeLabel: localTimeLabel(new Date(nowMs)),
+      questCompletionId: completionId,
+      questAttemptId: comp.attemptId || null,
+      relatedTransactionId: null, reversesTransactionId: null,
+      catId,
+      rewardRequested, rewardApplied,
+      // Legacy scalar mirrors (actually-applied values).
+      bond: rewardApplied.bond, coins, brain: rewardApplied.brain, energy: rewardApplied.energy
     });
   });
 }
@@ -410,6 +558,7 @@ export async function parentCompleteQuest(familyId, uid, questId) {
     const energy = Math.max(0, Number(quest ? quest.energy : snap.energy) || 0);
     const coins = Math.max(0, Number(quest ? quest.coins : snap.coins) || 0);
 
+    const createdByName = await readMemberName(tx, p, uid);
     const childSnap = await tx.get(p.child());
     const child = childSnap.data();
     const shouldGrantCare = !existing || typeof existing.careChargeGranted !== 'boolean';
@@ -438,8 +587,10 @@ export async function parentCompleteQuest(familyId, uid, questId) {
     if (!nextCat.evolved && isHeroReady(nextCat)) nextCat.evolved = true;
 
     tx.update(catRef, nextCat);
+    const availableBefore = child.available || 0;
+    const availableAfter = availableBefore + points;
     const childUpdate = {
-      available: (child.available || 0) + points,
+      available: availableAfter,
       coins: (child.coins || 0) + coins
     };
     if (charge.granted) {
@@ -448,10 +599,13 @@ export async function parentCompleteQuest(familyId, uid, questId) {
     }
     tx.update(p.child(), childUpdate);
 
+    // Reuse the pending attempt's id when Sirus already tapped; otherwise this
+    // parent-initiated completion mints its own attempt identity.
+    const attemptId = (existing && existing.attemptId) || newAttemptId();
     const rewards = { points, brain, energy, coins, bond: QUEST_BOND };
     if (existing) {
       tx.update(p.completion(completionId), {
-        status: 'approved', rewards,
+        status: 'approved', rewards, attemptId,
         careChargeGranted: existing.careChargeGranted === true || charge.granted,
         approvedBy: uid, approvedAt: serverTimestamp()
       });
@@ -459,19 +613,41 @@ export async function parentCompleteQuest(familyId, uid, questId) {
       tx.set(p.completion(completionId), {
         childId: CHILD_ID, questId, questTitle: title,
         localDate: today, status: 'approved', activeCatId: catId, rewards,
-        careChargeGranted: charge.granted,
+        careChargeGranted: charge.granted, attemptId,
         createdBy: uid, createdAt: serverTimestamp(),
         approvedBy: uid, approvedAt: serverTimestamp()
       });
     }
 
+    const rewardRequested = { bond: QUEST_BOND, brain, energy, coins };
+    const rewardApplied = {
+      bond: nextCat.bond - (cat.bond || 0),
+      brain: nextCat.brain - (cat.brain || 0),
+      energy: nextCat.energy - (cat.energy || 0),
+      coins
+    };
     const txnRef = doc(collection(database, 'families', familyId, 'pointTransactions'));
     tx.set(txnRef, {
-      childId: CHILD_ID, amount: points, kind: 'quest', questId,
-      reasonCode: 'quest', reasonLabel: `Quest: ${title}`,
-      bond: QUEST_BOND, coins, brain, energy, catId,
-      createdBy: uid, deviceId: 'phone', createdAt: serverTimestamp(),
-      localDate: today, timeLabel: localTimeLabel()
+      schemaVersion: SCHEMA_VERSION,
+      childId: CHILD_ID,
+      kind: 'quest',
+      category: CATEGORY.EARNED,
+      questId,
+      reasonCode: 'quest', reasonLabel: `Quest: ${title}`, note: '',
+      requestedAmount: points,
+      amount: points,
+      balanceBefore: availableBefore,
+      balanceAfter: availableAfter,
+      activityDate: today,
+      createdBy: uid, createdByName, deviceId: 'phone',
+      createdAt: serverTimestamp(),
+      localDate: today, timeLabel: localTimeLabel(),
+      questCompletionId: completionId,
+      questAttemptId: attemptId,
+      relatedTransactionId: null, reversesTransactionId: null,
+      catId,
+      rewardRequested, rewardApplied,
+      bond: rewardApplied.bond, coins, brain: rewardApplied.brain, energy: rewardApplied.energy
     });
   });
 }
@@ -487,7 +663,10 @@ export async function rejectCompletion(familyId, completionId) {
   await deleteDoc(p.completion(completionId));
 }
 
-// Parent records screen time used — draws down the available balance.
+// Parent records screen time used — draws down the available balance. An
+// over-limit request is BLOCKED, not silently clamped (§10.3): the caller learns
+// the current maximum and the row's requested and applied amounts always agree.
+// The thrown error carries the available minutes so the UI can show the max.
 export async function redeemScreenTime(familyId, uid, minutes, { deviceId = 'phone', note = '' } = {}) {
   const { database, sdk } = await fs();
   const { runTransaction, serverTimestamp, doc, collection } = sdk;
@@ -495,56 +674,106 @@ export async function redeemScreenTime(familyId, uid, minutes, { deviceId = 'pho
   const use = Math.max(0, Number(minutes) || 0);
 
   await runTransaction(database, async (tx) => {
+    const createdByName = await readMemberName(tx, p, uid);
     const childSnap = await tx.get(p.child());
     const before = childSnap.data().available || 0;
-    const after = Math.max(0, before - use);
-    const applied = after - before; // negative
-    tx.update(p.child(), { available: after });
+    if (use > before) {
+      const err = new Error('screen-time-over-limit');
+      err.available = before;
+      throw err;
+    }
+    const integrity = amountIntegrity(before, -use, { allowNegative: false });
+    tx.update(p.child(), { available: integrity.balanceAfter });
     const txnRef = doc(collection(database, 'families', familyId, 'pointTransactions'));
     tx.set(txnRef, {
-      childId: CHILD_ID, amount: applied, kind: 'redeem',
+      schemaVersion: SCHEMA_VERSION,
+      childId: CHILD_ID,
+      kind: 'redeem',
+      category: CATEGORY.USED,
       reasonCode: 'screen_time', reasonLabel: 'Screen time used', note: note || '',
-      bond: 0, coins: 0, brain: 0, energy: 0,
-      createdBy: uid, deviceId, createdAt: serverTimestamp(),
-      localDate: localDate(), timeLabel: localTimeLabel()
+      requestedAmount: integrity.requestedAmount,
+      amount: integrity.amount,
+      balanceBefore: integrity.balanceBefore,
+      balanceAfter: integrity.balanceAfter,
+      activityDate: localDate(),
+      createdBy: uid, createdByName, deviceId,
+      createdAt: serverTimestamp(),
+      localDate: localDate(), timeLabel: localTimeLabel(),
+      questCompletionId: null, questAttemptId: null,
+      relatedTransactionId: null, reversesTransactionId: null,
+      catId: null,
+      rewardRequested: { ...ZERO_REWARD }, rewardApplied: { ...ZERO_REWARD },
+      bond: 0, coins: 0, brain: 0, energy: 0
     });
   });
 }
 
-// Read the child (and, if the entry touched a cat, that cat) up front, then
-// reverse the entry's effects. Firestore transactions require ALL reads before
-// ANY writes — the previous version read the cat after writing the child, which
-// threw and made undo silently fail.
+// The cat-progress deltas a reversal may safely undo. A v2 row records exactly
+// what caps let land (rewardApplied), so that is reversed precisely. A legacy
+// row has NO proof its stored brain/energy/bond ever landed (a cap may have
+// swallowed part of it), so those are preserved, not guessed — only the exact
+// minutes and uncapped coins are reversed (§8.4, §13.12). Coins have no cap, so
+// the legacy coins field is a reliable applied value.
+function reversibleEffects(txn) {
+  const applied = txn.rewardApplied;
+  if (applied) {
+    return {
+      brain: Number(applied.brain || 0),
+      energy: Number(applied.energy || 0),
+      bond: Number(applied.bond || 0),
+      coins: Number(applied.coins || 0),
+      ambiguousCat: false
+    };
+  }
+  return {
+    brain: 0, energy: 0, bond: 0,
+    coins: Number(txn.coins || 0),
+    // A legacy row that claims cat progress we cannot prove was applied.
+    ambiguousCat: !!(txn.catId && (txn.brain || txn.energy || txn.bond))
+  };
+}
+
+// Read the child (and, if the entry provably touched a cat, that cat) up front,
+// then reverse the entry's effects. Firestore transactions require ALL reads
+// before ANY writes. Returns the applied balance/coin/cat deltas so a linked
+// correction row can record exactly what it reversed.
 async function reverseEntry(tx, p, familyId, sdk, txn) {
   const childSnap = await tx.get(p.child());
   const child = childSnap.data();
+  const effects = reversibleEffects(txn);
   let catRef = null, catSnap = null;
-  if (txn.catId && (txn.brain || txn.energy || txn.bond)) {
+  if (txn.catId && (effects.brain || effects.energy || effects.bond)) {
     catRef = p.cat(txn.catId);
     catSnap = await tx.get(catRef);
   }
   // ---- writes ----
-  const childUpdate = { available: Math.max(0, (child.available || 0) - Number(txn.amount || 0)) };
-  if (txn.coins) childUpdate.coins = Math.max(0, (child.coins || 0) - Number(txn.coins));
+  const availableBefore = child.available || 0;
+  const availableAfter = Math.max(0, availableBefore - Number(txn.amount || 0));
+  const childUpdate = { available: availableAfter };
+  if (effects.coins) childUpdate.coins = Math.max(0, (child.coins || 0) - effects.coins);
   tx.update(p.child(), childUpdate);
   if (catSnap) {
     const cat = catSnap.data();
     const next = {
-      brain: clamp((cat.brain || 0) - Number(txn.brain || 0), 0, CAPS.brain),
-      energy: clamp((cat.energy || 0) - Number(txn.energy || 0), 0, CAPS.energy),
-      bond: clamp((cat.bond || 0) - Number(txn.bond || 0), 0, CAPS.bond)
+      brain: clamp((cat.brain || 0) - effects.brain, 0, CAPS.brain),
+      energy: clamp((cat.energy || 0) - effects.energy, 0, CAPS.energy),
+      bond: clamp((cat.bond || 0) - effects.bond, 0, CAPS.bond)
     };
     next.evolved = cat.evolved || isHeroReady({ ...cat, ...next });
     tx.update(catRef, next);
   }
   // If reversing a quest, clear its completion so it can be earned again today.
   if (txn.kind === 'quest' && txn.questId) {
-    tx.delete(p.completion(`${CHILD_ID}_${txn.questId}_${txn.localDate}`));
+    tx.delete(p.completion(txn.questCompletionId || `${CHILD_ID}_${txn.questId}_${txn.activityDate || txn.localDate}`));
   }
+  return { availableBefore, availableAfter, effects };
 }
 
 // Undo = a compensating "correction" transaction that reverses the last entry's
-// effects, preserving history (leaves an audit note, never a silent delete).
+// effects, preserving history (never a silent delete). The correction links back
+// to the original via reversesTransactionId, copies the original's activity date,
+// and records only the effects that were actually reversed — so an ambiguous
+// legacy cat reward is preserved rather than over-subtracted.
 export async function undoLast(familyId, uid, lastTxn) {
   if (!lastTxn) return;
   const { database, sdk } = await fs();
@@ -552,15 +781,35 @@ export async function undoLast(familyId, uid, lastTxn) {
   const p = paths(sdk, database, familyId);
 
   await runTransaction(database, async (tx) => {
-    await reverseEntry(tx, p, familyId, sdk, lastTxn);
+    const createdByName = await readMemberName(tx, p, uid);
+    const { availableBefore, availableAfter, effects } = await reverseEntry(tx, p, familyId, sdk, lastTxn);
+    const reversed = {
+      bond: -effects.bond, brain: -effects.brain,
+      energy: -effects.energy, coins: -effects.coins
+    };
     const txnRef = doc(collection(database, 'families', familyId, 'pointTransactions'));
     tx.set(txnRef, {
-      childId: CHILD_ID, amount: -Number(lastTxn.amount || 0), kind: 'correction',
-      reasonCode: 'undo', reasonLabel: `Undo: ${lastTxn.reasonLabel || 'last action'}`,
-      bond: -Number(lastTxn.bond || 0), coins: -Number(lastTxn.coins || 0),
-      brain: -Number(lastTxn.brain || 0), energy: -Number(lastTxn.energy || 0),
-      catId: lastTxn.catId || null, createdBy: uid, deviceId: 'phone',
-      createdAt: serverTimestamp(), localDate: localDate(), timeLabel: localTimeLabel()
+      schemaVersion: SCHEMA_VERSION,
+      childId: CHILD_ID,
+      kind: 'correction',
+      category: CATEGORY.CORRECTION,
+      reasonCode: 'undo', reasonLabel: `Undo: ${lastTxn.reasonLabel || 'last action'}`, note: '',
+      requestedAmount: availableAfter - availableBefore,
+      amount: availableAfter - availableBefore,
+      balanceBefore: availableBefore,
+      balanceAfter: availableAfter,
+      // A correction copies the original's activity date and receives a fresh
+      // posted time (§11).
+      activityDate: lastTxn.activityDate || lastTxn.localDate || localDate(),
+      createdBy: uid, createdByName, deviceId: 'phone',
+      createdAt: serverTimestamp(),
+      localDate: localDate(), timeLabel: localTimeLabel(),
+      questCompletionId: null, questAttemptId: null,
+      relatedTransactionId: null,
+      reversesTransactionId: lastTxn.id || null,
+      catId: lastTxn.catId || null,
+      rewardRequested: reversed, rewardApplied: reversed,
+      bond: reversed.bond, coins: reversed.coins, brain: reversed.brain, energy: reversed.energy
     });
   });
 }

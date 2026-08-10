@@ -1,26 +1,33 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=ec69d8c2';
+import { isConfigured } from './firebase.js?v=72db753b';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=ec69d8c2';
-import * as store from './store.js?v=ec69d8c2';
-import { CAT_DEFS } from './data/cats.js?v=ec69d8c2';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=ec69d8c2';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=ec69d8c2';
+} from './auth.js?v=72db753b';
+import * as store from './store.js?v=72db753b';
+import { CAT_DEFS } from './data/cats.js?v=72db753b';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=72db753b';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=72db753b';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=ec69d8c2';
+} from './cafe-interactions.js?v=72db753b';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=ec69d8c2';
+} from './care.js?v=72db753b';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=ec69d8c2';
+} from './shared/rewards.js?v=72db753b';
+import {
+  CATEGORY, normalizeTransaction, summarizeDay, correctedOriginalIds
+} from './shared/ledger.js?v=72db753b';
+import {
+  localDate, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
+  longDateLabel, shortWeekday, dayOfMonth
+} from './shared/dates.js?v=72db753b';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -29,8 +36,20 @@ const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;',
 const state = {
   role: null, familyId: null, uid: null,
   child: null, cats: {}, quests: [], ownedItems: [], todayCompletions: [], recentTxns: [],
-  pendingApprovals: [], prevEvolved: {}, prevCompletions: {}, unsub: null
+  pendingApprovals: [], prevEvolved: {}, prevCompletions: {}, unsub: null,
+  members: {},
+  // Day-based ledger view (shared by My Progress and the parent Point Ledger).
+  selectedDate: localDate(),      // the activity day being viewed
+  weekAnchor: startOfWeek(localDate()), // Sunday of the visible 7-day strip
+  dayFilter: 'all',               // all | earned | used | room_to_grow | correction
+  selectedDayTxns: [],            // raw rows for selectedDate (unioned query)
+  weekActivity: new Set(),        // dates in the visible range that have activity
+  expandedTxn: null               // id of the row expanded for detail
 };
+
+// Selected-day + week-activity subscriptions live outside the main snapshot fan-
+// out so navigating dates only re-listens to what changed (§12).
+let daySubUnsub = null, weekSubUnsub = null, daySubToken = 0, weekSubToken = 0;
 
 function toast(msg) {
   const t = el('toast'); t.textContent = msg; t.classList.add('show');
@@ -97,8 +116,64 @@ async function subscribeAll() {
     onOwnedItems: (o) => { state.ownedItems = o; renderAll(); },
     onTodayCompletions: (t) => { detectApproval(t); state.todayCompletions = t; renderAll(); },
     onPendingApprovals: (p) => { state.pendingApprovals = p; renderAll(); },
-    onRecentTxns: (t) => { state.recentTxns = t; renderAll(); }
+    onRecentTxns: (t) => { state.recentTxns = t; renderAll(); },
+    onMembers: (m) => { state.members = m; renderAll(); }
   });
+  // The day view always opens on Today (§6.2).
+  setSelectedDate(localDate(), { reanchor: true });
+}
+
+// ---- Day-based ledger navigation (shared by both roles) --------------------
+// Re-point the selected-day + week listeners. A monotonic token guards against
+// a slow first snapshot from a date we've since navigated away from.
+async function subscribeSelectedDay() {
+  if (daySubUnsub) { daySubUnsub(); daySubUnsub = null; }
+  const token = ++daySubToken;
+  const date = state.selectedDate;
+  daySubUnsub = await store.subscribeDay(state.familyId, date, rows => {
+    if (token !== daySubToken) return; // stale listener
+    state.selectedDayTxns = rows;
+    renderDayViews();
+  });
+}
+async function subscribeWeekActivity() {
+  if (weekSubUnsub) { weekSubUnsub(); weekSubUnsub = null; }
+  const token = ++weekSubToken;
+  const dates = weekDates(state.weekAnchor);
+  weekSubUnsub = await store.subscribeRangeActivity(state.familyId, dates, marked => {
+    if (token !== weekSubToken) return;
+    state.weekActivity = marked;
+    renderDayViews();
+  });
+}
+
+function setSelectedDate(date, { reanchor = false } = {}) {
+  const today = localDate();
+  if (isAfterDate(date, today)) date = today; // never select the future (§6.2)
+  const weekChanged = reanchor || !sameWeek(date, state.weekAnchor);
+  state.selectedDate = date;
+  state.expandedTxn = null;
+  if (weekChanged) state.weekAnchor = startOfWeek(date);
+  subscribeSelectedDay();
+  if (weekChanged) subscribeWeekActivity();
+  renderDayViews();
+}
+
+function setWeekAnchor(anchor) {
+  state.weekAnchor = startOfWeek(anchor);
+  subscribeWeekActivity();
+  renderDayViews();
+}
+
+function setDayFilter(filter) {
+  state.dayFilter = filter;
+  renderDayViews();
+}
+
+// Render whichever day view is mounted for the active role.
+function renderDayViews() {
+  if (state.role === 'parent') renderLedger();
+  else if (state.role === 'child') renderChildProgress();
 }
 
 // A completion status map keyed by questId, for today. 'pending' | 'approved'.
@@ -149,15 +224,17 @@ function showEvolution(catId) {
 function renderAll() {
   if (!state.child) return;
   if (state.role === 'parent') { renderApprovals(); renderParentDash(); renderLedger(); renderSirusToday(); renderParentQuests(); renderParentCats(); renderParentCafe(); }
-  else { renderChildHome(); renderChildQuests(); renderChildCats(); renderChildCafe(); renderChildLog(); }
+  else { renderChildHome(); renderChildQuests(); renderChildCats(); renderChildCafe(); renderChildProgress(); }
 }
 
-function ledgerRow(t, deletable = false) {
-  const cls = t.amount >= 0 ? 'plus' : 'minus';
-  const sign = t.amount >= 0 ? '+' : '';
+// Compact recent-activity row for the dashboard feed only. Normalized so a
+// floored -2 still reads as -2 and a redemption reads in minutes.
+function ledgerRow(raw, deletable = false) {
+  const t = normalizeTransaction(raw, { members: state.members });
+  const d = rowDelta(t);
   const del = deletable ? `<button class="icon-btn del-txn" data-del-txn="${esc(t.id)}" aria-label="Delete this entry">🗑️</button>` : '';
   const note = t.note ? `<small class="ledger-note">${esc(t.note)}</small>` : '';
-  return `<div class="ledger-item"><span class="ledger-delta ${cls}">${sign}${t.amount}</span>
+  return `<div class="ledger-item"><span class="ledger-delta ${d.cls}">${d.text}</span>
     <div class="ledger-text"><p>${esc(t.reasonLabel || '')}</p>${note}</div><time>${esc(t.timeLabel || '')}</time>${del}</div>`;
 }
 
@@ -169,14 +246,208 @@ function renderQuickActions() {
 
 function renderParentDash() {
   el('p-available').textContent = state.child.available || 0;
-  const { earned, spent } = store.todayTotals(state.recentTxns);
+  // "Used today" now counts SCREEN TIME ONLY — behavior deductions and
+  // corrections are no longer swept into it (§8.2).
+  const { earned, used } = store.todayTotals(state.recentTxns);
   el('p-earned').textContent = earned;
-  el('p-spent').textContent = spent;
+  el('p-spent').textContent = used;
   const rows = state.recentTxns.slice(0, 6);
   el('dash-ledger').innerHTML = rows.length ? rows.map(t => ledgerRow(t, true)).join('') : '<div class="empty">No activity yet today.</div>';
 }
+
+// ===== Shared day-based ledger view (My Progress + Point Ledger) =============
+const CAT_META = {
+  earned:       { label: 'Earned',        chip: 'earned' },
+  used:         { label: 'Used',          chip: 'used' },
+  room_to_grow: { label: 'Room to Grow',  chip: 'rtg' },
+  correction:   { label: 'Correction',    chip: 'correction' },
+  other:        { label: 'Other activity', chip: 'other' }
+};
+const FILTER_LABELS = {
+  all: 'All', earned: 'Earned', used: 'Used',
+  room_to_grow: 'Room to Grow', correction: 'Corrections'
+};
+
+// Signed amount to show on a row. Earned/Room-to-Grow use the FULL rule amount
+// (requestedAmount) so a floored -2 never shows as -1/+0; Used shows minutes.
+function rowDelta(t) {
+  if (t.category === CATEGORY.USED) {
+    return { text: `-${Math.abs(Number(t.amount) || 0)} min`, cls: 'used' };
+  }
+  const amt = t.category === CATEGORY.CORRECTION ? (Number(t.amount) || 0) : t.requestedAmount;
+  const sign = amt > 0 ? '+' : amt < 0 ? '-' : '';
+  const cls = t.category === CATEGORY.EARNED ? 'earned'
+    : t.category === CATEGORY.ROOM_TO_GROW ? 'rtg'
+    : t.category === CATEGORY.CORRECTION ? 'correction' : 'other';
+  return { text: `${sign}${Math.abs(amt)}`, cls };
+}
+
+// The selected day's rows, normalized, placed by activity date, newest-first.
+function normalizedDay() {
+  const sel = state.selectedDate;
+  return state.selectedDayTxns
+    .map(t => normalizeTransaction(t, { members: state.members }))
+    .filter(t => t.activityDate === sel)
+    .sort((a, b) => (b.createdAt?.seconds ?? Infinity) - (a.createdAt?.seconds ?? Infinity));
+}
+
+function emptyMessage() {
+  if (state.dayFilter !== 'all') return 'Nothing in this part of the day.';
+  return state.selectedDate === localDate()
+    ? 'No point activity yet today.'
+    : 'No point activity on this day.';
+}
+
+// The full date navigator: prev/next day, Today, 7-day strip with activity dots,
+// week nav, and a native calendar jump. Future days are disabled (§6.2).
+function dayNavHtml() {
+  const today = localDate();
+  const sel = state.selectedDate;
+  const atToday = sel === today;
+  const strip = weekDates(state.weekAnchor).map(d => {
+    const future = isAfterDate(d, today);
+    const active = d === sel;
+    const dot = state.weekActivity.has(d) ? '<span class="day-dot" aria-hidden="true"></span>' : '';
+    return `<button class="day-cell${active ? ' active' : ''}" data-day-pick="${d}" ${future ? 'disabled' : ''} aria-pressed="${active}">
+      <span class="day-wd">${esc(shortWeekday(d))}</span><span class="day-num">${dayOfMonth(d)}</span>${dot}</button>`;
+  }).join('');
+  const weekNextDisabled = sameWeek(today, state.weekAnchor) || isAfterDate(state.weekAnchor, today);
+  return `<div class="day-nav">
+    <div class="day-nav-row">
+      <button class="day-arrow" data-day-prev aria-label="Previous day">‹</button>
+      <div class="day-current">${esc(longDateLabel(sel))}</div>
+      <button class="day-arrow" data-day-next ${atToday ? 'disabled' : ''} aria-label="Next day">›</button>
+    </div>
+    <div class="day-nav-row secondary">
+      ${atToday ? '' : '<button class="text-button" data-day-today>Today</button>'}
+      <button class="text-button" data-week-prev aria-label="Previous week">‹ Week</button>
+      <button class="text-button" data-week-next ${weekNextDisabled ? 'disabled' : ''} aria-label="Next week">Week ›</button>
+      <label class="calendar-btn" title="Jump to a date"><span aria-hidden="true">📅</span>
+        <input type="date" class="day-calendar" max="${today}" value="${sel}" aria-label="Jump to a date"></label>
+    </div>
+    <div class="day-strip">${strip}</div>
+  </div>`;
+}
+
+function daySummaryHtml(s, { parent }) {
+  const tiles = [
+    `<div class="sum earned"><strong>${s.earnedCount} ${s.earnedCount === 1 ? 'win' : 'wins'}</strong><span>+${s.earnedPoints}</span></div>`,
+    `<div class="sum used"><strong>${s.usedMinutes} min</strong><span>used</span></div>`,
+    `<div class="sum rtg"><strong>${s.roomToGrowCount} ${s.roomToGrowCount === 1 ? 'moment' : 'moments'}</strong><span>${s.roomToGrowPoints}</span></div>`
+  ];
+  if (parent && s.corrections > 0) {
+    tiles.push(`<div class="sum correction"><strong>${s.corrections}</strong><span>corrections</span></div>`);
+  }
+  return `<div class="day-summary">${tiles.join('')}</div>`;
+}
+
+function dayFilterHtml({ parent }) {
+  const chips = ['all', 'earned', 'used', 'room_to_grow'].concat(parent ? ['correction'] : []);
+  return `<div class="day-filters">${chips.map(c =>
+    `<button class="chip${state.dayFilter === c ? ' active' : ''}" data-day-filter="${c}">${esc(FILTER_LABELS[c])}</button>`
+  ).join('')}</div>`;
+}
+
+function rewardEffectsLabel(rr, ra) {
+  const parts = [];
+  for (const k of ['brain', 'energy', 'bond', 'coins']) {
+    const req = rr ? Number(rr[k] || 0) : 0;
+    const app = ra ? Number(ra[k] || 0) : 0;
+    if (!req && !app) continue;
+    parts.push(req === app ? `${k} +${app}` : `${k} +${app} of +${req}`);
+  }
+  return parts.join(', ');
+}
+
+// Expanded detail. The child sees friendly context only; the parent also sees
+// audit fields (source, intended-vs-applied, dates, links, cat effects) (§8.3).
+function rowDetail(t, { parent }) {
+  const rows = [];
+  if (t.timeLabel) rows.push(['Time', t.timeLabel]);
+  rows.push([t.category === CATEGORY.ROOM_TO_GROW ? 'Noted by' : 'Noticed by', t.actorName]);
+  if (t.note) rows.push(['Note', t.note]);
+  if (t.kind === 'quest' && t.localDate && t.localDate !== t.activityDate) {
+    rows.push(['Approved', 'the next day']);
+  }
+  if (parent) {
+    rows.push(['Source', `${t.kind || '—'}${t.reasonCode ? ' · ' + t.reasonCode : ''}`]);
+    if (Number(t.requestedAmount) !== Number(t.amount)) {
+      rows.push(['Intended vs applied', `${t.requestedAmount} → ${t.amount}`]);
+    }
+    rows.push(['Activity date', t.activityDate || '—']);
+    if (t.localDate && t.localDate !== t.activityDate) rows.push(['Posted', t.localDate]);
+    const eff = rewardEffectsLabel(t.rewardRequested, t.rewardApplied);
+    if (eff) rows.push(['Cat effects', eff]);
+    if (t.questCompletionId) rows.push(['Quest completion', t.questCompletionId]);
+    if (t.questAttemptId) rows.push(['Attempt', t.questAttemptId]);
+    if (t.reversesTransactionId) rows.push(['Reverses entry', t.reversesTransactionId]);
+  }
+  return `<dl class="prog-detail">${rows.map(([k, v]) =>
+    `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
+}
+
+function progressRow(t, { parent, corrected }) {
+  const meta = CAT_META[t.category] || CAT_META.other;
+  const d = rowDelta(t);
+  const expanded = state.expandedTxn === t.id;
+  const badges = [];
+  if (t.reasonCode === 'hero_reset') badges.push('<span class="row-badge reset">Reset</span>');
+  if (corrected) badges.push('<span class="row-badge corrected">Corrected</span>');
+  const note = t.note ? `<small class="row-note">${esc(t.note)}</small>` : '';
+  return `<div class="prog-row ${d.cls}${corrected ? ' is-corrected' : ''}${expanded ? ' open' : ''}" data-txn-toggle="${esc(t.id)}" role="button" tabindex="0" aria-expanded="${expanded}">
+    <div class="prog-main">
+      <span class="prog-delta ${d.cls}">${d.text}</span>
+      <div class="prog-text"><p>${esc(t.reasonLabel || meta.label)}${badges.length ? ' ' + badges.join(' ') : ''}</p>${note}</div>
+      <span class="prog-chip ${meta.chip}">${esc(meta.label)}</span>
+    </div>
+    ${expanded ? rowDetail(t, { parent }) : ''}
+  </div>`;
+}
+
+// Child "My Progress": read-only, corrections hidden (a corrected original just
+// shows a muted Corrected badge), Available Now kept visually separate.
+function renderChildProgress() {
+  const mount = el('c-progress-view');
+  if (!mount) return;
+  const day = normalizedDay();
+  const summary = summarizeDay(day);
+  const corrected = correctedOriginalIds(day);
+  const available = (state.child && state.child.available) || 0;
+  let rows = day.filter(t => t.category !== CATEGORY.CORRECTION);
+  if (state.dayFilter !== 'all' && state.dayFilter !== 'correction') {
+    rows = rows.filter(t => t.category === state.dayFilter);
+  }
+  const list = rows.length
+    ? rows.map(t => progressRow(t, { parent: false, corrected: corrected.has(t.id) })).join('')
+    : `<div class="empty">${esc(emptyMessage())}</div>`;
+  mount.innerHTML = `
+    <div class="available-banner"><span>Available now</span><strong>${available} min</strong></div>
+    ${dayNavHtml()}
+    ${daySummaryHtml(summary, { parent: false })}
+    ${dayFilterHtml({ parent: false })}
+    <div class="day-list">${list}</div>`;
+}
+
+// Parent "Point Ledger": same day model, plus a Corrections chip, audit detail,
+// and no 50-row ceiling for the selected day.
 function renderLedger() {
-  el('full-ledger').innerHTML = state.recentTxns.length ? state.recentTxns.map(t => ledgerRow(t, true)).join('') : '<div class="empty">No point changes yet.</div>';
+  const mount = el('p-ledger-view');
+  if (!mount) return;
+  const day = normalizedDay();
+  const summary = summarizeDay(day);
+  const corrected = correctedOriginalIds(day);
+  const available = (state.child && state.child.available) || 0;
+  let rows = day;
+  if (state.dayFilter !== 'all') rows = rows.filter(t => t.category === state.dayFilter);
+  const list = rows.length
+    ? rows.map(t => progressRow(t, { parent: true, corrected: corrected.has(t.id) })).join('')
+    : `<div class="empty">${esc(emptyMessage())}</div>`;
+  mount.innerHTML = `
+    ${dayNavHtml()}
+    ${daySummaryHtml(summary, { parent: true })}
+    <div class="available-banner subtle"><span>Available now</span><strong>${available} min</strong></div>
+    ${dayFilterHtml({ parent: true })}
+    <div class="day-list">${list}</div>`;
 }
 // Live mirror of what's on Sirus's tablet right now, so Mom can see his quest
 // progress without picking up his device. Shows only enabled quests (the ones he
@@ -1423,13 +1694,6 @@ function confettiBurst() {
   spawnFx('assets/fx-confetti.png', layer, { count: 12, cx: 50, cy: 6, spread: 46, size: 34, life: 1500, mode: 'fall' });
   setTimeout(() => layer.remove(), 1900);
 }
-function renderChildLog() {
-  // Sirus's log is read-only: render without the delete control. Wrap in an
-  // arrow so Array.map's index isn't passed as `deletable` (that leaked the
-  // parent-only 🗑️ onto every row past the newest).
-  el('c-log').innerHTML = state.recentTxns.length ? state.recentTxns.map(t => ledgerRow(t)).join('') : '<div class="empty">Complete a quest to start your log!</div>';
-}
-
 // ---- Events -----------------------------------------------------------------
 function bindEvents() {
   document.addEventListener('click', async (e) => {
@@ -1440,6 +1704,19 @@ function bindEvents() {
 
     const needCue = e.target.closest('#c-need-cue');
     if (needCue && needCue.dataset.need) { guideCareNeed(needCue.dataset.need); return; }
+
+    // ---- Day-based ledger navigation (My Progress + Point Ledger) ----
+    if (e.target.closest('[data-day-prev]')) { setSelectedDate(addDays(state.selectedDate, -1)); return; }
+    if (e.target.closest('[data-day-next]')) { setSelectedDate(addDays(state.selectedDate, 1)); return; }
+    if (e.target.closest('[data-day-today]')) { setSelectedDate(localDate(), { reanchor: true }); return; }
+    if (e.target.closest('[data-week-prev]')) { setWeekAnchor(addDays(state.weekAnchor, -7)); return; }
+    if (e.target.closest('[data-week-next]')) { setWeekAnchor(addDays(state.weekAnchor, 7)); return; }
+    const pick = e.target.closest('[data-day-pick]');
+    if (pick) { setSelectedDate(pick.dataset.dayPick); return; }
+    const filter = e.target.closest('[data-day-filter]');
+    if (filter) { setDayFilter(filter.dataset.dayFilter); return; }
+    const toggle = e.target.closest('[data-txn-toggle]');
+    if (toggle) { state.expandedTxn = state.expandedTxn === toggle.dataset.txnToggle ? null : toggle.dataset.txnToggle; renderDayViews(); return; }
 
     const quick = e.target.closest('[data-quick]');
     if (quick) { const note = el('point-note').value.trim(); try { await store.adjustPoints(state.familyId, state.uid, { reasonCode: quick.dataset.quick, note }); const a = QUICK_ACTIONS.find(x=>x.code===quick.dataset.quick); el('point-note').value = ''; toast(`${a.amount>0?'+':''}${a.amount} · ${a.label}`); } catch (err) { toast('Could not save — check connection.'); } return; }
@@ -1535,11 +1812,37 @@ function bindEvents() {
       catch (err) { console.error('Undo failed', err); toast('Undo failed — try again.'); }
       return;
     }
-    if (e.target.closest('#redeem-btn')) { el('redeem-available').textContent = state.child.available||0; el('redeem-minutes').value=''; el('redeem-note').value=''; el('redeem-dialog').showModal(); return; }
+    if (e.target.closest('#redeem-btn')) {
+      const avail = state.child.available || 0;
+      el('redeem-available').textContent = avail;
+      const input = el('redeem-minutes');
+      input.value = ''; input.max = String(avail); // cap so the picker can't exceed Available
+      el('redeem-note').value = '';
+      const err = el('redeem-error'); err.hidden = true; err.textContent = '';
+      el('redeem-dialog').showModal();
+      return;
+    }
     if (e.target.closest('#make-code-btn')) return makePairingCode();
     if (e.target.closest('#make-coparent-code-btn')) return makeCoparentCode();
     if (e.target.closest('#signout-btn')) { await signOutUser(); location.reload(); return; }
     if (e.target.closest('#evo-close')) return el('evolution-dialog').close();
+  });
+
+  // Native calendar jump (either day view). Future dates are blocked by the
+  // input's max, but clamp defensively too.
+  document.addEventListener('change', (e) => {
+    const cal = e.target.closest('.day-calendar');
+    if (cal && cal.value) setSelectedDate(cal.value);
+  });
+
+  // Keyboard access for expanding a ledger row (rows are role="button").
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const toggle = e.target.closest('[data-txn-toggle]');
+    if (!toggle) return;
+    e.preventDefault();
+    state.expandedTxn = state.expandedTxn === toggle.dataset.txnToggle ? null : toggle.dataset.txnToggle;
+    renderDayViews();
   });
 
   el('signin-form').addEventListener('submit', async (e) => {
@@ -1584,10 +1887,27 @@ function bindEvents() {
       enterChild(fid, user.uid);
     } catch (err) { el('pair-note').textContent = err.message; }
   });
-  el('redeem-confirm').addEventListener('click', async () => {
+  el('redeem-confirm').addEventListener('click', async (e) => {
     const mins = Number(el('redeem-minutes').value) || 0;
     const note = el('redeem-note').value.trim();
-    if (mins > 0) { await store.redeemScreenTime(state.familyId, state.uid, mins, { note }); el('redeem-note').value = ''; toast(`Recorded ${mins} min used.`); }
+    const avail = (state.child && state.child.available) || 0;
+    const err = el('redeem-error');
+    // Block an over-limit request instead of silently clamping it (§10.3). The
+    // button lives in a method="dialog" form, so preventDefault keeps the dialog
+    // open on an invalid value.
+    if (mins <= 0) { e.preventDefault(); err.textContent = 'Enter how many minutes were used.'; err.hidden = false; return; }
+    if (mins > avail) { e.preventDefault(); err.textContent = `Only ${avail} minutes are available right now.`; err.hidden = false; return; }
+    try {
+      await store.redeemScreenTime(state.familyId, state.uid, mins, { note });
+      el('redeem-note').value = '';
+      toast(`Recorded ${mins} min used.`);
+    } catch (ex) {
+      // A concurrent change dropped the balance between opening and confirming.
+      e.preventDefault();
+      const max = typeof ex.available === 'number' ? ex.available : avail;
+      err.textContent = `Only ${max} minutes are available right now.`;
+      err.hidden = false;
+    }
   });
   el('custom-form').addEventListener('submit', async (e) => {
     e.preventDefault();
