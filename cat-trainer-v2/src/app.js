@@ -1,33 +1,33 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=e5b710f2';
+import { isConfigured } from './firebase.js?v=4cdc9e6c';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=e5b710f2';
-import * as store from './store.js?v=e5b710f2';
-import { CAT_DEFS } from './data/cats.js?v=e5b710f2';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=e5b710f2';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=e5b710f2';
+} from './auth.js?v=4cdc9e6c';
+import * as store from './store.js?v=4cdc9e6c';
+import { CAT_DEFS } from './data/cats.js?v=4cdc9e6c';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=4cdc9e6c';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=4cdc9e6c';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=e5b710f2';
+} from './cafe-interactions.js?v=4cdc9e6c';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=e5b710f2';
+} from './care.js?v=4cdc9e6c';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=e5b710f2';
+} from './shared/rewards.js?v=4cdc9e6c';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, correctedOriginalIds
-} from './shared/ledger.js?v=e5b710f2';
+} from './shared/ledger.js?v=4cdc9e6c';
 import {
   localDate, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=e5b710f2';
+} from './shared/dates.js?v=4cdc9e6c';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -359,12 +359,24 @@ function rewardEffectsLabel(rr, ra) {
   return parts.join(', ');
 }
 
+// How to caption the actor, by what the row actually is. "Noticed by" is
+// reserved for a manual positive recognition Mom/Abba typed in (e.g. "noticed he
+// washed the table") — a quest is an approval, not something noticed, so it must
+// not borrow that wording.
+function actorLabel(t) {
+  if (t.kind === 'quest') return 'Approved by';
+  if (t.category === CATEGORY.USED) return 'Recorded by';
+  if (t.category === CATEGORY.ROOM_TO_GROW) return 'Noted by';
+  if (t.category === CATEGORY.CORRECTION) return 'Corrected by';
+  return 'Noticed by'; // manual positive recognition
+}
+
 // Expanded detail. The child sees friendly context only; the parent also sees
 // audit fields (source, intended-vs-applied, dates, links, cat effects) (§8.3).
 function rowDetail(t, { parent }) {
   const rows = [];
   if (t.timeLabel) rows.push(['Time', t.timeLabel]);
-  rows.push([t.category === CATEGORY.ROOM_TO_GROW ? 'Noted by' : 'Noticed by', t.actorName]);
+  rows.push([actorLabel(t), t.actorName]);
   if (t.note) rows.push(['Note', t.note]);
   if (t.kind === 'quest' && t.localDate && t.localDate !== t.activityDate) {
     rows.push(['Approved', 'the next day']);
