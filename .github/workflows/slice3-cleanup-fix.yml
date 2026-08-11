@@ -29,10 +29,8 @@ jobs:
 
           app = Path('src/app.js')
           text = app.read_text()
-          old_comment = '''// Child "My Progress": read-only, corrections hidden (a corrected original just
-          // shows a muted Corrected badge), Available Now kept visually separate.'''
-          new_comment = '''// Child "My Progress": read-only. Corrections and their corrected originals are
-          // parent audit history only, so Sirus sees neither side of an administrative fix.'''
+          old_comment = '// Child "My Progress": read-only, corrections hidden (a corrected original just\n// shows a muted Corrected badge), Available Now kept visually separate.'
+          new_comment = '// Child "My Progress": read-only. Corrections and their corrected originals are\n// parent audit history only, so Sirus sees neither side of an administrative fix.'
           if old_comment not in text:
               raise SystemExit('app.js child-progress comment marker not found')
           text = text.replace(old_comment, new_comment, 1)
@@ -45,12 +43,8 @@ jobs:
 
           ui = Path('src/ledger-actions.js')
           text = ui.read_text()
-          old = '''    row.appendChild(actions);
-          }
-          }
-          
-          async function enhanceLinkedRow(row) {'''
-          new = '''    row.appendChild(actions);
+          marker = '    row.appendChild(actions);'
+          insertion = '''    row.appendChild(actions);
               const cleanup = $('.s3-cleanup', actions);
               if (cleanup) {
                 cleanup.addEventListener('click', event => {
@@ -59,14 +53,10 @@ jobs:
                   // it closed before Mom can reach Delete permanently.
                   event.stopPropagation();
                 });
-              }
-            }
-          }
-          
-          async function enhanceLinkedRow(row) {'''
-          if old not in text:
-              raise SystemExit('ledger-actions cleanup insertion marker not found')
-          text = text.replace(old, new, 1)
+              }'''
+          if text.count(marker) != 1:
+              raise SystemExit(f'ledger-actions row marker count was {text.count(marker)}, expected 1')
+          text = text.replace(marker, insertion, 1)
           ui.write_text(text)
 
           test = Path('tools/test-slice3.mjs')
