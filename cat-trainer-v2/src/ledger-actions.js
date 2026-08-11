@@ -5,15 +5,15 @@
 // rendering; this module adds parent ledger actions and lets those subscriptions
 // reflect the resulting Firestore changes.
 
-import { deviceFamilyId, deviceUid, deviceRole } from './auth.js?v=db0221ce';
-import * as store from './store.js?v=db0221ce';
-import { QUICK_ACTIONS } from './shared/rewards.js?v=db0221ce';
-import { localDate } from './shared/dates.js?v=db0221ce';
-import { reversibleRewardEffects } from './shared/corrections.js?v=db0221ce';
+import { deviceFamilyId, deviceUid, deviceRole } from './auth.js?v=cab56313';
+import * as store from './store.js?v=cab56313';
+import { QUICK_ACTIONS } from './shared/rewards.js?v=cab56313';
+import { localDate } from './shared/dates.js?v=cab56313';
+import { reversibleRewardEffects } from './shared/corrections.js?v=cab56313';
 import {
   correctTransaction, permanentDeleteTransaction, getLatestCorrectableTransaction,
   getTransaction, awardHeroReset
-} from './ledger-actions-store.js?v=db0221ce';
+} from './ledger-actions-store.js?v=cab56313';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -260,6 +260,15 @@ function enhanceParentLedger() {
       actions.innerHTML = '<span class="s3-link-note">This entry has already been corrected; the original stays in history.</span>';
     }
     row.appendChild(actions);
+    const cleanup = $('.s3-cleanup', actions);
+    if (cleanup) {
+      cleanup.addEventListener('click', event => {
+        // The parent ledger row itself is clickable. Keep Cleanup clicks
+        // inside the native <details> so the row handler cannot re-render
+        // it closed before Mom can reach Delete permanently.
+        event.stopPropagation();
+      });
+    }
   }
 }
 
