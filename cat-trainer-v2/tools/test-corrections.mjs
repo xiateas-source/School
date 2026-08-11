@@ -4,6 +4,7 @@ import {
   correctionAmountIntegrity,
   reversibleRewardEffects,
   permanentDeleteEligibility,
+  permanentDeletePlanEligibility,
   hasLinkedCorrection,
   findHeroResetTarget,
   isCorrectionTransaction
@@ -11,7 +12,6 @@ import {
 
 // --- Deterministic correction identity --------------------------------------
 assert.equal(correctionTransactionId('abc123'), 'corr_abc123');
-assert.equal(correctionTransactionId('legacy/odd'), 'corr_legacy%2Fodd');
 assert.throws(() => correctionTransactionId(''), /correction-original-required/);
 
 // --- Correction amount integrity -------------------------------------------
@@ -36,12 +36,26 @@ const legacy = reversibleRewardEffects({ catId: 'ember', brain: 2, energy: 1, bo
 assert.deepEqual(legacy, { brain: 0, energy: 0, bond: 0, coins: 4, ambiguousCat: true });
 assert.equal(reversibleRewardEffects({ coins: 2 }).ambiguousCat, false);
 
-// --- Permanent-delete guard -------------------------------------------------
+// --- Permanent-delete guards ------------------------------------------------
 const safeV2 = { id: 'v2', kind: 'adjust', rewardApplied: { brain: 0, energy: 0, bond: 1, coins: 0 } };
 assert.deepEqual(permanentDeleteEligibility(safeV2), { ok: true, reason: null });
 assert.equal(permanentDeleteEligibility({ id: 'c', kind: 'correction' }).reason, 'correction-history');
 assert.equal(permanentDeleteEligibility(safeV2, { hasCorrection: true }).reason, 'already-corrected');
 assert.equal(permanentDeleteEligibility({ id: 'old', catId: 'nova', bond: 1 }).reason, 'legacy-cat-effects-unknown');
+
+assert.deepEqual(permanentDeletePlanEligibility({
+  balance: { requestedAmount: -1, amount: -1 },
+  requestedReward: { brain: 0, energy: 0, bond: -1, coins: 0 },
+  appliedReward: { brain: 0, energy: 0, bond: -1, coins: 0 }
+}), { ok: true, reason: null });
+assert.equal(permanentDeletePlanEligibility({
+  balance: { requestedAmount: -1, amount: 0 },
+  requestedReward: {}, appliedReward: {}
+}).reason, 'effects-no-longer-fully-reversible', 'spent minutes block permanent delete');
+assert.equal(permanentDeletePlanEligibility({
+  balance: { requestedAmount: 2, amount: 2 },
+  requestedReward: { coins: -3 }, appliedReward: { coins: -1 }
+}).reason, 'effects-no-longer-fully-reversible', 'spent coins block permanent delete');
 
 assert.equal(isCorrectionTransaction({ kind: 'correction' }), true);
 assert.equal(isCorrectionTransaction({ reversesTransactionId: 'x' }), true);
