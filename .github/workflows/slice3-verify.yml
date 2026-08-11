@@ -1,0 +1,50 @@
+name: Slice 3 verify
+
+on:
+  push:
+    branches:
+      - agent/my-progress-slice-3
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/my-progress-slice-3
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Stamp cache version
+        run: node cat-trainer-v2/tools/stamp.mjs
+
+      - name: Run node tests
+        working-directory: cat-trainer-v2
+        run: |
+          set -e
+          node tools/test-feedback.mjs
+          node tools/test-ledger.mjs
+          node tools/test-dates.mjs
+          node tools/test-hero-care.mjs
+          node tools/test-care.mjs
+          node tools/test-cafe-interactions.mjs
+          node tools/test-corrections.mjs
+          node tools/test-slice3.mjs
+
+      - name: Commit stamp if changed
+        run: |
+          if git diff --quiet; then
+            echo "Stamp already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cat-trainer-v2
+          git commit -m "Stamp My Progress Slice 3 cache version"
+          git push origin HEAD:agent/my-progress-slice-3
