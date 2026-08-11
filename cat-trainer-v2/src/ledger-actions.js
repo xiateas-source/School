@@ -62,12 +62,10 @@ function correctionImpact(txn) {
   else if (amount < 0) lines.push(`Available minutes: restore ${Math.abs(amount)}.`);
 
   const effects = reversibleRewardEffects(txn || {});
-  const rewardLines = [];
   for (const [key, label] of [['coins', 'Coins'], ['brain', 'Brain'], ['energy', 'Energy'], ['bond', 'Bond']]) {
     const value = Number(effects[key] || 0);
-    if (value) rewardLines.push(`${label}: reverse ${Math.abs(value)}.`);
+    if (value) lines.push(`${label}: reverse ${Math.abs(value)}.`);
   }
-  lines.push(...rewardLines);
   if (effects.ambiguousCat) lines.push('Older cat progress cannot be proven, so that cat progress will be preserved.');
   if (txn && txn.kind === 'quest') {
     lines.push('The quest becomes available again. Care Charges, completed care, Hero-care days, needs, and evolution stay unchanged.');
@@ -303,6 +301,16 @@ function enhance() {
 document.addEventListener('click', async e => {
   const correct = e.target.closest('[data-s3-correct]');
   if (correct) { stop(e); await doCorrect(correct.dataset.s3Correct); return; }
+
+  // Also intercept the PRE-enhancement legacy trash selector. That closes the
+  // tiny timing window between an app.js re-render and MutationObserver relabeling
+  // the button, so ordinary UI can never reach store.deleteTransaction().
+  const legacyDelete = e.target.closest('[data-del-txn]');
+  if (legacyDelete && parentContext()) {
+    stop(e);
+    await doCorrect(legacyDelete.dataset.delTxn);
+    return;
+  }
 
   const del = e.target.closest('[data-s3-delete]');
   if (del) { stop(e); await doPermanentDelete(del.dataset.s3Delete); return; }
