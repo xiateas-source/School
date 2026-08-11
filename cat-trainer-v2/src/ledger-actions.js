@@ -263,24 +263,36 @@ function enhanceParentLedger() {
   }
 }
 
-async function enhanceResetLink(row) {
+async function enhanceLinkedRow(row) {
   if (!row || row.dataset.s3LinkChecked) return;
   row.dataset.s3LinkChecked = '1';
-  if (!$('.row-badge.reset', row)) return;
+  const isReset = !!$('.row-badge.reset', row);
+  const isCorrection = !!$('.prog-chip.correction', row);
+  if (!isReset && !isCorrection) return;
   const ctx = parentContext() || (deviceFamilyId() ? { familyId: deviceFamilyId() } : null);
   if (!ctx) return;
+
   try {
     const txn = await getTransaction(ctx.familyId, row.dataset.txnToggle);
-    if (!txn || !txn.relatedTransactionId || $('.s3-link-note', row)) return;
-    const note = document.createElement('p');
-    note.className = 's3-link-note';
-    note.textContent = '↳ Recovery linked to the earlier Room to Grow moment.';
-    row.appendChild(note);
+    if (!txn) return;
+    if (isReset && txn.relatedTransactionId && !$('.s3-link-note', row)) {
+      const note = document.createElement('p');
+      note.className = 's3-link-note';
+      note.textContent = '↳ Recovery linked to the earlier Room to Grow moment.';
+      row.appendChild(note);
+    }
+    if (isCorrection && txn.reversesTransactionId && !$('.s3-correction-link', row)) {
+      const original = await getTransaction(ctx.familyId, txn.reversesTransactionId);
+      const note = document.createElement('p');
+      note.className = 's3-link-note s3-correction-link';
+      note.textContent = `↶ Corrects: ${(original && original.reasonLabel) || 'earlier entry'}.`;
+      row.appendChild(note);
+    }
   } catch (_) {}
 }
 
-function enhanceResetLinks() {
-  for (const row of $$('.prog-row.open[data-txn-toggle]')) enhanceResetLink(row);
+function enhanceLinkedRows() {
+  for (const row of $$('.prog-row.open[data-txn-toggle]')) enhanceLinkedRow(row);
 }
 
 let enhanceQueued = false;
@@ -292,7 +304,7 @@ function enhance() {
     installStyles();
     enhanceDashboardDeletes();
     enhanceParentLedger();
-    enhanceResetLinks();
+    enhanceLinkedRows();
   });
 }
 
@@ -346,6 +358,11 @@ document.addEventListener('click', async e => {
   }
 }, true);
 
+// Only ledger/progress mounts are observed. Café movement/FX mutations should
+// never wake the Slice 3 enhancer on Sirus's tablet.
 const observer = new MutationObserver(enhance);
-observer.observe(document.documentElement, { childList: true, subtree: true });
+for (const target of ['#dash-ledger', '#p-ledger-view', '#c-progress-view']) {
+  const node = $(target);
+  if (node) observer.observe(node, { childList: true, subtree: true });
+}
 enhance();
