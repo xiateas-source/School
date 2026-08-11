@@ -9,6 +9,7 @@ import { deviceFamilyId, deviceUid, deviceRole } from './auth.js?v=b44b0891';
 import * as store from './store.js?v=b44b0891';
 import { QUICK_ACTIONS } from './shared/rewards.js?v=b44b0891';
 import { localDate } from './shared/dates.js?v=b44b0891';
+import { reversibleRewardEffects } from './shared/corrections.js?v=b44b0891';
 import {
   correctTransaction, permanentDeleteTransaction, getLatestCorrectableTransaction,
   getTransaction, awardHeroReset
@@ -49,14 +50,44 @@ function friendlyActionError(err, action) {
   if (code === 'already-corrected') return 'That entry is already corrected.';
   if (code === 'cannot-correct-correction' || code === 'correction-history') return 'Correction history stays intact.';
   if (code === 'legacy-cat-effects-unknown') return 'That older entry cannot be permanently deleted safely. Use Correct entry instead.';
+  if (code === 'effects-no-longer-fully-reversible') return 'Some of that entry has already been used or changed. Use Correct entry so the history stays accurate.';
   if (code === 'entry-missing') return 'That entry is no longer there.';
   return action === 'delete' ? 'Could not delete that entry.' : 'Could not correct that entry.';
+}
+
+function correctionImpact(txn) {
+  const lines = [];
+  const amount = Number(txn && txn.amount || 0);
+  if (amount > 0) lines.push(`Available minutes: remove up to ${amount}.`);
+  else if (amount < 0) lines.push(`Available minutes: restore ${Math.abs(amount)}.`);
+
+  const effects = reversibleRewardEffects(txn || {});
+  const rewardLines = [];
+  for (const [key, label] of [['coins', 'Coins'], ['brain', 'Brain'], ['energy', 'Energy'], ['bond', 'Bond']]) {
+    const value = Number(effects[key] || 0);
+    if (value) rewardLines.push(`${label}: reverse ${Math.abs(value)}.`);
+  }
+  lines.push(...rewardLines);
+  if (effects.ambiguousCat) lines.push('Older cat progress cannot be proven, so that cat progress will be preserved.');
+  if (txn && txn.kind === 'quest') {
+    lines.push('The quest becomes available again. Care Charges, completed care, Hero-care days, needs, and evolution stay unchanged.');
+  }
+  return lines.length ? `\n\n${lines.join('\n')}` : '';
 }
 
 async function doCorrect(txnId) {
   const ctx = parentContext();
   if (!ctx || !txnId) return;
-  if (!confirm('Correct this entry?\n\nThe original will stay visible, its safe effects will be reversed, and the correction will be linked to it.')) return;
+  let txn;
+  try { txn = await getTransaction(ctx.familyId, txnId); }
+  catch (_) { return notify('Could not load that entry.'); }
+  if (!txn) return notify('That entry is no longer there.');
+
+  const label = txn.reasonLabel || 'this entry';
+  const ok = confirm(
+    `Correct “${label}”?\n\nThe original stays visible and one linked correction records the safe reversal.${correctionImpact(txn)}`
+  );
+  if (!ok) return;
   try {
     const result = await correctTransaction(ctx.familyId, ctx.uid, txnId);
     notify(result && result.preservedLegacyCat
@@ -70,8 +101,11 @@ async function doCorrect(txnId) {
 async function doPermanentDelete(txnId) {
   const ctx = parentContext();
   if (!ctx || !txnId) return;
+  let txn = null;
+  try { txn = await getTransaction(ctx.familyId, txnId); } catch (_) {}
+  const label = (txn && txn.reasonLabel) || 'this entry';
   const ok = confirm(
-    'Permanently delete this entry?\n\nOnly use this for test, duplicate, or junk data. The row and its linked recognition will be removed. This cannot be undone.'
+    `Permanently delete “${label}”?\n\nOnly use this for test, duplicate, or junk data. The row and its linked recognition will be removed. If every effect cannot be safely reversed, deletion will be blocked. This cannot be undone.`
   );
   if (!ok) return;
   try {
