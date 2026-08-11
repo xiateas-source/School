@@ -1,18 +1,18 @@
 // Pure helpers for My Progress Slice 3 corrections.
 //
-// The ledger is append-only for ordinary mistakes: one deterministic correction
-// reverses one original entry, while the original stays visible for audit and
-// reflection. A separate rare parent cleanup delete may remove true test/junk
-// data, but only when every effect can be proven safe to reverse.
+// Ordinary mistakes are append-only: one deterministic correction reverses one
+// original entry while the original remains visible. A separate rare parent
+// cleanup delete is only for true test/junk/duplicate data and is intentionally
+// stricter because deleted history cannot explain any effect left behind.
 
 export const CORRECTION_ID_PREFIX = 'corr_';
 
-// A deterministic document id makes the "only one correction per original"
-// rule race-safe across Mom + Abba. Auto-generated Firestore ids contain no
-// slashes, but encode defensively for legacy/imported ids.
+// Firestore document ids are already one path segment, so the original id can be
+// appended directly. Keeping this identity simple also lets security rules verify
+// `corr_<originalId>` and makes a second correction collide deterministically.
 export function correctionTransactionId(originalId) {
   if (!originalId) throw new Error('correction-original-required');
-  return `${CORRECTION_ID_PREFIX}${encodeURIComponent(String(originalId))}`;
+  return `${CORRECTION_ID_PREFIX}${String(originalId)}`;
 }
 
 export function isCorrectionTransaction(txn) {
@@ -79,6 +79,26 @@ export function permanentDeleteEligibility(txn, { hasCorrection = false } = {}) 
   if (hasCorrection) return { ok: false, reason: 'already-corrected' };
   if (reversibleRewardEffects(txn).ambiguousCat) {
     return { ok: false, reason: 'legacy-cat-effects-unknown' };
+  }
+  return { ok: true, reason: null };
+}
+
+// Even when every original effect is known, a permanent delete must not erase
+// the audit trail if some of that effect can no longer be removed now (for
+// example, a +10 test credit whose minutes/coins have already been spent). In
+// that case Correct entry remains safe because it preserves the original and
+// records the partial no-debt reversal honestly.
+export function permanentDeletePlanEligibility(plan = {}) {
+  const balance = plan.balance || {};
+  if (Number(balance.amount || 0) !== Number(balance.requestedAmount || 0)) {
+    return { ok: false, reason: 'effects-no-longer-fully-reversible' };
+  }
+  const requested = plan.requestedReward || {};
+  const applied = plan.appliedReward || {};
+  for (const key of ['brain', 'energy', 'bond', 'coins']) {
+    if (Number(applied[key] || 0) !== Number(requested[key] || 0)) {
+      return { ok: false, reason: 'effects-no-longer-fully-reversible' };
+    }
   }
   return { ok: true, reason: null };
 }
