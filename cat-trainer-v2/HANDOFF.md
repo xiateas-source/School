@@ -1,6 +1,6 @@
 # Cat Trainer v2 — Handoff & Context
 
-_Last updated: 2026-08-09. This is the durable source of truth for the rebuild.
+_Last updated: 2026-08-11. This is the durable source of truth for the rebuild.
 If you're a fresh session picking this up, read this file first._
 
 ---
@@ -81,7 +81,9 @@ cat-trainer-v2/
     │   └── cafe-items.js  11 café items (IDs preserved from legacy)
     └── shared/
         ├── rewards.js     caps, hero thresholds, quick actions, bond values
-        └── dates.js       America/Chicago local-day logic
+        ├── ledger.js      point classification, legacy normalizer, day summaries, amount integrity
+        ├── feedback.js    family-feedback delivery identity, claim lease, bundling
+        └── dates.js       America/Chicago local-day logic + day-navigator math
 ```
 
 ## 5. Firestore data model
@@ -103,19 +105,30 @@ families/{familyId}                 familyId == parent's auth uid
                                      away in the shop. Absent x/y → a default slot;
                                      absent placed → shown. Child may edit these.)
   quests/{questId}                  { title, section, enabled, order, points, brain, energy, coins }
-  pointTransactions/{txnId}         { childId, amount, kind, reasonCode, reasonLabel, note?,
-                                      bond, coins, brain, energy, catId, questId?,
-                                      createdBy, deviceId, createdAt, localDate, timeLabel }
-                                    (note = optional free-text Mom/Abba attach to an
-                                     add/subtract; shown as a second line in the ledger)
-  questCompletions/{childId_questId_localDate}   deterministic id = dedupe key
+  pointTransactions/{txnId}         v2: { schemaVersion, childId, kind, category, reasonCode,
+                                      reasonLabel, note?, requestedAmount, amount, balanceBefore,
+                                      balanceAfter, activityDate, createdBy, createdByName, deviceId,
+                                      createdAt, localDate, timeLabel, questCompletionId?,
+                                      questAttemptId?, relatedTransactionId?, reversesTransactionId?,
+                                      catId, rewardRequested{}, rewardApplied{}, bond, coins, brain, energy }
+                                    (requestedAmount = full rule; amount = applied delta after the
+                                     zero floor; activityDate drives the day view, createdAt drives
+                                     audit order; rewardApplied = the only cat delta a reversal may undo)
+  familyFeedback/{eventId}          one shared delivery queue (Slice 2). eventId is source-derived:
+                                    pt_<txnId> (point_recognition) | qr_<attemptId> (quest_returned).
+                                    { recipientChildId, type, sourceTransactionId?, sourceQuestCompletionId?,
+                                      sourceQuestAttemptId?, actorId, actorName, amount, reasonLabel,
+                                      parentNote, activityDate, createdAt, deliveryStatus, claimedByClientId,
+                                      claimedAt, seenAt }   (child may change ONLY the delivery fields)
+  questCompletions/{childId_questId_localDate}   deterministic id = dedupe key; carries attemptId (retry-unique)
 pairings/{code}                     top-level { familyId, role:'child'|'parent', active, createdAt }
                                     (role:'child' = tablet pairing; role:'parent' = co-parent invite)
 ```
 
-`kind` ∈ `adjust | quest | redeem | correction`. Balance/earned/used-today for the
-dashboard are derived from the ledger (`todayTotals`), so there's no reset counter
-to drift.
+`kind` ∈ `adjust | quest | redeem | correction`; `category` ∈ `earned | used |
+room_to_grow | correction`. Balance/earned/used-today for the dashboard are derived
+from the ledger (`todayTotals`, screen-time only for "used"), so there's no reset
+counter to drift.
 
 ## 6. Security rules (IMPORTANT)
 
@@ -124,6 +137,13 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
 - **Family isolation** — only signed-in members read/write a family's data.
 - **Parent-only** — settings, quests, members, pairing codes, arbitrary point
   adjustments/redemptions, and **deleting ledger entries**.
+- **Point transactions (v2)** — parent-only create, now schema-validated
+  (classification, amount, activity date, actor = caller, server time); **update is
+  denied** (financial rows are immutable; corrected status is derived from a linked
+  correction). Delete stays parent-only — the rare admin permanent-delete path (§8b).
+- **Family feedback** — parent-only validated create; the child may change ONLY the
+  narrow delivery fields (`deliveryStatus`, `claimedByClientId`, `claimedAt`,
+  `seenAt`), never actor/amount/reason/source.
 - **Child** — may complete a quest once/day (amount validated against the stored
   quest), earn its rewards (monotonic, capped), buy café items, and **rearrange /
   put away its own café décor** (update `x/y/placed` on an owned item). That last
@@ -145,6 +165,12 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
 > paste `firestore.rules` → Publish). Until Mom does this, the affected feature is
 > denied with "Missing or insufficient permissions." See `FIREBASE-SETUP.md` →
 > "Publishing / updating the security rules."
+> - **My Progress Slice 2 (2026-08-11): the `familyFeedback` rules MUST be published
+>   before the Slice 2 app code goes live.** A positive recognition writes a feedback
+>   event in the SAME atomic transaction as the point; without the collection's
+>   rules, the whole write is denied and Good Choice / Yes ma'am / Hero's Reset /
+>   quest-reject would fail. The tightened point-transaction rules are compatible
+>   with the live Slice 1 code, so publishing early is safe.
 > - **Latest change (2026-08-09): Hunger care** allows a child to stamp only the
 >   migration-safe initial `catNeeds` value or perform a paired one-charge Hunger
 >   refill. Charge earning must be paired with its new pending quest completion;
@@ -206,7 +232,8 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - [x] Quick point actions + custom amount/reason
 - [x] Screen-time redemption (record minutes used)
 - [x] Undo last action (compensating correction)
-- [x] Per-entry delete from the ledger (trashcan; reverses + removes)
+- [x] Per-entry delete from the ledger (trashcan; reverses + removes) — being
+      replaced in Slice 3 by append-only Correct entry + a rare admin permanent delete (§8b)
 - [x] Quest completion once/day with points + Brain/Energy/Bond + coins
 - [x] Cats: independent progress, active-cat selection, Hero Form + celebration
 - [x] Cat Café: buy items with coins, decorate the room
@@ -257,6 +284,74 @@ evolution won't feel special. Candidate for a fresher Drive asset.
       _(shipped + rules published 2026-08-07; **pending first on-device test with
       Abba** — Mom generates the code in Settings, Abba redeems it via "I'm Abba")_
 
+## 8b. My Progress & Point Ledger (spec: MYPROGRESSPOINTLEDGERSPEC2, Draft 0.4)
+
+Day-based ledger feature built in slices on top of the audited `6cc2e0d`
+baseline. New pure modules: `src/shared/ledger.js` (classification, legacy
+normalizer, day summaries, amount integrity), `src/shared/feedback.js` (delivery
+identity, claim lease, bundling), `src/shared/dates.js` (day navigator math).
+Standalone node tests: `tools/test-ledger.mjs`, `tools/test-dates.mjs`,
+`tools/test-feedback.mjs`.
+
+- [x] **Slice 1 — Integrity & day-based ledger** (merged). Schema v2 with
+      `requestedAmount` vs applied `amount`, `activityDate` vs posted time,
+      `rewardRequested` vs `rewardApplied`, Mom/Abba name snapshot. Child Log →
+      **My Progress** day view with full date navigator; parent **Point Ledger**
+      day view + audit detail; "Used today" counts screen time only; over-limit
+      redemption blocked; legacy rows normalized; selected-day/week queries with
+      no 50-row ceiling; Firestore validates the new point-transaction schema.
+- [x] **Follow-ups** (merged): quest rows read "Approved by", not "Noticed by";
+      the child "Completed today" drawer stays open across background re-renders.
+- [x] **Slice 2 — Shared family feedback & "You were noticed!"** (merged +
+      device-tested). First durable shared feedback queue (`familyFeedback`).
+      Device acceptance: **live recognition, away/reconnect delivery, bundling,
+      returned-quest separation, no replay after seen, and Café overlay behavior
+      all pass.** Still pending: **Abba (co-parent) attribution on-device
+      confirmation.** Recognition events are created atomically with the point;
+      returned-quest events are created atomically before the pending completion
+      is deleted; claim-lease + seen transitions drive one-time delivery; child
+      rules allow only the narrow delivery-field updates.
+- [ ] **Slice 3 — Parent corrections & refinement** (D-07 confirmed; NOT started).
+- [ ] **Slice 4 — Weekly reflection** (later).
+
+### Decisions locked for Slice 3
+
+- **D-07 confirmed in principle.** Normal ledger mistakes use an **append-only,
+  linked _Correct entry_**: the original stays visible, the correction links via
+  `reversesTransactionId`, the corrected pair is excluded from Earned/Used/
+  Room-to-Grow totals (already true in the day summaries), and Firestore denies
+  ordinary point-transaction **update** and ordinary **delete**. Use a
+  deterministic correction identity (`corr_<originalId>`) so an original can't be
+  corrected twice. "Undo last" becomes a linked correction of the latest entry.
+- **Refinement — rare parent-only PERMANENT delete** (kept, separate from the
+  correction path) for true cleanup only: test entries, accidental duplicates,
+  junk data. It is an advanced/admin action, NOT the normal path, and must:
+  - require an explicit confirmation;
+  - reverse only **provable** balance/reward effects (a v2 row's `rewardApplied`;
+    balance and coins are always provable);
+  - atomically remove any linked `familyFeedback` event (deterministic
+    `pt_<transactionId>`) so no orphaned recognition can appear later;
+  - **block** deletion when linked effects cannot be safely proven (e.g. a legacy
+    row claiming uncapped-unknown Brain/Energy/Bond), rather than guessing;
+  - never reverse Care Charges, completed care, Hero-care days, needs, or
+    `evolved` status (those Café outcomes stay forward-only).
+  - Because this admin action is the only delete path, Firestore keeps
+    `pointTransactions` **delete = parent-only** (update stays denied); the
+    *ordinary* delete is removed from the UI, not from the rules.
+- **Also in Slice 3 (Draft 0.4):** link Hero's Reset to a same-day Room-to-Grow
+  event via `relatedTransactionId`; add **Add entry to this day** (backdating,
+  preselecting the viewed activity date). Calendar jump + activity markers already
+  shipped in Slice 1.
+
+### Note on orphaned feedback (observed during Slice 2 testing)
+
+The current pre-Slice-3 hard delete reverses a transaction but does **not** remove
+its linked `familyFeedback` event, so hard-deleting recognition test transactions
+left feedback docs behind. Slice 3's permanent delete fixes this going forward by
+deleting `pt_<transactionId>` in the same transaction. **No cleanup migration is
+required** — the already-orphaned test events are already-seen and harmless as
+legacy data.
+
 ## 9. Known issues / limitations
 
 - **Service worker (`sw.js`) — now shipped, and designed to pair with the cache
@@ -281,7 +376,9 @@ evolution won't feel special. Candidate for a fresher Drive asset.
   versioned, so a phone used to serve an old module after a deploy. Running
   `node tools/stamp.mjs` before each deploy appends a content-hash `?v=…` query
   to every local import + the entry script + the CSS link (and the SW cache
-  name), so any changed file is a fresh URL (see §11).
+  name), so any changed file is a fresh URL (see §11). The stamp `FILES` list now
+  includes `ledger.js`, `feedback.js`, and `polish.css`, and `restampHtml` stamps
+  any local `src/*.js` script + `styles/*.css` link.
 - **Co-parent join is device-remembered, not account-discoverable.** After Abba
   redeems the invite code once on a device, that device keeps him signed in and
   routed to the family (memory is keyed to his uid, so a shared device won't
@@ -296,10 +393,6 @@ evolution won't feel special. Candidate for a fresher Drive asset.
   single household; move quest completion into a Cloud Function (Blaze plan) if
   stronger guarantees are ever needed.
 - **Ember hero art** is weak (§7).
-- **Family feedback is not yet surfaced on the child device.** Positive manual
-  points need a one-time exciting Mom/Abba-attributed cat message; rejected quests
-  currently reappear without explaining what happened. Build both with the same
-  durable notification queue and deterministic speech bubble.
 - **Advanced pet health is deliberately post-MVP.** Sirus wants recoverable
   sickness, balanced too-much/too-little care, purchasable medicine, and visible
   consequences. `CAFE-GOAL.md` §5.6 preserves the request with no-death, no-loss,
@@ -318,11 +411,10 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - Weekly "boss cat" needing a bigger combined effort.
 - Multiple children (schema is close; childProfiles is already a collection).
 - Fresher `ember-hero.png`.
-- Deterministic cat speech-bubble feedback for parent-added points and returned
-  quests (with correct Mom/Abba attribution and one-time delivery).
 - Fourteen-day `heroCareProgress`, advancing only on distinct active days when
   the cat's three daily needs are at least Okay.
 - Mom, Abba, Sirus, and Arlo as selectable Café visitors (avatars already exist).
+- My Progress Slice 4: Week view + behavior-pattern summary (no ranking/percent).
 - After the full three-need loop: Sirus's recoverable health/medicine expansion
   from `CAFE-GOAL.md` §5.6.
 
