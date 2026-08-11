@@ -47,6 +47,11 @@ assert.match(ui, /activityDate: day/, 'backdated writes use selected activity da
 assert.match(ui, /data-quick="hero_reset"/, 'Hero Reset quick action is intercepted for linking');
 assert.match(actions, /findHeroResetTarget\(rows, day\)/, 'Hero Reset links to a same-day Room-to-Grow event');
 assert.match(ui, /Recovery linked to the earlier Room to Grow moment/, 'linked recovery is explained in the ledger');
+assert.match(ui, /Corrects: \$\{\(original && original\.reasonLabel\)/, 'parent correction gets a readable original-entry link');
+
+// The enhancer is scoped to history mounts, not the entire Café DOM.
+assert.match(ui, /\['#dash-ledger', '#p-ledger-view', '#c-progress-view'\]/);
+assert.doesNotMatch(ui, /observer\.observe\(document\.documentElement/, 'Café mutations do not wake the ledger enhancer');
 
 // Cache stamping must include every new local module.
 assert.match(stamp, /'src\/ledger-actions\.js'/);
