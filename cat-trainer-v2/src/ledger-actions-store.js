@@ -9,7 +9,8 @@ import { FEEDBACK_TYPE, DELIVERY, recognitionEventId } from './shared/feedback.j
 import { localDate, localTimeLabel } from './shared/dates.js?v=b44b0891';
 import {
   correctionTransactionId, correctionAmountIntegrity, reversibleRewardEffects,
-  permanentDeleteEligibility, findHeroResetTarget, isCorrectionTransaction
+  permanentDeleteEligibility, permanentDeletePlanEligibility,
+  findHeroResetTarget, isCorrectionTransaction
 } from './shared/corrections.js?v=b44b0891';
 
 const CHILD_ID = 'sirus';
@@ -227,10 +228,16 @@ export async function permanentDeleteTransaction(familyId, uid, txnId) {
     if (!eligibility.ok) throw new Error(eligibility.reason);
 
     const state = await readReversalState(tx, p, original);
-    // permanentDeleteEligibility already blocks ambiguous legacy cat effects, but
+    // Shape-level eligibility already blocks ambiguous legacy cat effects, but
     // keep the transaction-side check authoritative if the data shape changes.
     if (state.effects.ambiguousCat) throw new Error('legacy-cat-effects-unknown');
     const plan = reversalPlan(original, state);
+    // Cleanup deletion has no audit row afterward, so it is allowed only if ALL
+    // known effects can actually be removed now. If minutes/coins were spent,
+    // use Correct entry instead so the partial no-debt reversal remains visible.
+    const planEligibility = permanentDeletePlanEligibility(plan);
+    if (!planEligibility.ok) throw new Error(planEligibility.reason);
+
     applyReversalWrites(tx, p, original, plan);
     tx.delete(p.txn(original.id));
     return { deleted: true };
