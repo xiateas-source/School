@@ -8,6 +8,7 @@ const read = rel => readFileSync(join(ROOT, rel), 'utf8');
 
 const index = read('index.html');
 const ui = read('src/ledger-actions.js');
+const app = read('src/app.js');
 const actions = read('src/ledger-actions-store.js');
 const core = read('src/shared/corrections.js');
 const rules = read('firestore.rules');
@@ -30,6 +31,8 @@ assert.match(core, /CORRECTION_ID_PREFIX = 'corr_'/, 'deterministic correction n
 
 // Parent-only permanent cleanup remains a separate, intentionally rare path.
 assert.match(ui, /<summary>Cleanup<\/summary>/, 'permanent delete is tucked behind Cleanup');
+assert.match(ui, /cleanup\.addEventListener\('click'[\s\S]*event\.stopPropagation\(\)/, 'Cleanup disclosure does not bubble into the clickable ledger row');
+assert.match(app, /t\.category !== CATEGORY\.CORRECTION && !corrected\.has\(t\.id\)/, 'Sirus My Progress hides corrected originals as well as correction rows');
 assert.match(ui, /Delete permanently/, 'cleanup action is explicit');
 assert.match(actions, /permanentDeletePlanEligibility\(plan\)/, 'delete requires every known effect to remain fully reversible');
 assert.match(actions, /tx\.delete\(p\.feedback\(recognitionEventId\(original\.id\)\)\)/, 'cleanup/correction removes linked recognition feedback');

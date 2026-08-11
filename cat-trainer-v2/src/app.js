@@ -1,34 +1,34 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=db0221ce';
+import { isConfigured } from './firebase.js?v=cab56313';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=db0221ce';
-import * as store from './store.js?v=db0221ce';
-import { CAT_DEFS } from './data/cats.js?v=db0221ce';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=db0221ce';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=db0221ce';
+} from './auth.js?v=cab56313';
+import * as store from './store.js?v=cab56313';
+import { CAT_DEFS } from './data/cats.js?v=cab56313';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=cab56313';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=cab56313';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=db0221ce';
+} from './cafe-interactions.js?v=cab56313';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=db0221ce';
+} from './care.js?v=cab56313';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=db0221ce';
+} from './shared/rewards.js?v=cab56313';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, correctedOriginalIds
-} from './shared/ledger.js?v=db0221ce';
+} from './shared/ledger.js?v=cab56313';
 import {
   localDate, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=db0221ce';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=db0221ce';
+} from './shared/dates.js?v=cab56313';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=cab56313';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -609,8 +609,8 @@ function progressRow(t, { parent, corrected }) {
   </div>`;
 }
 
-// Child "My Progress": read-only, corrections hidden (a corrected original just
-// shows a muted Corrected badge), Available Now kept visually separate.
+// Child "My Progress": read-only. Corrections and their corrected originals are
+// parent audit history only, so Sirus sees neither side of an administrative fix.
 function renderChildProgress() {
   const mount = el('c-progress-view');
   if (!mount) return;
@@ -618,7 +618,7 @@ function renderChildProgress() {
   const summary = summarizeDay(day);
   const corrected = correctedOriginalIds(day);
   const available = (state.child && state.child.available) || 0;
-  let rows = day.filter(t => t.category !== CATEGORY.CORRECTION);
+  let rows = day.filter(t => t.category !== CATEGORY.CORRECTION && !corrected.has(t.id));
   if (state.dayFilter !== 'all' && state.dayFilter !== 'correction') {
     rows = rows.filter(t => t.category === state.dayFilter);
   }
