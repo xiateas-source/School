@@ -22,6 +22,8 @@ assert.match(index, /src\/polish\.js\?v=/, 'polish layer still loads');
 assert.match(ui, /Correct entry/, 'parent UI exposes Correct entry');
 assert.match(ui, /Correct last/, 'dashboard Undo becomes Correct last');
 assert.match(ui, /data-s3-correct/, 'dashboard/day actions route through correction');
+assert.match(ui, /legacyDelete[\s\S]*data-del-txn/, 'pre-enhancement legacy trash clicks are intercepted too');
+assert.match(ui, /Care Charges, completed care, Hero-care days, needs, and evolution stay unchanged/, 'quest correction confirms forward-only Café effects');
 assert.match(actions, /reversesTransactionId: original\.id/, 'correction links to original');
 assert.match(actions, /correctionTransactionId\(txnId\)/, 'one deterministic correction id per original');
 assert.match(core, /CORRECTION_ID_PREFIX = 'corr_'/, 'deterministic correction namespace exists');
