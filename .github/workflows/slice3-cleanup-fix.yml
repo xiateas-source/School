@@ -1,0 +1,116 @@
+name: Slice 3 cleanup fix
+
+on:
+  push:
+    branches:
+      - agent/slice3-cleanup-fix
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/slice3-cleanup-fix
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply targeted cleanup fixes
+        working-directory: cat-trainer-v2
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('src/app.js')
+          text = app.read_text()
+          old_comment = '''// Child "My Progress": read-only, corrections hidden (a corrected original just
+          // shows a muted Corrected badge), Available Now kept visually separate.'''
+          new_comment = '''// Child "My Progress": read-only. Corrections and their corrected originals are
+          // parent audit history only, so Sirus sees neither side of an administrative fix.'''
+          if old_comment not in text:
+              raise SystemExit('app.js child-progress comment marker not found')
+          text = text.replace(old_comment, new_comment, 1)
+          old_rows = 'let rows = day.filter(t => t.category !== CATEGORY.CORRECTION);'
+          new_rows = 'let rows = day.filter(t => t.category !== CATEGORY.CORRECTION && !corrected.has(t.id));'
+          if old_rows not in text:
+              raise SystemExit('app.js child rows marker not found')
+          text = text.replace(old_rows, new_rows, 1)
+          app.write_text(text)
+
+          ui = Path('src/ledger-actions.js')
+          text = ui.read_text()
+          old = '''    row.appendChild(actions);
+          }
+          }
+          
+          async function enhanceLinkedRow(row) {'''
+          new = '''    row.appendChild(actions);
+              const cleanup = $('.s3-cleanup', actions);
+              if (cleanup) {
+                cleanup.addEventListener('click', event => {
+                  // The parent ledger row itself is clickable. Keep Cleanup clicks
+                  // inside the native <details> so the row handler cannot re-render
+                  // it closed before Mom can reach Delete permanently.
+                  event.stopPropagation();
+                });
+              }
+            }
+          }
+          
+          async function enhanceLinkedRow(row) {'''
+          if old not in text:
+              raise SystemExit('ledger-actions cleanup insertion marker not found')
+          text = text.replace(old, new, 1)
+          ui.write_text(text)
+
+          test = Path('tools/test-slice3.mjs')
+          text = test.read_text()
+          old_decl = "const ui = read('src/ledger-actions.js');"
+          new_decl = "const ui = read('src/ledger-actions.js');\nconst app = read('src/app.js');"
+          if old_decl not in text:
+              raise SystemExit('test declaration marker not found')
+          text = text.replace(old_decl, new_decl, 1)
+          old_assert = "assert.match(ui, /<summary>Cleanup<\\/summary>/, 'permanent delete is tucked behind Cleanup');"
+          new_assert = old_assert + "\nassert.match(ui, /cleanup\\.addEventListener\\('click'[\\s\\S]*event\\.stopPropagation\\(\\)/, 'Cleanup disclosure does not bubble into the clickable ledger row');\nassert.match(app, /t\\.category !== CATEGORY\\.CORRECTION && !corrected\\.has\\(t\\.id\\)/, 'Sirus My Progress hides corrected originals as well as correction rows');"
+          if old_assert not in text:
+              raise SystemExit('test cleanup assertion marker not found')
+          text = text.replace(old_assert, new_assert, 1)
+          test.write_text(text)
+          PY
+
+      - name: Syntax checks
+        working-directory: cat-trainer-v2
+        run: |
+          node --check src/app.js
+          node --check src/ledger-actions.js
+
+      - name: Stamp cache version
+        run: node cat-trainer-v2/tools/stamp.mjs
+
+      - name: Run node tests
+        working-directory: cat-trainer-v2
+        run: |
+          set -e
+          node tools/test-feedback.mjs
+          node tools/test-ledger.mjs
+          node tools/test-dates.mjs
+          node tools/test-hero-care.mjs
+          node tools/test-care.mjs
+          node tools/test-cafe-interactions.mjs
+          node tools/test-corrections.mjs
+          node tools/test-slice3.mjs
+
+      - name: Commit fix and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/slice3-cleanup-fix.yml
+          git add -A
+          git commit -m "Fix Slice 3 cleanup interaction and child log visibility"
+          git push origin HEAD:agent/slice3-cleanup-fix
