@@ -38,6 +38,8 @@ const FILES = [
   'sw.js',
   'firebase-config.js',
   'src/app.js',
+  'src/ledger-actions.js',
+  'src/ledger-actions-store.js',
   'src/polish.js',
   'src/auth.js',
   'src/store.js',
@@ -49,6 +51,7 @@ const FILES = [
   'src/data/cafe-items.js',
   'src/shared/rewards.js',
   'src/shared/ledger.js',
+  'src/shared/corrections.js',
   'src/shared/feedback.js',
   'src/shared/dates.js'
 ];
