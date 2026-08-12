@@ -486,3 +486,104 @@ button[data-polish-busy="true"]::after {
   font-size: .85rem;
   min-height: 36px;
 }
+
+/* ---------- Quest Slice 2: parent Today portal ---------- */
+/* Today · Routines · Log sub-tabs (§17.1). Today opens by default. */
+.subtab-bar {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 14px;
+  padding: 4px;
+  background: var(--line);
+  border-radius: 999px;
+}
+.subtab {
+  flex: 1;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 700;
+  font-size: .9rem;
+  padding: 8px 10px;
+  min-height: 40px;
+  cursor: pointer;
+}
+.subtab.active { background: #fff; color: var(--ink); box-shadow: var(--shadow); }
+.qpanel[hidden] { display: none; }
+
+/* Needs You — the shared attention queue at the top of Today (§17.3). */
+.needsyou-card { border: 2px solid var(--gold); }
+.needsyou-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 4px 0 10px;
+}
+.needsyou-check { display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--muted); }
+.needsyou-check input { width: 20px; height: 20px; accent-color: var(--green); }
+.pill-btn.batch { background: var(--green); color: #fff; }
+.pill-btn.batch:disabled { background: var(--line); color: var(--muted); cursor: default; }
+.needsyou-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.needsyou-row .q-body { flex: 1; min-width: 0; }
+
+/* Today routine board — current routine dominant, future compact. */
+.ptoday-now { border: 2px solid var(--green); }
+.ptoday-progress { margin: 0 0 8px; color: var(--muted); font-size: .9rem; }
+.ptoday-progress strong { color: var(--green); }
+.ptoday-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.ptoday-row:first-of-type { border-top: none; }
+.ptoday-row .q-body { flex: 1; min-width: 0; }
+.ptoday-row .q-body em { color: var(--purple); font-style: normal; font-weight: 700; font-size: .8rem; }
+.later-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.later-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  font-size: .85rem;
+  color: var(--muted);
+}
+.later-chip b { color: var(--ink); }
+
+/* Quest Log rows (§17.11). */
+.questlog-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.questlog-row:first-of-type { border-top: none; }
+.questlog-row .q-body { flex: 1; min-width: 0; }
+
+/* Orientation eyebrows reused on the parent Today board (the Slice 1 rule is
+   scoped to the child Quests screen). */
+[data-pscreen="quests"] .phase-eyebrow {
+  display: block;
+  font-family: var(--font-display);
+  font-size: .5rem;
+  line-height: 1.6;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+[data-pscreen="quests"] .now-eyebrow { color: var(--green); }

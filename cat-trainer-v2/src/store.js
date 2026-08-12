@@ -2,27 +2,27 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=ea220299';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=ea220299';
-import { seededQuests } from './data/quests.js?v=ea220299';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=ea220299';
+import { initFirebase, db, dbSdk } from './firebase.js?v=10b57626';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=10b57626';
+import { seededQuests } from './data/quests.js?v=10b57626';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=10b57626';
 import {
   CARE_NEEDS, areCareNeedsOkay, careCharges, freshCatNeeds, grantCareCharge,
   needsAt, refillNeed
-} from './care.js?v=ea220299';
+} from './care.js?v=10b57626';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=ea220299';
+} from './shared/rewards.js?v=10b57626';
 import {
   SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
   normalizeTransaction, summarizeDay
-} from './shared/ledger.js?v=ea220299';
+} from './shared/ledger.js?v=10b57626';
 import {
   FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable
-} from './shared/feedback.js?v=ea220299';
-import { localDate, localTimeLabel } from './shared/dates.js?v=ea220299';
+} from './shared/feedback.js?v=10b57626';
+import { localDate, localTimeLabel } from './shared/dates.js?v=10b57626';
 
 export const CHILD_ID = 'sirus';
 
@@ -206,7 +206,19 @@ export async function subscribe(familyId, handlers = {}) {
     // approved. Legacy docs predate the field, so a missing status reads approved.
     // approvedBy lets the child's approval toast name the actual approving parent
     // instead of a hard-coded "Mom" (§7.1).
-    s => handlers.onTodayCompletions(s.docs.map(d => ({ questId: d.data().questId, status: d.data().status || 'approved', approvedBy: d.data().approvedBy || null })))
+    // questTitle + createdAt (`at`) are carried so the parent Quest Log can render
+    // a titled, time-ordered history even if the quest was later edited/deleted;
+    // the child UI reads only questId/status and ignores the extra fields.
+    s => handlers.onTodayCompletions(s.docs.map(d => {
+      const data = d.data();
+      return {
+        questId: data.questId,
+        status: data.status || 'approved',
+        approvedBy: data.approvedBy || null,
+        questTitle: data.questTitle || null,
+        at: data.createdAt || null
+      };
+    }))
   ));
   // Pending approvals across all days (a completion could span local midnight
   // before a parent reviews it). Filter on the status field; sort newest-first in

@@ -1,39 +1,39 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=ea220299';
+import { isConfigured } from './firebase.js?v=10b57626';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=ea220299';
-import * as store from './store.js?v=ea220299';
-import { CAT_DEFS } from './data/cats.js?v=ea220299';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=ea220299';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=ea220299';
+} from './auth.js?v=10b57626';
+import * as store from './store.js?v=10b57626';
+import { CAT_DEFS } from './data/cats.js?v=10b57626';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=10b57626';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=10b57626';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=ea220299';
+} from './cafe-interactions.js?v=10b57626';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=ea220299';
+} from './care.js?v=10b57626';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=ea220299';
+} from './shared/rewards.js?v=10b57626';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=ea220299';
+} from './shared/ledger.js?v=10b57626';
 import {
-  localDate, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
+  localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=ea220299';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=ea220299';
+} from './shared/dates.js?v=10b57626';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=10b57626';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questRecurrence,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=ea220299';
+} from './shared/routines.js?v=10b57626';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -109,6 +109,19 @@ function showShell(role) {
 function navParent(name) {
   document.querySelectorAll('[data-pscreen]').forEach(s => s.classList.toggle('active', s.dataset.pscreen === name));
   document.querySelectorAll('[data-pgo]').forEach(b => b.classList.toggle('active', b.dataset.pgo === name));
+  window.scrollTo(0, 0);
+}
+// Parent Quest portal sub-tabs (§17.1: Today · Routines · Log). Today opens by
+// default; routine configuration lives one level deeper. Pure DOM toggle — the
+// panels are always in the tree, so switching never re-subscribes or re-renders.
+function navQuestTab(name) {
+  state.questTab = name;
+  document.querySelectorAll('[data-qpanel]').forEach(p => { p.hidden = p.dataset.qpanel !== name; });
+  document.querySelectorAll('[data-qtab]').forEach(b => {
+    const on = b.dataset.qtab === name;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
   window.scrollTo(0, 0);
 }
 function navChild(name) {
@@ -453,7 +466,7 @@ function celebrateActiveCat() {
 // ---- Rendering --------------------------------------------------------------
 function renderAll() {
   if (!state.child) return;
-  if (state.role === 'parent') { renderApprovals(); renderParentDash(); renderLedger(); renderSirusToday(); renderParentQuests(); renderParentCats(); renderParentCafe(); }
+  if (state.role === 'parent') { renderApprovals(); renderParentDash(); renderLedger(); renderParentToday(); renderQuestLog(); renderSirusToday(); renderParentQuests(); renderParentCats(); renderParentCafe(); }
   else { renderChildHome(); renderChildQuests(); renderChildCats(); renderChildCafe(); renderChildProgress(); }
 }
 
@@ -828,6 +841,148 @@ function renderParentQuests() {
       <div class="qs-body">${qs.map(parentQuestRow).join('')}</div></details>`;
   }).join('');
   el('parent-quests').innerHTML = html || '<div class="empty">No quests yet.</div>';
+}
+
+// ===== Parent Today portal (§17.2) ==========================================
+// The calm operations screen. Reads the SAME planDay + organizeDay model as the
+// child view so the two devices can never disagree about "what is on today".
+// Reward economics are untouched — Today only re-frames the same quests and the
+// same approval actions for the parent.
+
+// Prune the batch-approval selection to completions that are still pending, so
+// one approved on another device (or via the single-approve button) can't linger
+// as a ghost checkbox that Approve-selected would then no-op over.
+function pendingApprovalSelection() {
+  const live = new Set((state.pendingApprovals || []).map(c => c.id));
+  for (const id of [...state.approveSel]) if (!live.has(id)) state.approveSel.delete(id);
+  return state.approveSel;
+}
+
+// Needs You (§17.3 / §26.3): the shared attention queue at the top of Today —
+// shown only when parent action is required. Batch review preserves per-Quest
+// integrity (each row still approves through the idempotent approveCompletion).
+function todayNeedsYouHtml() {
+  const items = state.pendingApprovals || [];
+  if (!items.length) return '';
+  const sel = pendingApprovalSelection();
+  const rows = items.map(c => {
+    const q = state.quests.find(x => x.id === c.questId);
+    const title = (q && q.title) || c.questTitle || 'Quest';
+    const r = c.rewards || {};
+    const pts = q ? q.points : (r.points || 0);
+    const coins = q ? q.coins : (r.coins || 0);
+    const reward = `+${pts}m${q&&q.brain?' · ★'+q.brain:(r.brain?' · ★'+r.brain:'')}${q&&q.energy?' · ⚡'+q.energy:(r.energy?' · ⚡'+r.energy:'')} · ♥${QUEST_BOND}${coins?' · 🪙'+coins:''}`;
+    return `<div class="needsyou-row">
+      <label class="needsyou-check"><input type="checkbox" data-approve-sel="${esc(c.id)}" ${sel.has(c.id)?'checked':''} aria-label="Select ${esc(title)}"></label>
+      <div class="q-body"><strong>${esc(title)}</strong><br><small>${reward}</small></div>
+      <button class="pill-btn reject" data-reject="${esc(c.id)}" aria-label="Return ${esc(title)}">✕</button>
+      <button class="pill-btn approve" data-approve="${esc(c.id)}" aria-label="Approve ${esc(title)}">✓</button>
+    </div>`;
+  }).join('');
+  const selCount = sel.size;
+  const allChecked = selCount === items.length;
+  return `<section class="card needsyou-card">
+    <div class="card-head"><h3>Needs you <span class="badge">${items.length}</span></h3></div>
+    <p class="muted">Sirus finished these — approve to turn them into minutes, or return one to try again.</p>
+    <div class="needsyou-bar">
+      <label class="needsyou-check"><input type="checkbox" data-approve-selall ${allChecked?'checked':''}> Select all</label>
+      <button class="pill-btn approve batch" data-approve-selected ${selCount?'':'disabled'}>✓ Approve ${selCount||''} selected</button>
+    </div>${rows}</section>`;
+}
+
+// One quest row on Today: title, an at-a-glance status chip, and (Slice 2c) its
+// today-only actions. Kept compact so the routine reads as a status board.
+function parentTodayQuestRow(q) {
+  const st = completionStatus(q.id); // null | 'pending' | 'approved'
+  const chip = st === 'approved'
+    ? '<span class="status-chip done">✓ Done</span>'
+    : st === 'pending'
+      ? '<span class="status-chip waiting">⏳ Waiting</span>'
+      : '<span class="status-chip todo">To do</span>';
+  return `<div class="ptoday-row"><div class="q-body"><strong>${esc(q.title)}</strong>${todayFlagHtml(q)}</div>${chip}${todayActionsHtml(q)}</div>`;
+}
+// Slice 2c fills these in (today-only Skip/Move/Next markers + action buttons);
+// in Slice 2b they render nothing so the Today board is a clean read view.
+function todayFlagHtml(_q) { return ''; }
+function todayActionsHtml(_q) { return ''; }
+
+function renderParentToday() {
+  const box = el('p-today');
+  if (!box) return;
+  const active = state.quests.filter(q => q.enabled !== false);
+  const doneIds = new Set(active.filter(q => completionStatus(q.id)).map(q => q.id));
+  // Recurrence + today-only overrides decide what is actually on today; the same
+  // organizer the child uses then groups it into Now / Next / Later / Anytime.
+  const planned = planDay(active, { ymd: localDate(), overrides: state.dayOverrides });
+  const day = organizeDay(planned, { phase: phaseNow(), completedIds: doneIds });
+
+  const sections = [todayNeedsYouHtml(), todayExceptionBarHtml()];
+
+  // Current routine is visually dominant, with progress framed as minutes STILL
+  // AVAILABLE to earn — never as points lost (§3, §15).
+  if (day.now) {
+    const g = day.now;
+    const counts = progressCounts(g.quests, doneIds);
+    const mins = minutesAvailable(g.quests, doneIds);
+    sections.push(`<section class="card ptoday-now">
+      <p class="phase-eyebrow now-eyebrow">RIGHT NOW · ${esc(WINDOW_LABEL[g.window] || g.window)}</p>
+      <p class="ptoday-progress">${counts.complete}/${counts.total} done${mins?` · <strong>${mins}m</strong> still to earn`:' · all done here — great job! 🎉'}</p>
+      ${g.quests.map(parentTodayQuestRow).join('')}</section>`);
+  } else {
+    sections.push('<section class="card ptoday-now"><p class="phase-eyebrow now-eyebrow">RIGHT NOW</p><p class="muted">Nothing scheduled for this part of the day.</p></section>');
+  }
+
+  // Future routines stay compact but discoverable (§17.2).
+  const upcoming = [day.next, ...day.later].filter(Boolean);
+  if (upcoming.length) {
+    const chips = upcoming.map(g => `<span class="later-chip">${esc(WINDOW_LABEL[g.window] || g.window)} <b>${g.quests.length}</b></span>`).join('');
+    sections.push(`<section class="card ptoday-later"><p class="phase-eyebrow">COMING UP</p><div class="later-chips">${chips}</div></section>`);
+  }
+
+  // Anytime is available independently of the day phase.
+  if (day.anytime && day.anytime.length) {
+    sections.push(`<section class="card ptoday-anytime"><p class="phase-eyebrow">ANYTIME</p>${day.anytime.map(parentTodayQuestRow).join('')}</section>`);
+  }
+
+  // Past windows still holding unfinished work — "still needs doing", never a
+  // failure (§10.1). Only rows that are actually unfinished are listed.
+  if (day.stillNeedsDoing.length) {
+    const rows = day.stillNeedsDoing.map(g =>
+      `<p class="phase-eyebrow">${esc(WINDOW_LABEL[g.window] || g.window)} · STILL NEEDS DOING</p>` +
+      g.quests.filter(q => !doneIds.has(q.id)).map(parentTodayQuestRow).join('')
+    ).join('');
+    sections.push(`<section class="card ptoday-still">${rows}</section>`);
+  }
+
+  box.innerHTML = sections.join('');
+}
+// Slice 2c adds the "Today Is Different" bar; Slice 2b renders nothing here.
+function todayExceptionBarHtml() { return ''; }
+
+// Quest Log (§17.11): what happened with responsibilities today — history, not
+// the home screen, and distinct from the Point Ledger. Date-nav + filters are
+// Slice 3; this is today's completions in the order they happened.
+function renderQuestLog() {
+  const box = el('p-quest-log');
+  if (!box) return;
+  const items = (state.todayCompletions || []).slice()
+    .sort((a, b) => (a.at?.seconds ?? 0) - (b.at?.seconds ?? 0));
+  if (!items.length) {
+    box.innerHTML = '<div class="empty">Nothing logged yet today.</div>';
+    return;
+  }
+  box.innerHTML = `<section class="card"><div class="card-head"><h3>Today</h3></div>${
+    items.map(c => {
+      const q = state.quests.find(x => x.id === c.questId);
+      const title = (q && q.title) || c.questTitle || 'Quest';
+      const label = c.status === 'pending'
+        ? '<span class="status-chip waiting">⏳ Waiting for you</span>'
+        : '<span class="status-chip done">✓ Approved</span>';
+      const time = c.at && typeof c.at.seconds === 'number'
+        ? localTimeLabel(new Date(c.at.seconds * 1000)) : '';
+      return `<div class="questlog-row"><div class="q-body"><strong>${esc(title)}</strong>${time?`<br><small>${esc(time)}</small>`:''}</div>${label}</div>`;
+    }).join('')
+  }</section>`;
 }
 
 // Parent review queue: quests Sirus finished that are waiting to become minutes.
@@ -2099,6 +2254,23 @@ function bindEvents() {
     if (role) return chooseRole(role.dataset.chooseRole);
     const pgo = e.target.closest('[data-pgo]'); if (pgo) return navParent(pgo.dataset.pgo);
     const cgo = e.target.closest('[data-cgo]'); if (cgo) return navChild(cgo.dataset.cgo);
+    const qtab = e.target.closest('[data-qtab]'); if (qtab) return navQuestTab(qtab.dataset.qtab);
+
+    // Needs You batch review: approve every currently-selected completion. Each
+    // still routes through the idempotent approveCompletion, so a row already
+    // resolved elsewhere is a safe no-op and per-Quest integrity is preserved.
+    if (e.target.closest('[data-approve-selected]')) {
+      const sel = pendingApprovalSelection();
+      const batch = (state.pendingApprovals || []).filter(c => sel.has(c.id));
+      if (!batch.length) return;
+      let ok = 0;
+      for (const c of batch) {
+        try { await store.approveCompletion(state.familyId, state.uid, c); state.approveSel.delete(c.id); ok++; }
+        catch (err) { /* leave selected so the parent can retry the ones that failed */ }
+      }
+      toast(ok ? `Approved ${ok} ⭐` : 'Could not approve — try again.');
+      return;
+    }
 
     const needCue = e.target.closest('#c-need-cue');
     if (needCue && needCue.dataset.need) { guideCareNeed(needCue.dataset.need); return; }
@@ -2265,6 +2437,25 @@ function bindEvents() {
   document.addEventListener('change', (e) => {
     const cal = e.target.closest('.day-calendar');
     if (cal && cal.value) setSelectedDate(cal.value);
+
+    // Needs You batch selection. A single row toggle updates the set; "Select
+    // all" checks/unchecks every pending row. Re-render so the "Approve N
+    // selected" button count and the select-all state stay in sync.
+    const selBox = e.target.closest('[data-approve-sel]');
+    if (selBox) {
+      const id = selBox.dataset.approveSel;
+      if (selBox.checked) state.approveSel.add(id); else state.approveSel.delete(id);
+      renderParentToday();
+      return;
+    }
+    const selAll = e.target.closest('[data-approve-selall]');
+    if (selAll) {
+      const ids = (state.pendingApprovals || []).map(c => c.id);
+      if (selAll.checked) ids.forEach(id => state.approveSel.add(id));
+      else ids.forEach(id => state.approveSel.delete(id));
+      renderParentToday();
+      return;
+    }
   });
 
   // Deliver any waiting recognition the moment Sirus returns to the tab, so a
