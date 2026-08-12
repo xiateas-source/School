@@ -445,3 +445,44 @@ button[data-polish-busy="true"]::after {
 [data-cscreen="quests"] .focus-mode { padding-top: 4px; }
 [data-cscreen="quests"] .focus-back { margin-bottom: 12px; }
 [data-cscreen="quests"] .focus-card .quest-card { transform: scale(1.02); transform-origin: top center; }
+
+/* ---------- Slice 1 acceptance polish: glanceable hierarchy ---------- */
+/* Orientation eyebrows (RIGHT NOW / NEXT / LATER) sit on their own line. */
+[data-cscreen="quests"] .phase-eyebrow {
+  flex: 0 0 100%;
+  font-family: var(--font-display);
+  font-size: .5rem;
+  line-height: 1.6;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+[data-cscreen="quests"] .phase.now .now-eyebrow { color: var(--green); }
+/* Collapsed "still needs doing" summary — one glanceable row. */
+[data-cscreen="quests"] details.phase.still { padding: 0; }
+[data-cscreen="quests"] details.phase.still > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  font-weight: 600;
+}
+[data-cscreen="quests"] details.phase.still > summary::-webkit-details-marker { display: none; }
+[data-cscreen="quests"] details.phase.still .still-count { color: var(--muted); font-weight: 400; white-space: nowrap; }
+[data-cscreen="quests"] details.phase.still .still-body { padding: 0 14px 12px; }
+/* Anytime See all / Show less. */
+[data-cscreen="quests"] .anytime-toggle {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 6px 14px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--purple);
+  font-size: .85rem;
+  min-height: 36px;
+}

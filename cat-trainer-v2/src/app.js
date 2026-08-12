@@ -1,38 +1,38 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=bfd87b68';
+import { isConfigured } from './firebase.js?v=780f0308';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=bfd87b68';
-import * as store from './store.js?v=bfd87b68';
-import { CAT_DEFS } from './data/cats.js?v=bfd87b68';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=bfd87b68';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=bfd87b68';
+} from './auth.js?v=780f0308';
+import * as store from './store.js?v=780f0308';
+import { CAT_DEFS } from './data/cats.js?v=780f0308';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=780f0308';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=780f0308';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=bfd87b68';
+} from './cafe-interactions.js?v=780f0308';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=bfd87b68';
+} from './care.js?v=780f0308';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=bfd87b68';
+} from './shared/rewards.js?v=780f0308';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=bfd87b68';
+} from './shared/ledger.js?v=780f0308';
 import {
   localDate, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=bfd87b68';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=bfd87b68';
+} from './shared/dates.js?v=780f0308';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=780f0308';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=bfd87b68';
+} from './shared/routines.js?v=780f0308';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -54,6 +54,8 @@ const state = {
   expandedTxn: null,              // id of the row expanded for detail
   completedOpen: false,           // is the child's "Completed today" drawer open
   focusQuestId: null,             // Focus Mode: the one quest Sirus is on (§8)
+  stillOpen: new Set(),           // window keys of expanded "still needs doing" groups
+  anytimeExpanded: false,         // Anytime "See all" toggle
   feedbackEvents: [],             // unseen family-feedback events (child only)
   clientId: null                  // stable per-install id for the claim lease
 };
@@ -926,11 +928,14 @@ function childQuestCard(q) {
     ${status==='pending'?'<div class="q-status">Done! Waiting for Mom ⭐</div>':''}</div>
     ${btn}</div>`;
 }
-// A mission card = the normal quest card plus a Focus affordance for actionable
-// (unhandled) missions. Finished cards render unchanged.
-function childMissionCard(q) {
-  if (completionStatus(q.id)) return childQuestCard(q);
-  return `<div class="mission-wrap">${childQuestCard(q)}<button class="focus-btn" data-focus="${esc(q.id)}" aria-label="Focus on ${esc(q.title)}">🔎 Focus</button></div>`;
+// A mission card = the normal quest card, plus a Focus affordance ONLY where
+// Routine Mode wants "work one at a time" (the NOW block). Everywhere else the
+// Focus row is omitted so long lists don't double in height. Finished cards
+// render unchanged.
+function childMissionCard(q, { focus = false } = {}) {
+  const card = childQuestCard(q);
+  if (!focus || completionStatus(q.id)) return card;
+  return `<div class="mission-wrap">${card}<button class="focus-btn" data-focus="${esc(q.id)}" aria-label="Focus on ${esc(q.title)}">🔎 Focus</button></div>`;
 }
 
 // Now / Next / Later / Anytime + Routine Mode + Focus Mode (§6, §7, §8, §10.1).
@@ -960,43 +965,60 @@ function renderChildQuests() {
   const day = organizeDay(active, { phase: phaseNow(), completedIds: doneIds });
   const sections = [];
 
-  // NOW — Routine Mode: "Pick your next mission" (2–4 eligible).
+  // NOW — Routine Mode: "Pick your next mission" (2–4 eligible). A clear
+  // "Right now" eyebrow orients Sirus to the current routine at a glance.
   if (day.now) {
     const missions = nextMissions(day.now.quests, doneIds, 4);
     const left = progressCounts(day.now.quests, doneIds).left;
     const mins = minutesAvailable(day.now.quests, doneIds);
-    const head = `<div class="phase-head now"><h3>${WINDOW_GLYPH[day.now.window]} ${esc(WINDOW_LABEL[day.now.window])} Missions</h3>
+    const head = `<div class="phase-head now">
+      <span class="phase-eyebrow now-eyebrow">Right now</span>
+      <h3>${WINDOW_GLYPH[day.now.window]} ${esc(WINDOW_LABEL[day.now.window])}</h3>
       <small>${left} left · ${mins} minute${mins === 1 ? '' : 's'} available to earn</small></div>`;
     const body = missions.length
-      ? `<p class="pick-cue">Pick your next mission</p>${missions.map(childMissionCard).join('')}`
+      ? `<p class="pick-cue">Pick your next mission</p>${missions.map(q => childMissionCard(q, { focus: true })).join('')}`
       : `<div class="empty">All done here — great job! 🎉</div>`;
     sections.push(`<section class="phase now">${head}${body}</section>`);
   }
 
   // STILL NEEDS DOING — past windows with unfinished work, neutral (§10.1).
+  // Collapsed by default so it can't bury Now/Next/Later; every unfinished quest
+  // stays one tap away. Open state is app-controlled so a background re-render
+  // can't snap it shut mid-use.
   for (const g of day.stillNeedsDoing) {
     const unfinished = g.quests.filter(q => !doneIds.has(q.id));
-    sections.push(`<section class="phase still"><div class="phase-head"><h3>${WINDOW_GLYPH[g.window]} ${esc(WINDOW_LABEL[g.window])} — still needs doing</h3>
-      <small>${unfinished.length} left</small></div>${unfinished.map(childMissionCard).join('')}</section>`);
+    const open = state.stillOpen.has(g.window);
+    sections.push(`<details class="phase still"${open ? ' open' : ''}>
+      <summary data-toggle-still="${g.window}"><span class="still-head">${WINDOW_GLYPH[g.window]} ${esc(WINDOW_LABEL[g.window])} — still needs doing</span><span class="still-count">${unfinished.length} left</span></summary>
+      <div class="still-body">${unfinished.map(q => childMissionCard(q, { focus: false })).join('')}</div></details>`);
   }
 
-  // NEXT — compact, so it stays discoverable without competing with Now (§6).
+  // NEXT — compact + explicit label, no invented timing (an empty Evening can
+  // sit between, so "starts after <now>" would be misleading).
   if (day.next) {
-    const after = day.now ? WINDOW_LABEL[day.now.window] : 'now';
-    sections.push(`<section class="phase next compact"><div class="phase-head"><h3>${WINDOW_GLYPH[day.next.window]} ${esc(WINDOW_LABEL[day.next.window])}</h3>
-      <small>Starts after ${esc(after)}</small></div></section>`);
+    sections.push(`<section class="phase next compact"><div class="phase-head">
+      <span class="phase-eyebrow">Next</span>
+      <h3>${WINDOW_GLYPH[day.next.window]} ${esc(WINDOW_LABEL[day.next.window])}</h3></div></section>`);
   }
 
-  // LATER — compact headings only.
+  // LATER — compact labelled list of upcoming windows.
   if (day.later.length) {
     const items = day.later.map(g => `<li>${WINDOW_GLYPH[g.window]} ${esc(WINDOW_LABEL[g.window])}</li>`).join('');
-    sections.push(`<section class="phase later compact"><div class="phase-head"><h3>Later</h3></div><ul class="later-list">${items}</ul></section>`);
+    sections.push(`<section class="phase later compact"><div class="phase-head"><span class="phase-eyebrow">Later</span></div><ul class="later-list">${items}</ul></section>`);
   }
 
-  // ANYTIME — eligible flexible quests as full cards.
+  // ANYTIME — flexible-TIMING quests (not "optional"). Cap the initially visible
+  // list with a See all expander so it doesn't recreate the original wall.
   const anytimeOpen = day.anytime.filter(q => !doneIds.has(q.id));
   if (anytimeOpen.length) {
-    sections.push(`<section class="phase anytime"><div class="phase-head"><h3>⭐ Anytime</h3></div>${anytimeOpen.map(childMissionCard).join('')}</section>`);
+    const CAP = 3;
+    const capped = !state.anytimeExpanded && anytimeOpen.length > CAP;
+    const shown = capped ? anytimeOpen.slice(0, CAP) : anytimeOpen;
+    const cards = shown.map(q => childMissionCard(q, { focus: false })).join('');
+    const toggle = anytimeOpen.length > CAP
+      ? `<button class="anytime-toggle" data-toggle-anytime>${state.anytimeExpanded ? 'Show less' : `See all (${anytimeOpen.length})`}</button>`
+      : '';
+    sections.push(`<section class="phase anytime"><div class="phase-head"><h3>⭐ Anytime</h3><small>do these any time today</small></div>${cards}${toggle}</section>`);
   }
 
   // Completed drawer — open state controlled by app state so a background
@@ -2105,6 +2127,20 @@ function bindEvents() {
     if (focusOn) { state.focusQuestId = focusOn.dataset.focus; renderChildQuests(); return; }
     const focusExit = e.target.closest('[data-focus-exit]');
     if (focusExit) { state.focusQuestId = null; renderChildQuests(); return; }
+
+    // Expand/collapse a "still needs doing" group; app-controlled so a background
+    // re-render can't reset it (like the Completed drawer).
+    const stillToggle = e.target.closest('[data-toggle-still]');
+    if (stillToggle) {
+      e.preventDefault();
+      const w = stillToggle.dataset.toggleStill;
+      if (state.stillOpen.has(w)) state.stillOpen.delete(w); else state.stillOpen.add(w);
+      renderChildQuests();
+      return;
+    }
+    // Anytime "See all" / "Show less".
+    const anytimeToggle = e.target.closest('[data-toggle-anytime]');
+    if (anytimeToggle) { e.preventDefault(); state.anytimeExpanded = !state.anytimeExpanded; renderChildQuests(); return; }
 
     const quick = e.target.closest('[data-quick]');
     if (quick) { const note = el('point-note').value.trim(); try { await store.adjustPoints(state.familyId, state.uid, { reasonCode: quick.dataset.quick, note }); const a = QUICK_ACTIONS.find(x=>x.code===quick.dataset.quick); el('point-note').value = ''; toast(`${a.amount>0?'+':''}${a.amount} · ${a.label}`); } catch (err) { toast('Could not save — check connection.'); } return; }
