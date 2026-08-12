@@ -61,6 +61,8 @@ A single action must not silently generate two rewards. The specific case "a Que
 ### 2.3 Daily Essentials boundary — status owned by Quest
 Mandatory daily tasks **do not become Activities**; they remain Quests (`QUEST-TAB-SPEC.md` §2.1). Mental model: **Must do → Daily Essentials/Quests · Choose to do → Activities · Caught doing well → Recognition.**
 
+**Migration inflow (Quest §18.1):** the reverse also holds. During migration, every existing Quest is audited, and any that is an *optional self-directed choice* (a likely candidate: the current `v-move` "Complete a movement challenge" and most `General`-bucket items) **moves into this Activities library** rather than staying in Quest by inertia. Such migrated items earn through the Activity path (`kind:'activity'`, **no** Care Charge or cat stats — §14/§15) and must not double-reward against any prompt-only Quest that points at them (§2.2). Independence Mastery does **not** follow them: mastery is a Quest-only concept for recurring responsibilities (Quest §16.3), not for voluntary Activities.
+
 Activities may **reflect** the Quest-owned First→Then cue (Quest §26.1) — e.g. `First: Morning Essentials → Then: Choose what's next` — but:
 - this is a **read-only visual reflection**, never a lock on Activities or on already-earned screen time (the non-locking rule is Quest §9.1 — not restated here);
 - all required/optional flags, schedules, windows, reminders, timers, Routine Mode, and First→Then rules live in `QUEST-TAB-SPEC.md`;

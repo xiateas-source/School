@@ -17,7 +17,7 @@
 | First → Then sequence cue | **Quest** | Contract in §26.1; Activities may be the "Then" destination |
 | Timers, toothbrush timer, Beat the Clock, game wrappers | **Quest** | Activities defines no timers |
 | I need help, read-aloud | **Quest** | Activities explicitly does not implement help |
-| Support fading + independence/mastery + Celebrate Independence | **Quest** | §16; anti-streak (§16.4) |
+| Support fading + Independence Mastery (tiers, ⭐ marker, celebration) | **Quest** | §16; rolling-window, anti-streak (§16.3–16.4); weekly surface §26.5 |
 | Approval-mode contract (`parent \| self \| together`) + self-complete security model | **Quest** | §26.2; Activities consumes the same enum |
 | Shared **Needs You** parent attention queue | **Quest** | §26.3; Activities submits labeled items into it |
 | "No double reward" rule for a Quest that points at an Activity | **Quest** | §19; the linkage rule lives here |
@@ -233,17 +233,65 @@ Per-Quest, not one child-wide switch: **Parent prompt → App prompt → Checkli
 ### 16.2 Approval modes
 Approval and support are related but separate. Approval uses the **shared three-mode contract** defined in §26.2 (`parent | self | together`). The app must never let Sirus change his own approval mode, reward amount, required status, or support level.
 
-### 16.3 Celebrate Independence
-A meaningful real-world independence gain may earn a **rare, parent-confirmed** celebration (`Independent Hero! You've been remembering to brush your teeth all by yourself.`). Rules:
-- the Daily Essential **stays** in the routine;
-- it creates no permanent extra currency and no streak obligation;
-- support may be reduced after, and later increased again without "losing" the achievement;
-- the app must **not** algorithmically declare mastery after N days — Mom/Abba confirm it from real life.
+### 16.3 Independence Mastery  *(the feature)*
+
+Independence Mastery recognizes **needing less help**, not just completing more tasks. It is the app's positive counterpart to Room to Grow, and its whole point is to reward the app and Mom becoming **less** necessary for things Sirus has learned to manage himself.
+
+**Core distinction:** Mastery never removes the Quest. Brushing teeth is still done every day. Mastery means *"This used to take Mom's help. Now you've got it."* The mastered Quest **stays in the routine** and gains a small **Mastered ⭐** marker, so the routine list itself becomes evidence Sirus is becoming more capable rather than an endless chore list.
+
+#### 16.3.1 The independence signal (per completion)
+Each completion of a support-eligible Quest carries an **independence signal**:
+- `independent` — done with **no reminder**;
+- `one_reminder` — done after **one** reminder;
+- `prompted` — needed active prompting/help (or unmarked).
+
+Capture is deliberately low-friction: a Quest whose `supportMode` is `self_initiated` counts its completions as `independent` automatically; otherwise the parent may set the signal with a quick 3-way tap at approval time (§17.3). **Unmarked defaults to `prompted`**, so mastery only ever rises from positive evidence — never from missing data.
+
+#### 16.3.2 Tiers (forgiving rolling window — NOT consecutive days)
+Mastery is computed over the **last 7 opportunities** for that Quest (an *opportunity* = a day the Quest was scheduled/active; days it wasn't scheduled don't count against him). A missed or prompted day simply isn't a positive tally — it **never erases** progress.
+
+| Tier | Signal (tunable defaults) | Example label |
+|---|---|---|
+| 🌱 **Getting independent** | ≥3 of last 7 opportunities `independent` | *Brushed teeth with no reminder · 4 days* |
+| 🌿 **Almost mastered** | ≥5 of last 7 `independent` **or** `one_reminder`, not yet 5 fully independent | *Morning tidy with one reminder · 5 days* |
+| ⭐ **Mastered** | **≥5 of last 7 opportunities `independent`** | *Put breakfast dishes away independently · 7 days 🎉* |
+
+The 5-of-7 ratio is intentionally forgiving and developmentally appropriate; the exact numbers are tunable but must stay a **rolling ratio, never a consecutive streak.**
+
+#### 16.3.3 Crossing the threshold (the celebration)
+When a Quest first crosses into **Mastered**, Sirus gets the larger one-time moment:
+
+> **⭐ INDEPENDENCE MASTERED!**
+> You've been brushing your teeth on your own.
+> That's something you can handle now.
+
+Then the Quest keeps its place in the routine with a persistent **Mastered ⭐** marker. Celebration/marker rules:
+- fires **once** per Quest per mastery crossing (idempotent; a reload/reconnect never replays it — reuse the `familyFeedback` one-time delivery mechanism);
+- creates **no** permanent extra currency, coins, or point bonus — it is recognition, not economy;
+- delivered via the same durable feedback queue as recognitions (§13 infrastructure), subordinate to higher-priority Café state.
+
+#### 16.3.4 Mastery is sticky (regression is gentle)
+Once ⭐ Mastered, the marker **persists**. If independence later dips below the ratio, the app does **not** revoke ⭐ or say "lost." Support may be quietly raised again (parent action, §16.1) while the ⭐ remains. Only an explicit parent choice clears the marker. This is the concrete guarantee behind *"a missed day shouldn't erase mastery."*
+
+#### 16.3.5 Parent authority
+The rolling-window detector *surfaces* tiers and *fires* the Mastered moment automatically, but parent authority is preserved: Mom/Abba may confirm/dismiss a crossing, adjust the support level, or clear the ⭐. Whether the Mastered celebration auto-fires or waits for a one-tap parent confirmation is **Q-21** (recommended: auto-fire, parent-dismissible). The app must never let **Sirus** change support level, mastery state, or the marker.
 
 ### 16.4 Anti-streak requirement (explicit)
 
-Independence/mastery must **not** be implemented as a fragile streak where one missed day erases progress. There is no "X days in a row" gate for independence, no auto-decay of a support level, and no badge that resets on a miss. Mastery is a **parent-confirmed state**, reversible only by an explicit parent choice, described neutrally (not as "lost").
-*(Note: the Café's separate 14-day Hero-care mechanic in `rewards.js` is cat-care progression, unrelated to independence, and is not a model for this feature.)*
+Independence Mastery must **not** be a fragile streak. There is no "X days in a row" gate, no auto-decay of a support level on a miss, and no marker that resets when a day is missed. The signal is a **rolling ratio (5 of last 7 opportunities)**; a mastered Quest stays mastered until a parent explicitly changes it, described neutrally (never "lost").
+*(Note: the Café's separate 14-day Hero-care mechanic in `rewards.js` is cat-care progression, unrelated to independence, and is not a model for this feature — that one IS a cumulative gate; Independence Mastery is deliberately not.)*
+
+### 16.5 Weekly reflection surface  *(rendered by My Progress — contract §26.5)*
+
+Independence Mastery appears as a **positive pattern in the weekly reflection**, alongside Room to Grow — turning the week into evidence of growing capability:
+
+> **This week** · 18 wins · 3 Room to Grow · 2 Hero's Resets
+> 🌱 **Independence Mastery** — *things you're learning to handle on your own*
+> ⭐ Mastered: Put breakfast dishes away independently · 7 days
+> 🌿 Almost mastered: Morning tidy with one reminder · 5 days
+> 🌱 Getting independent: Brushed teeth with no reminder · 4 days
+
+The weekly view already computes `wins` (earned count), `Room to Grow`, and `Hero's Resets` from `summarizeWeek` (`shared/ledger.js`). The Independence Mastery block is **new Quest-owned data** (derived from per-completion independence signals over the 7-day window), rendered by the My Progress weekly surface. The rendering contract is §26.5. The child view must present this as encouragement, never a score or comparison.
 
 ---
 
@@ -258,7 +306,7 @@ Independence/mastery must **not** be implemented as a fragile streak where one m
 Answers within seconds: What needs me? How is the current routine going? What's still available to earn? Is Sirus asking for help? What's later? Do I need a one-day exception? Current routine may expand; future routines stay compact.
 
 ### 17.3 Needs You  *(the shared attention queue — see §26.3)*
-Compact area at top of Today, shown only when parent action is required: Quest approvals, **I need help**, returned/retry decisions, or a real sync/security problem. Ordinary completions do not accumulate as dismissible notifications.
+Compact area at top of Today, shown only when parent action is required: Quest approvals, **I need help**, returned/retry decisions, or a real sync/security problem. Ordinary completions do not accumulate as dismissible notifications. During approval of a support-eligible Quest, the parent may set the completion's **independence signal** (no reminder / one reminder / with help) with a quick optional 3-way tap (§16.3.1); leaving it unset records `prompted`.
 
 ### 17.4 Batch review
 Select several straightforward submissions → **Approve selected**; open one only when it needs review; return one without affecting others. Batch review preserves per-Quest transaction integrity and must not double-apply on retry (matches current `approveCompletion` idempotency).
@@ -308,11 +356,42 @@ Phone-first: one-handed, large targets, progressive disclosure, batch ops, no re
   // Support / trust / completion (NEW)
   supportMode: 'checklist',    // parent_prompt | app_prompt | checklist | self_initiated
   approvalMode: 'parent',      // shared enum §26.2: parent | self | together
-  independenceCelebratedAt: null // parent-confirmed; does NOT retire the Quest
+  mastery: {                   // Independence Mastery state (§16.3) — sticky
+    tier: null,                // null | getting_independent | almost | mastered
+    masteredAt: null,          // set once on first Mastered crossing; does NOT retire the Quest
+    markerCleared: false       // only a parent may clear the ⭐
+  }
 }
 ```
 
+Each **completion** additionally records an `independenceSignal` (`independent | one_reminder | prompted`, §16.3.1) so the rolling-window detector and the weekly reflection can read it. This is a completion-level field (like the existing `attemptId`/`status`), not a quest-definition field.
+
 Today-only actions (Skip Today, Move Later, presets) must be **instance/day overrides**, never template mutations. `section` is preserved as-is; `routineId`/`timeWindow` layer on top so legacy quests keep rendering during migration.
+
+### 18.1 Migration: classify every existing Quest  *(mandatory audit rule)*
+
+**Rule:** during migration, *every* existing Quest must be explicitly classified as one of:
+- a **responsibility** → stays in Quest as a Daily Essential or an optional/bonus Quest (§2.2), tagged `isDailyEssential: true|false`; or
+- an **optional self-directed choice** → **migrated out to the Activities library** (`ACTIVITIES-TAB-SPEC.md`).
+
+**No item may remain in Quest merely because that is where optional activities historically lived.** The legacy `General` bucket ("anytime quests that aren't part of a morning/night routine") and the `Move` section are the prime sources of items that likely belong in Activities. Every quest gets a deliberate decision; the default is **not** "leave it in Quest."
+
+**Decision test:** *Is this expected regardless of whether Sirus chooses it?* Yes → responsibility (Quest). No → optional choice (Activities candidate).
+
+**Consequence of moving a Quest → Activity:** it stops granting a **Care Charge** and cat stats (Brain/Energy/Bond/coins) and instead earns through the Activity path (`kind:'activity'`, no Care Charge — Activities §14/§15). It must not double-reward against any remaining prompt-only Quest (§19.1).
+
+**Disposition of the current `DEFAULT_QUESTS`:**
+
+| Quest | Section | Recommended class | Rationale |
+|---|---|---|---|
+| Bathroom, Take Wesley out, Check Wesley's water, Fold bedding, Get dressed, Brush teeth, Wash face/fix hair, Eat breakfast + wash bowl | Morning | **Quest — Daily Essential** | Required personal care / pet care / routine |
+| Reset one shared space (`t-space`) | Tidy | **Quest — Daily Essential** | Required household responsibility |
+| Night teeth & pajamas, Tidy & make bed | Night | **Quest — Daily Essential** | Required bedtime routine |
+| Read or complete a Brain Quest (`b-read`) | Brain | **Family decides** | Required *reading* → Quest; open-ended "a Brain Quest" flavor → could be an Activities choice. Split if both are wanted. |
+| Complete a movement challenge (`v-move`) | Move | **Migrate to Activities (recommended)** | Movement is Activities' domain; keep in Quest only if daily movement is a genuine requirement. Resolve §19.1 double-reward with Activities' Move library. |
+| *(any family-created `General` items)* | General | **Audit each** | Most anytime/optional items belong in Activities; keep in Quest only if truly required |
+
+This audit is a gate on Quest Slice 1 (child view) and on Activities Slice 1 (the migrated items must land in the Activity library, not vanish).
 
 ---
 
@@ -371,8 +450,9 @@ Quest noncompletion and behavior deductions are separate systems. Not finishing 
 | Q-17 | Batch approvals? | **Yes**; preserve per-Quest integrity |
 | Q-18 | Today-only vs future edits separate? | **Yes, required** |
 | Q-19 | Quest Library? | **Recommended** |
-| Q-20 | Does mastery remove a Daily Essential? | **No** — fade support, keep structure (§16) |
-| Q-21 | Independence milestone | **Parent-confirmed Celebrate Independence**, rare, **non-streak (§16.4)** |
+| Q-20 | Does mastery remove a Daily Essential? | **No** — Quest stays with a Mastered ⭐; fade support (§16.3) |
+| Q-21 | Independence Mastery signal + celebration | **Rolling 5-of-7 opportunities** (not a streak); Mastered ⭐ is sticky; **open:** does the Mastered moment auto-fire (recommended, parent-dismissible) or wait for one-tap parent confirmation? |
+| Q-24 | How is the per-completion independence signal captured? | Auto `independent` when `supportMode=self_initiated`; else optional parent 3-way tap at approval; unmarked → `prompted` (§16.3.1) |
 | Q-22 | One-tap unusual-day presets? | **Recommended**; auto-return next day |
 | Q-23 | How much parent tooling in MVP? | Enough to materially cut current burden |
 
@@ -393,10 +473,11 @@ Because Activities depends on Quest, the consumable contracts are collected in *
 - **Point/coin/Brain/Energy/Bond writes:** implemented at approval; ledger `kind:'quest'`.
 - **Rules:** child may only create a `pending` completion; ledger is **parent-write only**; `validPointKind` = adjust/quest/redeem/correction.
 - **Child rendering:** single flat "My Quests" list (`#c-quests`) — the source of overwhelm §1.2 confirms.
+- **Migration audit (§18.1):** classify every existing Quest as responsibility-stays or optional-moves-to-Activities; no default-to-Quest. This gates Slice 1.
 - Reconcile against My Progress + Activities before feature code.
 
 ### Slice 1 — Routine-focused child view
-Now/Next/Later/Anytime · Routine Mode · Pick your next mission · Focus Mode · progress + points-available language · Still needs doing. Preserve all reward economics. **Requires the §18 routine fields.**
+Run the §18.1 classification first (move optional items to Activities). Then: Now/Next/Later/Anytime · Routine Mode · Pick your next mission · Focus Mode · progress + points-available language · Still needs doing. Preserve all reward economics. **Requires the §18 routine fields.**
 
 ### Slice 2 — Parent Today portal + routine foundations
 Today·Routines·Log shell (Today default) · Needs You (§26.3) · batch approval · routine groups/templates + dayparts · recurrence · today-only Skip/Move/Next/reorder · Today Is Different · overrides never mutate templates.
@@ -407,8 +488,8 @@ Routine editor (drag/dependencies) · duplicate/pause/archive/bulk · Quest Libr
 ### Slice 4 — Timers and playful challenge
 Reusable timer component · fixed-duration · 2:00 toothbrush · optional Beat the Clock · count-up · first wrappers. Reward amount unchanged.
 
-### Slice 5 — Support and independence
-I need help · read-aloud · Build My Routine · support-level controls · parent-confirmed Celebrate Independence (non-streak, non-retiring) · evaluate per-Quest trusted self-completion **only after the §26.2 security model exists**.
+### Slice 5 — Support and Independence Mastery
+I need help · read-aloud · Build My Routine · support-level controls · per-completion `independenceSignal` capture (§16.3.1) · rolling 5-of-7 mastery detector + tiers · Mastered ⭐ marker (sticky) · one-time Mastered celebration via `familyFeedback` · 🌱 Independence Mastery block in the weekly reflection (§26.5) · evaluate per-Quest trusted self-completion **only after the §26.2 security model exists**.
 
 ### Slice 6 — Refinement
 General/optional-Quest ↔ Activities boundary · phone test of Today flow · normal-week test · minimal-prompt routine test.
@@ -443,10 +524,16 @@ General/optional-Quest ↔ Activities boundary · phone test of Today flow · no
 - [ ] Quest Library + duplicate preserve config; Log is date-based history separate from the Point Ledger.
 - [ ] Ordinary days manageable from Today without opening Routines.
 
-### Support & independence
-- [ ] Mastering a Daily Essential does not remove it from the routine.
-- [ ] Parent can reduce support while leaving the Quest visible, and increase it later without erasing a milestone.
-- [ ] Celebrate Independence is parent-confirmed, **not** streak-triggered, and creates no permanent currency and does not retire the task.
+### Support & Independence Mastery
+- [ ] Mastering a Daily Essential does **not** remove it from the routine; it gains a persistent Mastered ⭐ marker.
+- [ ] Mastery uses a **rolling 5-of-7-opportunities** signal, never a consecutive streak; a missed day never erases progress or the ⭐.
+- [ ] The Mastered crossing fires a one-time celebration (idempotent, no replay) and creates no permanent currency or point bonus.
+- [ ] Parent can reduce support while leaving the Quest visible, and raise it again without the app saying an achievement was "lost"; only a parent can clear the ⭐. Sirus can never change support/mastery state.
+- [ ] The weekly reflection shows a 🌱 Independence Mastery block (Getting independent / Almost mastered / Mastered) beside wins / Room to Grow / Hero's Resets, as encouragement — never a grade or comparison.
+
+### Migration classification (§18.1)
+- [ ] Every existing Quest is explicitly classed responsibility (stays) or optional (moves to Activities); none stays in Quest by default.
+- [ ] Items moved to Activities land in the Activity library and earn via `kind:'activity'` (no Care Charge / cat stats) without double-rewarding a prompt-only Quest.
 
 ### Existing-system compatibility
 - [ ] Completion still grants its Care Charge; approval still controls permanent rewards; returning never claws back care.
@@ -474,3 +561,10 @@ Quest owns the **Needs You** queue (§17.3). Activities' `Parent approves` compl
 
 ### 26.4 Navigation (shared layout — currently unresolved)
 The child bottom-nav today has **5** items (Home · Quests · Cats · Café · Progress). Adding an Activities tab makes **6**, which the Activities spec (A-01) flags as crowding. This is a **shared** layout decision neither spec owns unilaterally. Recommended options, in order: (1) Activities as a prominent destination from Home rather than a 6th permanent tab; (2) merge Cats into Café to free a slot; (3) accept 6 tabs. **Unresolved — needs a family decision before Activities Slice 1.**
+
+### 26.5 Independence Mastery weekly-reflection render contract
+Quest owns the **mastery data** (per-completion `independenceSignal`, per-Quest `mastery.tier`/`masteredAt`, computed over the last 7 opportunities — §16.3). The **My Progress weekly reflection** owns the *rendering surface* and displays the 🌱 Independence Mastery block next to the existing `wins` / Room to Grow / Hero's Reset totals from `summarizeWeek` (`shared/ledger.js`). Contract:
+- Quest exposes a per-Quest tier + human label (e.g. `Brushed teeth with no reminder · 4 days`) for the visible 7-day window; My Progress lists them under the three tier headings (§16.5).
+- The block is **read-only encouragement** — never a grade, percentage, best/worst day, or comparison (consistent with `summarizeWeek`'s existing "no grade" rule).
+- Because the signal lives on quest **completions**, `summarizeWeek` (which reads `pointTransactions`) cannot compute it alone; the weekly view must also read the window's completions (or a Quest-provided summary). Keep queries single-field (by `localDate`/window) and aggregate in memory to avoid new composite indexes.
+- The one-time **Mastered** celebration is delivered through the existing `familyFeedback` queue (§16.3.3), not through the weekly view.
