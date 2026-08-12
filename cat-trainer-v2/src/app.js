@@ -1,38 +1,39 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=780f0308';
+import { isConfigured } from './firebase.js?v=ea220299';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=780f0308';
-import * as store from './store.js?v=780f0308';
-import { CAT_DEFS } from './data/cats.js?v=780f0308';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=780f0308';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=780f0308';
+} from './auth.js?v=ea220299';
+import * as store from './store.js?v=ea220299';
+import { CAT_DEFS } from './data/cats.js?v=ea220299';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=ea220299';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=ea220299';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=780f0308';
+} from './cafe-interactions.js?v=ea220299';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=780f0308';
+} from './care.js?v=ea220299';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=780f0308';
+} from './shared/rewards.js?v=ea220299';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=780f0308';
+} from './shared/ledger.js?v=ea220299';
 import {
   localDate, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=780f0308';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=780f0308';
+} from './shared/dates.js?v=ea220299';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=ea220299';
 import {
-  organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow,
+  organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
+  questTimeWindow, questIsDailyEssential, questRecurrence,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=780f0308';
+} from './shared/routines.js?v=ea220299';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -56,6 +57,9 @@ const state = {
   focusQuestId: null,             // Focus Mode: the one quest Sirus is on (§8)
   stillOpen: new Set(),           // window keys of expanded "still needs doing" groups
   anytimeExpanded: false,         // Anytime "See all" toggle
+  dayOverrides: {},               // today's per-quest overrides (skip/move/next) by questId
+  questTab: 'today',              // parent Quest portal sub-tab: today | routines | log
+  approveSel: new Set(),          // parent Today: batch-approval selection (completion ids)
   feedbackEvents: [],             // unseen family-feedback events (child only)
   clientId: null                  // stable per-install id for the claim lease
 };
@@ -962,7 +966,11 @@ function renderChildQuests() {
     state.focusQuestId = null;
   }
 
-  const day = organizeDay(active, { phase: phaseNow(), completedIds: doneIds });
+  // Recurrence + today-only overrides decide what is actually on for today; the
+  // result feeds the same Now/Next/Later organizer. Legacy quests (everyday, no
+  // override) pass through unchanged, preserving accepted Slice 1 UX.
+  const planned = planDay(active, { ymd: localDate(), overrides: state.dayOverrides });
+  const day = organizeDay(planned, { phase: phaseNow(), completedIds: doneIds });
   const sections = [];
 
   // NOW — Routine Mode: "Pick your next mission" (2–4 eligible). A clear
@@ -2349,6 +2357,7 @@ function bindEvents() {
     } catch (err) { toast('Could not save — check connection.'); }
   });
   el('quest-save').addEventListener('click', saveQuestFromDialog);
+  el('q-recurrence').addEventListener('change', syncQuestDaysRow);
   initCafeInteractions();
 }
 
@@ -2370,12 +2379,25 @@ async function handleComplete(questId) {
 }
 
 let editingQuestId = null;
+function syncQuestDaysRow() {
+  el('q-days-row').hidden = el('q-recurrence').value !== 'selected_days';
+}
 function openQuestDialog(id) {
   editingQuestId = id;
   const q = id ? state.quests.find(x => x.id === id) : null;
   el('quest-dialog-title').textContent = id ? 'Edit quest' : 'Add quest';
   el('q-title').value = q ? q.title : '';
   el('q-section').value = q ? q.section : 'Morning';
+  // Routine fields fall back to Slice 1's read-time derivation for legacy quests,
+  // so opening an unedited quest shows its effective window/schedule; saving then
+  // persists them explicitly (write-on-edit — no bulk backfill).
+  el('q-window').value = q ? questTimeWindow(q) : 'morning';
+  el('q-essential').checked = q ? questIsDailyEssential(q) : false;
+  const rec = q ? questRecurrence(q) : { type: 'everyday' };
+  el('q-recurrence').value = rec.type === 'one_time' ? 'everyday' : rec.type; // one_time not editable here yet
+  const days = new Set(rec.type === 'selected_days' && Array.isArray(rec.days) ? rec.days : []);
+  document.querySelectorAll('.q-day').forEach(cb => { cb.checked = days.has(cb.value); });
+  syncQuestDaysRow();
   el('q-points').value = q ? q.points : 1;
   el('q-brain').value = q ? q.brain : 0;
   el('q-energy').value = q ? q.energy : 1;
@@ -2383,9 +2405,17 @@ function openQuestDialog(id) {
   el('q-enabled').checked = q ? q.enabled !== false : true;
   el('quest-dialog').showModal();
 }
+function recurrenceFromDialog() {
+  const type = el('q-recurrence').value;
+  if (type !== 'selected_days') return { type };
+  const days = [...document.querySelectorAll('.q-day')].filter(cb => cb.checked).map(cb => cb.value);
+  // No days chosen degrades to everyday rather than an unreachable quest.
+  return days.length ? { type: 'selected_days', days } : { type: 'everyday' };
+}
 async function saveQuestFromDialog() {
   const title = el('q-title').value.trim(); if (!title) return;
   const existing = editingQuestId ? state.quests.find(x => x.id === editingQuestId) : null;
+  const timeWindow = el('q-window').value;
   const quest = {
     id: editingQuestId || `q-${Date.now()}`,
     title, section: el('q-section').value,
@@ -2394,7 +2424,12 @@ async function saveQuestFromDialog() {
     energy: Math.max(0, Number(el('q-energy').value) || 0),
     coins: Math.max(0, Number(el('q-coins').value) || 0),
     enabled: el('q-enabled').checked,
-    order: existing ? existing.order : state.quests.length
+    order: existing ? existing.order : state.quests.length,
+    // Explicit §18 routine fields, persisted on every save (write-on-edit).
+    timeWindow,
+    routineId: timeWindow,
+    isDailyEssential: el('q-essential').checked,
+    recurrence: recurrenceFromDialog()
   };
   await store.saveQuest(state.familyId, quest);
   toast(editingQuestId ? 'Quest updated.' : 'Quest added.');

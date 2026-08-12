@@ -8,8 +8,8 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=780f0308">
-  <link rel="stylesheet" href="styles/polish.css?v=780f0308">
+  <link rel="stylesheet" href="styles/base.css?v=ea220299">
+  <link rel="stylesheet" href="styles/polish.css?v=ea220299">
 </head>
 <body>
   <div id="app">
@@ -311,12 +311,35 @@
     <h2 id="quest-dialog-title">Add quest</h2>
     <label>Name<input id="q-title" maxlength="50" required></label>
     <label>Section<select id="q-section"><option>Morning</option><option>Brain</option><option>Move</option><option>Tidy</option><option>Night</option><option>General</option></select></label>
+    <label>When<select id="q-window">
+      <option value="morning">Morning</option>
+      <option value="school">School</option>
+      <option value="anytime">Anytime</option>
+      <option value="evening">Evening</option>
+      <option value="night">Night</option>
+    </select></label>
+    <label>Repeats<select id="q-recurrence">
+      <option value="everyday">Every day</option>
+      <option value="weekdays">Weekdays (Mon–Fri)</option>
+      <option value="weekends">Weekends (Sat–Sun)</option>
+      <option value="selected_days">Chosen days…</option>
+    </select></label>
+    <div class="weekday-row" id="q-days-row" hidden>
+      <label><input type="checkbox" class="q-day" value="SU">Su</label>
+      <label><input type="checkbox" class="q-day" value="MO">Mo</label>
+      <label><input type="checkbox" class="q-day" value="TU">Tu</label>
+      <label><input type="checkbox" class="q-day" value="WE">We</label>
+      <label><input type="checkbox" class="q-day" value="TH">Th</label>
+      <label><input type="checkbox" class="q-day" value="FR">Fr</label>
+      <label><input type="checkbox" class="q-day" value="SA">Sa</label>
+    </div>
     <div class="reward-inputs">
       <label>Points<input id="q-points" type="number" value="1"></label>
       <label>Brain<input id="q-brain" type="number" min="0" value="0"></label>
       <label>Energy<input id="q-energy" type="number" min="0" value="1"></label>
       <label>Coins<input id="q-coins" type="number" min="0" value="1"></label>
     </div>
+    <label class="check-row"><input id="q-essential" type="checkbox"> Daily Essential — expected every scheduled day</label>
     <label class="check-row"><input id="q-enabled" type="checkbox" checked> Active — Sirus can do this task</label>
     <div class="btn-row">
       <button class="text-button" value="cancel">Cancel</button>
@@ -334,10 +357,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=780f0308"></script>
-  <script type="module" src="src/ledger-actions.js?v=780f0308"></script>
+  <script type="module" src="src/app.js?v=ea220299"></script>
+  <script type="module" src="src/ledger-actions.js?v=ea220299"></script>
   <!-- Presentation-only device/accessibility layer; no store writes or game state. -->
-  <script type="module" src="src/polish.js?v=780f0308"></script>
+  <script type="module" src="src/polish.js?v=ea220299"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.

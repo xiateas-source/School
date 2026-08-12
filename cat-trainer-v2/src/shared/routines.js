@@ -12,7 +12,7 @@
 // without an emulator, and the child screen and any later parent view can never
 // disagree about them.
 
-import { FAMILY_TIMEZONE } from './dates.js?v=780f0308';
+import { FAMILY_TIMEZONE, weekday } from './dates.js?v=ea220299';
 
 // Day-phase windows, in chronological order. 'anytime' is intentionally NOT a
 // day phase — it's a flexible bucket shown alongside Now/Next/Later (§6).
@@ -69,6 +69,57 @@ export function questIsDailyEssential(quest) {
 
 export function questDependsOn(quest) {
   return quest && Array.isArray(quest.dependsOnQuestIds) ? quest.dependsOnQuestIds : [];
+}
+
+// --- Recurrence (Slice 2) ----------------------------------------------------
+// Legacy quests carry no recurrence and default to everyday, preserving the
+// accepted Slice 1 behavior (every enabled quest shows every day). Explicit
+// recurrence is written on edit/create (write-on-edit, no bulk backfill).
+export const RECURRENCE_TYPES = ['everyday', 'weekdays', 'weekends', 'selected_days', 'one_time'];
+// Index-aligned with dates.weekday() (0 = Sunday … 6 = Saturday).
+export const WEEKDAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+
+export function questRecurrence(quest) {
+  const r = quest && quest.recurrence;
+  if (r && RECURRENCE_TYPES.includes(r.type)) return r;
+  return { type: 'everyday' };
+}
+
+// Is this quest scheduled on the given calendar date ('YYYY-MM-DD')?
+export function isScheduledOn(quest, ymd, wd = weekday(ymd)) {
+  const r = questRecurrence(quest);
+  switch (r.type) {
+    case 'weekdays': return wd >= 1 && wd <= 5;
+    case 'weekends': return wd === 0 || wd === 6;
+    case 'selected_days': return Array.isArray(r.days) && r.days.includes(WEEKDAY_CODES[wd]);
+    case 'one_time': return r.date === ymd;
+    case 'everyday':
+    default: return true;
+  }
+}
+
+// --- Effective day plan (recurrence + today-only overrides) -------------------
+// The single place the child view and the parent Today view agree on "what is on
+// for this exact day". Pure: `overrides` is a map questId → { action, window? }
+// supplied by the caller (Slice 2c persists them as questDayOverrides). Returns
+// shallow copies when a window is overridden so organizeDay sees the effective
+// window without mutating the stored quest. Legacy quests with no recurrence and
+// no overrides pass through unchanged, so accepted Slice 1 UX is preserved.
+export function planDay(quests, { ymd, overrides = {} } = {}) {
+  const wd = ymd ? weekday(ymd) : null;
+  const out = [];
+  for (const q of quests) {
+    if (ymd && !isScheduledOn(q, ymd, wd)) continue;      // recurrence filter
+    const ov = overrides[q.id];
+    if (ov && ov.action === 'skip') continue;             // hidden for today only
+    if (ov && ov.action === 'move' && ov.window) { out.push({ ...q, timeWindow: ov.window, movedToday: true }); continue; }
+    if (ov && ov.action === 'next') { out.push({ ...q, nextToday: true }); continue; }
+    out.push(q);
+  }
+  // "Make next": stable-bump flagged quests to the front so they lead their
+  // window in organizeDay (modern engines' Array.sort is stable).
+  out.sort((a, b) => (b.nextToday ? 1 : 0) - (a.nextToday ? 1 : 0));
+  return out;
 }
 
 // --- Time of day ------------------------------------------------------------
