@@ -3,7 +3,7 @@ import {
   DAY_PHASES, TIME_WINDOWS,
   migrationDisposition, questTimeWindow, questIsDailyEssential, questDependsOn,
   phaseForHour, isEligible, nextMissions, minutesAvailable, progressCounts, organizeDay,
-  questRecurrence, isScheduledOn, planDay
+  questRecurrence, isScheduledOn, planDay, laterWindowFor, presetTargets
 } from '../src/shared/routines.js';
 
 // --- Read-time defaults from legacy shape (no backfill) ----------------------
@@ -219,5 +219,52 @@ const moveDay = organizeDay(movePlan, { phase: 'morning', completedIds: [] });
 assert.equal(moveDay.now.quests.some(q => q.id === 'm-teeth'), false, 'moved quest leaves the morning Now block');
 assert.ok([moveDay.next, ...moveDay.later].some(g => g && g.window === 'evening' && g.quests.some(q => q.id === 'm-teeth')),
   'moved quest now appears under the evening window');
+
+// --- Slice 2c: "Move to later" never goes backward ---------------------------
+// The target is strictly later than BOTH the quest's window and the current
+// daypart, so a deferral can never land in a slot that has already passed.
+assert.equal(laterWindowFor('morning', 'morning'), 'school', 'morning at morning → school');
+assert.equal(laterWindowFor('school', 'school'), 'evening');
+assert.equal(laterWindowFor('evening', 'evening'), 'night');
+// Past-window quest deferred late in the day uses the CURRENT phase, not its own
+// (already-passed) window, so it moves forward from "now", never backward.
+assert.equal(laterWindowFor('morning', 'evening'), 'night', 'a stale morning quest in the evening → night, not school');
+assert.equal(laterWindowFor('morning', 'night'), 'anytime', 'no daypart later than night → flexible Anytime');
+// A future-window quest still can't be pulled earlier than its own window.
+assert.equal(laterWindowFor('night', 'morning'), 'anytime', 'night quest in the morning → anytime, never a morning/school slot');
+// Night is the last daypart → Anytime fallback (flexible, still today).
+assert.equal(laterWindowFor('night', 'night'), 'anytime');
+// An Anytime quest is already the most flexible slot → no genuinely-later target,
+// so the action is omitted rather than written as a misleading no-op.
+assert.equal(laterWindowFor('anytime', 'morning'), null, 'anytime quest has nothing later');
+assert.equal(laterWindowFor('anytime', 'night'), null);
+
+// --- Slice 2c: presets respect recurrence (no leakage) -----------------------
+// 2026-08-10 = Monday, 2026-08-15 = Saturday.
+const presetRecur = [
+  { id: 'daily', section: 'Morning', points: 1 },                                   // everyday, morning, essential
+  { id: 'wkday-school', section: 'Brain', points: 1, recurrence: { type: 'weekdays' } }, // school window, weekdays
+  { id: 'wkend-tidy', section: 'Tidy', points: 1, recurrence: { type: 'weekends' } },    // anytime, weekends
+  { id: 'once-mon', section: 'Morning', timeWindow: 'morning', points: 1, recurrence: { type: 'one_time', date: '2026-08-10' }, isDailyEssential: false }, // morning window, one-time Monday, non-essential
+  { id: 'off', section: 'Morning', points: 1, enabled: false }                       // disabled → never a target
+];
+// Sick day on MONDAY skips only Monday's scheduled quests (weekend quest excluded,
+// disabled quest excluded).
+assert.deepEqual(presetTargets(presetRecur, 'sick', '2026-08-10').map(q => q.id).sort(),
+  ['daily', 'once-mon', 'wkday-school'], 'sick-day Monday targets only Monday-scheduled, enabled quests');
+// Same preset on SATURDAY: the weekday + one-time-Monday quests are not due, so
+// they never leak into the exception set.
+assert.deepEqual(presetTargets(presetRecur, 'out', '2026-08-15').map(q => q.id).sort(),
+  ['daily', 'wkend-tidy'], 'out-all-day Saturday excludes weekday + wrong-date one-time quests');
+// School off targets only the school-window quest that is actually scheduled today.
+assert.deepEqual(presetTargets(presetRecur, 'school_off', '2026-08-10').map(q => q.id), ['wkday-school']);
+assert.deepEqual(presetTargets(presetRecur, 'school_off', '2026-08-15').map(q => q.id), [], 'no school quest scheduled Saturday → nothing skipped');
+// Easy morning skips non-essential morning quests only; the essential daily
+// morning quest stays, the non-essential one-time morning quest goes.
+assert.deepEqual(presetTargets(presetRecur, 'easy_morning', '2026-08-10').map(q => q.id), ['once-mon'],
+  'easy-morning keeps essentials, skips the non-essential morning quest');
+// Custom / unknown presets target nothing (parent uses per-quest controls).
+assert.deepEqual(presetTargets(presetRecur, 'custom', '2026-08-10'), []);
+assert.deepEqual(presetTargets(presetRecur, 'bogus', '2026-08-10'), []);
 
 console.log('Routine organization + recurrence/overrides (Quest Slice 1–2): all checks passed.');

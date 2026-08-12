@@ -12,7 +12,7 @@
 // without an emulator, and the child screen and any later parent view can never
 // disagree about them.
 
-import { FAMILY_TIMEZONE, weekday } from './dates.js?v=2fa8bc91';
+import { FAMILY_TIMEZONE, weekday } from './dates.js?v=24175612';
 
 // Day-phase windows, in chronological order. 'anytime' is intentionally NOT a
 // day phase — it's a flexible bucket shown alongside Now/Next/Later (§6).
@@ -120,6 +120,38 @@ export function planDay(quests, { ymd, overrides = {} } = {}) {
   // window in organizeDay (modern engines' Array.sort is stable).
   out.sort((a, b) => (b.nextToday ? 1 : 0) - (a.nextToday ? 1 : 0));
   return out;
+}
+
+// --- Today-only exception helpers (Slice 2c) ---------------------------------
+// The window a "Move to later" (§17.5) sends a quest to on the current day:
+// strictly later than BOTH the quest's own window and the current daypart, so a
+// deferral can never land in a slot that has already passed. 'anytime' is the
+// flexible fallback once there is no later daypart; null means there is no
+// genuinely-later slot (an 'anytime' quest is already the most flexible), so the
+// caller can omit the action instead of writing a misleading no-op.
+export function laterWindowFor(currentWindow, phase) {
+  const winIdx = DAY_PHASES.indexOf(currentWindow); // -1 for 'anytime'
+  if (winIdx === -1) return null;
+  const refIdx = Math.max(winIdx, DAY_PHASES.indexOf(phase));
+  return refIdx < DAY_PHASES.length - 1 ? DAY_PHASES[refIdx + 1] : 'anytime';
+}
+
+// "Today Is Different" presets (§17.6). Which of `quests` a one-day preset applies
+// to on `ymd`. Pure, so the store's batch write and the tests agree on one rule.
+// Only quests actually SCHEDULED for `ymd` are eligible — recurrence (weekday /
+// weekend / one-time) never leaks a not-due quest into a one-day exception.
+// 'custom' and any unknown preset target nothing (the parent uses per-quest
+// controls); the store validates the preset name separately.
+export const TODAY_PRESETS = ['sick', 'out', 'school_off', 'easy_morning', 'custom'];
+export function presetTargets(quests, preset, ymd) {
+  const scheduled = (quests || []).filter(q => q && q.enabled !== false && isScheduledOn(q, ymd));
+  switch (preset) {
+    case 'sick':
+    case 'out':          return scheduled;
+    case 'school_off':   return scheduled.filter(q => questTimeWindow(q) === 'school');
+    case 'easy_morning': return scheduled.filter(q => questTimeWindow(q) === 'morning' && !questIsDailyEssential(q));
+    default:             return [];
+  }
 }
 
 // --- Time of day ------------------------------------------------------------

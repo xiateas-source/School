@@ -1,39 +1,39 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=2fa8bc91';
+import { isConfigured } from './firebase.js?v=24175612';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=2fa8bc91';
-import * as store from './store.js?v=2fa8bc91';
-import { CAT_DEFS } from './data/cats.js?v=2fa8bc91';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=2fa8bc91';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=2fa8bc91';
+} from './auth.js?v=24175612';
+import * as store from './store.js?v=24175612';
+import { CAT_DEFS } from './data/cats.js?v=24175612';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=24175612';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=24175612';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=2fa8bc91';
+} from './cafe-interactions.js?v=24175612';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=2fa8bc91';
+} from './care.js?v=24175612';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=2fa8bc91';
+} from './shared/rewards.js?v=24175612';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=2fa8bc91';
+} from './shared/ledger.js?v=24175612';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=2fa8bc91';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=2fa8bc91';
+} from './shared/dates.js?v=24175612';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=24175612';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
-  questTimeWindow, questIsDailyEssential, questRecurrence,
-  DAY_PHASES, WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=2fa8bc91';
+  questTimeWindow, questIsDailyEssential, questRecurrence, laterWindowFor,
+  WINDOW_LABEL, WINDOW_GLYPH
+} from './shared/routines.js?v=24175612';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -67,6 +67,10 @@ const state = {
 // Selected-day + week-activity subscriptions live outside the main snapshot fan-
 // out so navigating dates only re-listens to what changed (§12).
 let daySubUnsub = null, weekSubUnsub = null, weekTxnUnsub = null, daySubToken = 0, weekSubToken = 0, weekTxnToken = 0;
+// Date-scoped "today" reads (completions + overrides) + the midnight-rollover
+// watcher, so the day resets without a reload. todaySubDate is the day the
+// current listeners are bound to; the token guards a slow snapshot after a re-point.
+let todaySubUnsub = null, todaySubDate = null, todaySubToken = 0, dayWatchTimer = null;
 // Family-feedback delivery: one shared subscription + a re-entrancy guard so only
 // one card shows at a time (§7.0).
 let feedbackUnsub = null, feedbackShowing = false;
@@ -173,16 +177,56 @@ async function subscribeAll() {
     onCats: (c) => { detectEvolution(c); state.cats = c; renderAll(); },
     onQuests: (q) => { state.quests = q; renderAll(); },
     onOwnedItems: (o) => { state.ownedItems = o; renderAll(); },
-    onTodayCompletions: (t) => { detectApproval(t); state.todayCompletions = t; renderAll(); },
     onPendingApprovals: (p) => { state.pendingApprovals = p; renderAll(); },
-    // Today-only overrides feed planDay for BOTH roles, so a parent's one-day
-    // exception immediately reshapes Sirus's view too and auto-returns tomorrow.
-    onDayOverrides: (o) => { state.dayOverrides = o; renderAll(); },
     onRecentTxns: (t) => { state.recentTxns = t; renderAll(); },
     onMembers: (m) => { state.members = m; renderAll(); }
   });
+  // Today's completions + overrides are date-scoped; point them at the current
+  // local day and start the rollover watcher so they re-point at midnight.
+  await subscribeTodayScoped();
+  startDayWatch();
   // The day view always opens on Today (§6.2).
   setSelectedDate(localDate(), { reanchor: true });
+}
+
+// The date-scoped "today" reads (completions + overrides). Re-pointed whenever
+// the local day rolls over so yesterday's completions/exceptions stop shaping
+// the new day even if the app was never reloaded (the Slice 2 auto-return
+// promise). `todaySubDate` records which day the current listeners are bound to.
+async function subscribeTodayScoped() {
+  if (todaySubUnsub) { todaySubUnsub(); todaySubUnsub = null; }
+  const date = localDate();
+  todaySubDate = date;
+  const token = ++todaySubToken;
+  todaySubUnsub = await store.subscribeToday(state.familyId, date, {
+    onTodayCompletions: (t) => { if (token !== todaySubToken) return; detectApproval(t); state.todayCompletions = t; renderAll(); },
+    // Today-only overrides feed planDay for BOTH roles, so a parent's one-day
+    // exception immediately reshapes Sirus's view too and auto-returns tomorrow.
+    onDayOverrides: (o) => { if (token !== todaySubToken) return; state.dayOverrides = o; renderAll(); }
+  });
+}
+
+// Watch for the local date to change (midnight, or return-from-background across
+// midnight). On rollover: drop any stale completions/overrides immediately so the
+// old day can't linger for a frame, re-point the date-scoped listeners at the new
+// day, and re-render. Cheap 30s poll plus a tab-focus check.
+function startDayWatch() {
+  stopDayWatch();
+  dayWatchTimer = setInterval(checkDayRollover, 30 * 1000);
+}
+function stopDayWatch() {
+  if (dayWatchTimer) { clearInterval(dayWatchTimer); dayWatchTimer = null; }
+}
+async function checkDayRollover() {
+  if (!state.familyId || !todaySubDate) return;
+  if (localDate() === todaySubDate) return;
+  // New day: clear yesterday's date-scoped state up front (the fresh snapshot
+  // will repopulate today's), then re-point the listeners and repaint.
+  state.todayCompletions = [];
+  state.dayOverrides = {};
+  state.prevCompletions = {};
+  await subscribeTodayScoped();
+  renderAll();
 }
 
 // ---- Day-based ledger navigation (shared by both roles) --------------------
@@ -788,8 +832,12 @@ function renderLedger() {
 function renderSirusToday() {
   const box = el('sirus-today');
   if (!box) return;
-  const active = state.quests
-    .filter(q => q.enabled !== false)
+  // Mirror Sirus's ACTUAL day: run the same planDay the child view uses so
+  // recurrence and today-only overrides (skip/move/next) are honored. A quest not
+  // scheduled today, or skipped for today, is not "on his screen now" and must not
+  // appear here. planDay also carries move/next flags, but this flat list only
+  // needs the membership + order.
+  const active = planDay(state.quests.filter(q => q.enabled !== false), { ymd: localDate(), overrides: state.dayOverrides })
     .slice()
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const done = active.filter(q => completionStatus(q.id) === 'approved').length;
@@ -894,21 +942,16 @@ function todayNeedsYouHtml() {
 }
 
 // One quest row on Today: title, an at-a-glance status chip, and (Slice 2c) its
-// today-only actions. Kept compact so the routine reads as a status board.
-function parentTodayQuestRow(q) {
+// today-only actions. `phase` is the current daypart, threaded through so the
+// Later action only appears when there is a genuinely-later slot to move to.
+function parentTodayQuestRow(q, phase) {
   const st = completionStatus(q.id); // null | 'pending' | 'approved'
   const chip = st === 'approved'
     ? '<span class="status-chip done">✓ Done</span>'
     : st === 'pending'
       ? '<span class="status-chip waiting">⏳ Waiting</span>'
       : '<span class="status-chip todo">To do</span>';
-  return `<div class="ptoday-row"><div class="q-body"><strong>${esc(q.title)}</strong>${todayFlagHtml(q)}</div>${chip}${todayActionsHtml(q)}</div>`;
-}
-// The later daypart a "Move to later" sends a quest to: the next phase in the
-// day, or Anytime once there's no later phase (night / already-anytime).
-function laterWindow(win) {
-  const i = DAY_PHASES.indexOf(win);
-  return (i >= 0 && i < DAY_PHASES.length - 1) ? DAY_PHASES[i + 1] : 'anytime';
+  return `<div class="ptoday-row"><div class="q-body"><strong>${esc(q.title)}</strong>${todayFlagHtml(q)}</div>${chip}${todayActionsHtml(q, phase)}</div>`;
 }
 // Inline marker for a quest carrying a today-only move/next (skips leave the
 // board entirely and are managed from the Today-is-different card instead).
@@ -920,15 +963,20 @@ function todayFlagHtml(q) {
 // Per-quest today-only actions (§17.5): Skip · Later · Next, a schedule change
 // for today only — never a point deduction. A quest already carrying a move/next
 // shows a single Undo instead. (A skipped quest isn't on the board, so it has no
-// row here — undo it from the Today-is-different card.)
-function todayActionsHtml(q) {
+// row here — undo it from the Today-is-different card.) Later is omitted when the
+// quest has no genuinely-later daypart to move into (e.g. an Anytime quest).
+function todayActionsHtml(q, phase) {
   const ov = state.dayOverrides[q.id];
   if (ov && (ov.action === 'move' || ov.action === 'next')) {
     return `<button class="pill-btn reject sm" data-today-clear="${esc(q.id)}" aria-label="Undo today's change to ${esc(q.title)}">Undo</button>`;
   }
+  const canMoveLater = laterWindowFor(questTimeWindow(q), phase) !== null;
+  const laterBtn = canMoveLater
+    ? `<button class="chip-btn" data-today-move="${esc(q.id)}" aria-label="Move ${esc(q.title)} to later today">Later</button>`
+    : '';
   return `<div class="today-actions">
     <button class="chip-btn" data-today-skip="${esc(q.id)}" aria-label="Skip ${esc(q.title)} today">Skip</button>
-    <button class="chip-btn" data-today-move="${esc(q.id)}" aria-label="Move ${esc(q.title)} to later today">Later</button>
+    ${laterBtn}
     <button class="chip-btn" data-today-next="${esc(q.id)}" aria-label="Make ${esc(q.title)} the next mission">Next</button>
   </div>`;
 }
@@ -941,7 +989,8 @@ function renderParentToday() {
   // Recurrence + today-only overrides decide what is actually on today; the same
   // organizer the child uses then groups it into Now / Next / Later / Anytime.
   const planned = planDay(active, { ymd: localDate(), overrides: state.dayOverrides });
-  const day = organizeDay(planned, { phase: phaseNow(), completedIds: doneIds });
+  const phase = phaseNow();
+  const day = organizeDay(planned, { phase, completedIds: doneIds });
 
   const sections = [todayNeedsYouHtml(), todayExceptionBarHtml()];
 
@@ -954,7 +1003,7 @@ function renderParentToday() {
     sections.push(`<section class="card ptoday-now">
       <p class="phase-eyebrow now-eyebrow">RIGHT NOW · ${esc(WINDOW_LABEL[g.window] || g.window)}</p>
       <p class="ptoday-progress">${counts.complete}/${counts.total} done${mins?` · <strong>${mins}m</strong> still to earn`:' · all done here — great job! 🎉'}</p>
-      ${g.quests.map(parentTodayQuestRow).join('')}</section>`);
+      ${g.quests.map(q => parentTodayQuestRow(q, phase)).join('')}</section>`);
   } else {
     sections.push('<section class="card ptoday-now"><p class="phase-eyebrow now-eyebrow">RIGHT NOW</p><p class="muted">Nothing scheduled for this part of the day.</p></section>');
   }
@@ -968,7 +1017,7 @@ function renderParentToday() {
 
   // Anytime is available independently of the day phase.
   if (day.anytime && day.anytime.length) {
-    sections.push(`<section class="card ptoday-anytime"><p class="phase-eyebrow">ANYTIME</p>${day.anytime.map(parentTodayQuestRow).join('')}</section>`);
+    sections.push(`<section class="card ptoday-anytime"><p class="phase-eyebrow">ANYTIME</p>${day.anytime.map(q => parentTodayQuestRow(q, phase)).join('')}</section>`);
   }
 
   // Past windows still holding unfinished work — "still needs doing", never a
@@ -976,7 +1025,7 @@ function renderParentToday() {
   if (day.stillNeedsDoing.length) {
     const rows = day.stillNeedsDoing.map(g =>
       `<p class="phase-eyebrow">${esc(WINDOW_LABEL[g.window] || g.window)} · STILL NEEDS DOING</p>` +
-      g.quests.filter(q => !doneIds.has(q.id)).map(parentTodayQuestRow).join('')
+      g.quests.filter(q => !doneIds.has(q.id)).map(q => parentTodayQuestRow(q, phase)).join('')
     ).join('');
     sections.push(`<section class="card ptoday-still">${rows}</section>`);
   }
@@ -1115,7 +1164,12 @@ function renderChildHome() {
   el('c-care-days-row').hidden = !!cat.evolved;
   if (cat.evolved) el('c-hero-hint').textContent = `${def.heroName} — Hero Form!`;
   else el('c-hero-hint').textContent = heroNeedsText(cat);
-  const next = state.quests.filter(q => q.enabled !== false && !completionStatus(q.id)).slice(0, 3);
+  // The Home preview must show only what is actually on for today: recurrence and
+  // today-only Skip/Move/Next overrides are applied through planDay before taking
+  // the first few unfinished quests (same source of truth as the Quests screen and
+  // the parent Today view), so a skipped or off-schedule quest never leaks here.
+  const planned = planDay(state.quests.filter(q => q.enabled !== false), { ymd: localDate(), overrides: state.dayOverrides });
+  const next = planned.filter(q => !completionStatus(q.id)).slice(0, 3);
   el('c-next-quests').innerHTML = next.length ? next.map(childQuestCard).join('') : '<div class="empty">All done — great job!</div>';
 }
 function childQuestCard(q) {
@@ -2331,8 +2385,11 @@ function bindEvents() {
     const tMove = e.target.closest('[data-today-move]');
     if (tMove) {
       const q = state.quests.find(x => x.id === tMove.dataset.todayMove);
-      const win = laterWindow(questTimeWindow(q));
-      try { await store.setDayOverride(state.familyId, state.uid, tMove.dataset.todayMove, 'move', win); toast('Moved to later today.'); }
+      // Recompute the target at click time (the daypart may have advanced since
+      // render). If there's no genuinely-later slot, don't write a no-op move.
+      const win = q ? laterWindowFor(questTimeWindow(q), phaseNow()) : null;
+      if (!win) { toast('That’s already as late as today goes.'); return; }
+      try { await store.setDayOverride(state.familyId, state.uid, tMove.dataset.todayMove, 'move', win); toast(`Moved to ${WINDOW_LABEL[win] || win} today.`); }
       catch (err) { toast('Could not update — try again.'); }
       return;
     }
@@ -2549,8 +2606,14 @@ function bindEvents() {
   });
 
   // Deliver any waiting recognition the moment Sirus returns to the tab, so a
-  // point earned while he was away shows once he's actually present (§7.3).
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) processFeedback(); });
+  // point earned while he was away shows once he's actually present (§7.3). Also
+  // catch a date rollover that happened while the tab was backgrounded (a device
+  // left open overnight), so returning to it doesn't show yesterday's plan.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    processFeedback();
+    checkDayRollover();
+  });
 
   // Keyboard access for expanding a ledger row (rows are role="button").
   document.addEventListener('keydown', (e) => {
