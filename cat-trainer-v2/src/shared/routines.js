@@ -113,11 +113,14 @@ export function planDay(quests, { ymd, overrides = {} } = {}) {
     const ov = overrides[q.id];
     if (ov && ov.action === 'skip') continue;             // hidden for today only
     if (ov && ov.action === 'move' && ov.window) { out.push({ ...q, timeWindow: ov.window, movedToday: true }); continue; }
-    if (ov && ov.action === 'next') { out.push({ ...q, nextToday: true }); continue; }
+    if (ov && ov.action === 'next') {
+      out.push({ ...q, ...(ov.window ? { timeWindow: ov.window } : {}), nextToday: true });
+      continue;
+    }
     out.push(q);
   }
   // "Make next": stable-bump flagged quests to the front so they lead their
-  // window in organizeDay (modern engines' Array.sort is stable).
+  // effective window in organizeDay (modern engines' Array.sort is stable).
   out.sort((a, b) => (b.nextToday ? 1 : 0) - (a.nextToday ? 1 : 0));
   return out;
 }
