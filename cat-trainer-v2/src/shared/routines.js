@@ -12,7 +12,7 @@
 // without an emulator, and the child screen and any later parent view can never
 // disagree about them.
 
-import { FAMILY_TIMEZONE } from './dates.js?v=7de8f5ce';
+import { FAMILY_TIMEZONE } from './dates.js?v=bfd87b68';
 
 // Day-phase windows, in chronological order. 'anytime' is intentionally NOT a
 // day phase — it's a flexible bucket shown alongside Now/Next/Later (§6).
@@ -149,10 +149,9 @@ export function organizeDay(quests, { phase, completedIds } = {}) {
     else if (g.idx > currentIdx) future.push(g);
     else past.push(g);
   }
-  // If the current phase has no quests, promote the nearest future group to Now
-  // so Sirus always sees a "now" focus when there is any upcoming work.
-  if (!now && future.length) now = future.shift();
-
+  // A future window is never pulled forward: if the current phase has no quests,
+  // Now stays empty and the upcoming work remains NEXT/LATER until its own window
+  // actually begins. Anytime is available independently of all of this.
   const next = future.length ? future[0] : null;
   const later = future.slice(1);
   const stillNeedsDoing = past.filter(g => g.quests.some(q => !done.has(q.id)));

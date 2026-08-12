@@ -104,14 +104,35 @@ const stillWindows = day.stillNeedsDoing.map(g => g.window);
 assert.deepEqual(stillWindows, ['morning'], 'only past windows with unfinished work surface');
 assert.equal(day.stillNeedsDoing[0].quests.some(q => q.id === 'm2'), true);
 
-// If the current phase has no quests, the nearest future group becomes Now.
+// A future window is NOT promoted to Now early: with only a Night quest during
+// the morning phase, Now stays empty and Night remains NEXT until its window.
 day = organizeDay([{ id: 'n1', section: 'Night', points: 1 }], { phase: 'morning', completedIds: [] });
-assert.equal(day.now.window, 'night', 'nearest future group promoted to Now when current phase is empty');
-assert.equal(day.next, null);
+assert.equal(day.now, null, 'current phase empty → no Now; a future window is not pulled forward');
+assert.equal(day.next.window, 'night');
+assert.deepEqual(day.later, []);
+
+// The nearest future window is NEXT; the rest stay LATER — none become Now early.
+day = organizeDay([
+  { id: 's1', section: 'Brain', points: 1 },  // school (future)
+  { id: 'n1', section: 'Night', points: 1 }   // night (future)
+], { phase: 'morning', completedIds: [] });
+assert.equal(day.now, null);
+assert.equal(day.next.window, 'school');
+assert.deepEqual(day.later.map(g => g.window), ['night']);
+
+// Anytime stays available independently even when Now is empty and work is future.
+day = organizeDay([
+  { id: 'any1', section: 'General', points: 1 }, // anytime
+  { id: 'n1', section: 'Night', points: 1 }      // night (future)
+], { phase: 'morning', completedIds: [] });
+assert.equal(day.now, null, 'anytime never fills the Now slot');
+assert.equal(day.next.window, 'night');
+assert.deepEqual(day.anytime.map(q => q.id), ['any1'], 'anytime remains available regardless of phase');
 
 // Anytime-only set: no now/next/later, just the anytime bucket.
 day = organizeDay([{ id: 'any1', section: 'General', points: 1 }], { phase: 'morning', completedIds: [] });
 assert.equal(day.now, null);
+assert.equal(day.next, null);
 assert.deepEqual(day.anytime.map(q => q.id), ['any1']);
 
 assert.deepEqual(DAY_PHASES, ['morning', 'school', 'evening', 'night']);
