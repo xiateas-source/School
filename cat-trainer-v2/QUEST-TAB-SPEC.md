@@ -482,8 +482,19 @@ Because Activities depends on Quest, the consumable contracts are collected in *
 - **Migration audit (§18.1):** classify every existing Quest as responsibility-stays or optional-moves-to-Activities; no default-to-Quest. This gates Slice 1.
 - Reconcile against My Progress + Activities before feature code.
 
-### Slice 1 — Routine-focused child view
+### Slice 1 — Routine-focused child view — ✅ ACCEPTED (live device, Aug 12 2026)
 Run the §18.1 classification first (move optional items to Activities). Then: Now/Next/Later/Anytime · Routine Mode · Pick your next mission · Focus Mode · progress + points-available language · Still needs doing. Preserve all reward economics. **Requires the §18 routine fields.**
+
+**Acceptance result.** Shipped as PRs #51 (routine view) + #52 (glanceable-hierarchy polish). All acceptance checks passed on the family's phone, including Care Charge → approval → points/rewards → My Progress (economics unchanged). One item is flagged for real-use observation rather than counted as a failure:
+
+- **Independent glance (Sirus, unaided): observe over real use.** In the first sitting he said he didn't know what to do, but was mid-distraction (learning magic tricks). Once oriented he expanded *Morning — still needs doing* and went to find his dish to wash — the correct behavior for this household. Because the functional behavior is right and the initial response was confounded, no further UI change is being made now; we watch whether he uses the hierarchy independently over the next few days.
+
+**Product clarifications preserved from testing (behavioral truth for later slices):**
+- **Tidy → Anytime is correct.** Timing (`anytime`) and obligation (`isDailyEssential`) are independent — Tidy is Anytime *and* essential.
+- **Anytime means flexible timing, not "optional."** Never render Anytime as optional; obligation display is a later-slice concern.
+- **Unfinished Morning responsibilities stay relevant after the Morning window** — the collapsed *still needs doing* treatment (default collapsed, all items one tap away) is working and is the intended pattern.
+- **RIGHT NOW stays visible with "All done here — great job! 🎉"** once the current routine is complete — this empty-but-present state tested well; keep it.
+- **Home's "Available quests" preview still works** but may eventually need to respect the newer routine prioritization. **Out of Slice 1 scope — do not change now;** note for a future slice.
 
 ### Slice 2 — Parent Today portal + routine foundations
 Today·Routines·Log shell (Today default) · Needs You (§26.3) · batch approval · routine groups/templates + dayparts · recurrence · today-only Skip/Move/Next/reorder · Today Is Different · overrides never mutate templates.
