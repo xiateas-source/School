@@ -34,10 +34,11 @@ import {
   questTimeWindow, questIsDailyEssential, questRecurrence,
   WINDOW_LABEL, WINDOW_GLYPH
 } from './shared/routines.js?v=ea220299';
+import { createQuestSlice2Controller } from './quest-slice2.js?v=slice2bc1';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
-const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[c]));
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;' }[c]));
 
 const state = {
   role: null, familyId: null, uid: null,
@@ -94,6 +95,15 @@ function toast(msg) {
   const t = el('toast'); t.textContent = msg; t.classList.add('show');
   clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2400);
 }
+
+const questSlice2 = createQuestSlice2Controller({
+  getState: () => state,
+  toast,
+  onOverridesChanged: (map) => {
+    state.dayOverrides = map || {};
+    if (state.child) renderAll();
+  }
+});
 
 // ---- Screen routing ---------------------------------------------------------
 function showGateScreen(name) {
@@ -165,6 +175,7 @@ async function subscribeAll() {
     onRecentTxns: (t) => { state.recentTxns = t; renderAll(); },
     onMembers: (m) => { state.members = m; renderAll(); }
   });
+  await questSlice2.setSession(state.familyId, state.uid, state.role);
   // The day view always opens on Today (§6.2).
   setSelectedDate(localDate(), { reanchor: true });
 }
@@ -293,10 +304,6 @@ function showEvolution(catId) {
 }
 
 // ---- Family-feedback delivery (child) --------------------------------------
-// One shared queue drives both the real-time "active child" case and the
-// "returning child" case: whatever accumulated while Sirus was away is delivered
-// when he reconnects and the tab is visible. Positive recognitions bundle into
-// one card; returned-quest messages stay separate and gentle (§7.2, §7.3).
 function processFeedback() {
   if (state.role !== 'child' || feedbackShowing || document.hidden) return;
   const { recognitions, returns } = partitionFeedback(state.feedbackEvents, state.clientId, Date.now());
@@ -310,15 +317,13 @@ async function showRecognitionCard(recognitions) {
   let claimed;
   try { claimed = await store.claimFeedback(state.familyId, recognitions.map(e => e.id), state.clientId); }
   catch (_) { feedbackShowing = false; return; }
-  if (!claimed.length) { feedbackShowing = false; scheduleReprocess(); return; } // another device took them
+  if (!claimed.length) { feedbackShowing = false; scheduleReprocess(); return; }
   const model = bundleRecognitions(claimed);
   const cardEl = buildRecognitionCard(model);
   document.body.appendChild(cardEl);
   requestAnimationFrame(() => {
     cardEl.classList.add('show');
     recognitionFx(model, cardEl);
-    // Displayed → mark seen so a reload/navigation/reconnect can't replay it
-    // (§7.3). The minutes were already credited; this is only the celebration.
     store.markFeedbackSeen(state.familyId, model.ids).catch(() => {});
   });
   cardEl.__auto = setTimeout(() => dismissFeedbackCard(cardEl), 6500);
@@ -367,7 +372,6 @@ function buildReturnedCard(events) {
   const many = events.length > 1;
   const heading = many ? 'A few quests came back' : 'A quest came back';
   const lines = events.map(e => `<li>${esc(e.reasonLabel || 'Quest')}</li>`).join('');
-  // Gentle and non-celebratory: no points move, nothing is taken away (§7.3).
   card.innerHTML = `
     <button class="fb-close" data-fb-dismiss aria-label="Close">✕</button>
     <h3 class="fb-title">${esc(heading)}</h3>
@@ -387,9 +391,6 @@ function dismissFeedbackCard(cardEl) {
   scheduleReprocess();
 }
 
-// The celebration animation. Everything here is optional decoration on top of an
-// already-credited point and an already-shown card, so it degrades cleanly:
-// reduced motion shows neither flying numbers nor a pose (§7.4).
 function recognitionFx(model, cardEl) {
   if (navigator.vibrate) { try { navigator.vibrate(12); } catch (_) {} }
   if (prefersReducedMotion()) return;
@@ -399,9 +400,6 @@ function recognitionFx(model, cardEl) {
   celebrateActiveCat();
 }
 
-// Animate the earned minutes toward the Available Now badge, when it's on screen
-// (§7.2). Best-effort: if the badge isn't visible on the current screen, the
-// card's own "+N minutes" still communicates the credit.
 function flyPointsToAvailable(amount) {
   const target = el('c-available');
   if (!target) return;
@@ -421,9 +419,6 @@ function flyPointsToAvailable(amount) {
   setTimeout(() => fly.remove(), 850);
 }
 
-// The optional cat celebrate pose, subordinate to Café state priority: a drag, a
-// still-resolving eat/play/rest, a Hero event, or any non-idle state outranks it,
-// so we render nothing rather than interrupt (§7.0, §7.2, §13).
 function celebrateActiveCat() {
   const onCafe = document.querySelector('[data-cscreen="cafe"]')?.classList.contains('active');
   if (onCafe) {
@@ -436,8 +431,6 @@ function celebrateActiveCat() {
     }
     return;
   }
-  // On the home screen the portrait is a still image; briefly swap it to the
-  // celebrate pose, then let a re-render restore it.
   const onHome = document.querySelector('[data-cscreen="home"]')?.classList.contains('active');
   const art = el('c-cat-art');
   if (onHome && art && state.child) {
@@ -453,7 +446,10 @@ function celebrateActiveCat() {
 // ---- Rendering --------------------------------------------------------------
 function renderAll() {
   if (!state.child) return;
-  if (state.role === 'parent') { renderApprovals(); renderParentDash(); renderLedger(); renderSirusToday(); renderParentQuests(); renderParentCats(); renderParentCafe(); }
+  if (state.role === 'parent') {
+    renderApprovals(); renderParentDash(); renderLedger(); renderSirusToday(); renderParentQuests(); renderParentCats(); renderParentCafe();
+    questSlice2.render();
+  }
   else { renderChildHome(); renderChildQuests(); renderChildCats(); renderChildCafe(); renderChildProgress(); }
 }
 
@@ -476,8 +472,6 @@ function renderQuickActions() {
 
 function renderParentDash() {
   el('p-available').textContent = state.child.available || 0;
-  // "Used today" now counts SCREEN TIME ONLY — behavior deductions and
-  // corrections are no longer swept into it (§8.2).
   const { earned, used } = store.todayTotals(state.recentTxns);
   el('p-earned').textContent = earned;
   el('p-spent').textContent = used;
@@ -498,8 +492,6 @@ const FILTER_LABELS = {
   room_to_grow: 'Room to Grow', correction: 'Corrections'
 };
 
-// Signed amount to show on a row. Earned/Room-to-Grow use the FULL rule amount
-// (requestedAmount) so a floored -2 never shows as -1/+0; Used shows minutes.
 function rowDelta(t) {
   if (t.category === CATEGORY.USED) {
     return { text: `-${Math.abs(Number(t.amount) || 0)} min`, cls: 'used' };
@@ -512,7 +504,6 @@ function rowDelta(t) {
   return { text: `${sign}${Math.abs(amt)}`, cls };
 }
 
-// The selected day's rows, normalized, placed by activity date, newest-first.
 function normalizedDay() {
   const sel = state.selectedDate;
   return state.selectedDayTxns
@@ -528,8 +519,6 @@ function emptyMessage() {
     : 'No point activity on this day.';
 }
 
-// Weekly reflection navigation and display (§14). This is deliberately small:
-// the same ledger truth, summarized without grades, rankings, streaks, or comparisons.
 function normalizedWeek() {
   const dates = new Set(weekDates(state.weekAnchor));
   return state.weekTxns
@@ -581,8 +570,6 @@ function weekSummaryHtml(s, { parent }) {
   </section>`;
 }
 
-// The full date navigator: prev/next day, Today, 7-day strip with activity dots,
-// week nav, and a native calendar jump. Future days are disabled (§6.2).
 function dayNavHtml() {
   const today = localDate();
   const sel = state.selectedDate;
@@ -642,20 +629,14 @@ function rewardEffectsLabel(rr, ra) {
   return parts.join(', ');
 }
 
-// How to caption the actor, by what the row actually is. "Noticed by" is
-// reserved for a manual positive recognition Mom/Abba typed in (e.g. "noticed he
-// washed the table") — a quest is an approval, not something noticed, so it must
-// not borrow that wording.
 function actorLabel(t) {
   if (t.kind === 'quest') return 'Approved by';
   if (t.category === CATEGORY.USED) return 'Recorded by';
   if (t.category === CATEGORY.ROOM_TO_GROW) return 'Noted by';
   if (t.category === CATEGORY.CORRECTION) return 'Corrected by';
-  return 'Noticed by'; // manual positive recognition
+  return 'Noticed by';
 }
 
-// Expanded detail. The child sees friendly context only; the parent also sees
-// audit fields (source, intended-vs-applied, dates, links, cat effects) (§8.3).
 function rowDetail(t, { parent }) {
   const rows = [];
   if (t.timeLabel) rows.push(['Time', t.timeLabel]);
@@ -699,8 +680,6 @@ function progressRow(t, { parent, corrected }) {
   </div>`;
 }
 
-// Child "My Progress": read-only. Corrections and their corrected originals are
-// parent audit history only, so Sirus sees neither side of an administrative fix.
 function renderChildProgress() {
   const mount = el('c-progress-view');
   if (!mount) return;
@@ -734,8 +713,6 @@ function renderChildProgress() {
     <div class="day-list">${list}</div>`;
 }
 
-// Parent "Point Ledger": same day model, plus a Corrections chip, audit detail,
-// and no 50-row ceiling for the selected day.
 function renderLedger() {
   const mount = el('p-ledger-view');
   if (!mount) return;
@@ -766,9 +743,7 @@ function renderLedger() {
     ${dayFilterHtml({ parent: true })}
     <div class="day-list">${list}</div>`;
 }
-// Live mirror of what's on Sirus's tablet right now, so Mom can see his quest
-// progress without picking up his device. Shows only enabled quests (the ones he
-// actually sees), each with a To do / Waiting / Done status chip.
+
 function renderSirusToday() {
   const box = el('sirus-today');
   if (!box) return;
@@ -789,8 +764,6 @@ function renderSirusToday() {
     const st = completionStatus(q.id);
     const meta = SECTION_META[q.section] || {};
     const tag = meta.glyph ? `${meta.glyph} ` : '';
-    // Mom can mark a quest done straight from here. Approved → just the chip;
-    // pending (Sirus tapped it) → an Approve button; to-do → a Mark done button.
     const note = st === 'pending' ? ' · ⏳ waiting for you' : '';
     const action = st === 'approved'
       ? '<span class="status-chip done">✓ Done</span>'
@@ -801,8 +774,6 @@ function renderSirusToday() {
 }
 function parentQuestRow(q) {
   const on = q.enabled !== false;
-  // Section is now the group header, so the row's small line drops it and just
-  // shows the reward breakdown.
   return `<div class="parent-quest-row ${on?'':'quest-off'}"><div class="q-body"><strong>${esc(q.title)}</strong>
     <br><small>+${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''}</small></div>
     <button class="lock-toggle ${on?'on':'off'}" data-toggle-quest="${esc(q.id)}" role="switch" aria-checked="${on}" aria-label="${on?'On — tap to lock off':'Off — tap to turn on'}">${on?'On':'🔒 Off'}</button>
@@ -811,10 +782,6 @@ function parentQuestRow(q) {
 }
 function renderParentQuests() {
   const quests = state.quests.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  // Group the management list under collapsible section headers so Mom can scan
-  // (and collapse) Morning / Tidy / etc. instead of reading the section tag on
-  // every flat row. Known sections keep their canonical order; any custom
-  // section falls in after them.
   const known = SECTIONS.filter(s => quests.some(q => q.section === s));
   const custom = [...new Set(quests.map(q => q.section))].filter(s => !SECTIONS.includes(s));
   const html = [...known, ...custom].map(section => {
@@ -830,7 +797,6 @@ function renderParentQuests() {
   el('parent-quests').innerHTML = html || '<div class="empty">No quests yet.</div>';
 }
 
-// Parent review queue: quests Sirus finished that are waiting to become minutes.
 function renderApprovals() {
   const box = el('pending-approvals');
   if (!box) return;
@@ -893,8 +859,6 @@ function renderChildHome() {
   el('c-available').textContent = state.child.available || 0;
   const { earned } = store.todayTotals(state.recentTxns);
   el('c-earned').textContent = earned;
-  // "Waiting for Mom" pile: pending rewards stack up visibly so finishing quests
-  // still feels rewarding even though the minutes are gated on approval.
   const pend = state.pendingApprovals || [];
   const pMin = pend.reduce((s, c) => s + ((c.rewards && c.rewards.points) || 0), 0);
   const pCoins = pend.reduce((s, c) => s + ((c.rewards && c.rewards.coins) || 0), 0);
@@ -916,7 +880,7 @@ function renderChildHome() {
   el('c-next-quests').innerHTML = next.length ? next.map(childQuestCard).join('') : '<div class="empty">All done — great job!</div>';
 }
 function childQuestCard(q) {
-  const status = completionStatus(q.id); // null | 'pending' | 'approved'
+  const status = completionStatus(q.id);
   const cls = status === 'approved' ? 'done' : status === 'pending' ? 'pending' : '';
   const careReward = careCharges(state.child && state.child.careCharges) >= CARE_CONFIG.chargeCap
     ? '· ✦ care full'
@@ -932,27 +896,16 @@ function childQuestCard(q) {
     ${status==='pending'?'<div class="q-status">Done! Waiting for Mom ⭐</div>':''}</div>
     ${btn}</div>`;
 }
-// A mission card = the normal quest card, plus a Focus affordance ONLY where
-// Routine Mode wants "work one at a time" (the NOW block). Everywhere else the
-// Focus row is omitted so long lists don't double in height. Finished cards
-// render unchanged.
 function childMissionCard(q, { focus = false } = {}) {
   const card = childQuestCard(q);
   if (!focus || completionStatus(q.id)) return card;
   return `<div class="mission-wrap">${card}<button class="focus-btn" data-focus="${esc(q.id)}" aria-label="Focus on ${esc(q.title)}">🔎 Focus</button></div>`;
 }
 
-// Now / Next / Later / Anytime + Routine Mode + Focus Mode (§6, §7, §8, §10.1).
-// Reward economics are untouched — this only changes how the same quests and the
-// same completion actions are organized on screen.
 function renderChildQuests() {
   const active = state.quests.filter(q => q.enabled !== false);
-  // A quest with any completion (pending = waiting for Mom, or approved) is not
-  // actionable again today; both count as "handled".
   const doneIds = new Set(active.filter(q => completionStatus(q.id)).map(q => q.id));
 
-  // Focus Mode: one task, everything else hidden. Falls through to the list if
-  // the focused quest was finished or turned off.
   if (state.focusQuestId) {
     const fq = active.find(q => q.id === state.focusQuestId);
     if (fq && !doneIds.has(fq.id)) {
@@ -966,15 +919,10 @@ function renderChildQuests() {
     state.focusQuestId = null;
   }
 
-  // Recurrence + today-only overrides decide what is actually on for today; the
-  // result feeds the same Now/Next/Later organizer. Legacy quests (everyday, no
-  // override) pass through unchanged, preserving accepted Slice 1 UX.
   const planned = planDay(active, { ymd: localDate(), overrides: state.dayOverrides });
   const day = organizeDay(planned, { phase: phaseNow(), completedIds: doneIds });
   const sections = [];
 
-  // NOW — Routine Mode: "Pick your next mission" (2–4 eligible). A clear
-  // "Right now" eyebrow orients Sirus to the current routine at a glance.
   if (day.now) {
     const missions = nextMissions(day.now.quests, doneIds, 4);
     const left = progressCounts(day.now.quests, doneIds).left;
@@ -989,10 +937,6 @@ function renderChildQuests() {
     sections.push(`<section class="phase now">${head}${body}</section>`);
   }
 
-  // STILL NEEDS DOING — past windows with unfinished work, neutral (§10.1).
-  // Collapsed by default so it can't bury Now/Next/Later; every unfinished quest
-  // stays one tap away. Open state is app-controlled so a background re-render
-  // can't snap it shut mid-use.
   for (const g of day.stillNeedsDoing) {
     const unfinished = g.quests.filter(q => !doneIds.has(q.id));
     const open = state.stillOpen.has(g.window);
@@ -1001,22 +945,17 @@ function renderChildQuests() {
       <div class="still-body">${unfinished.map(q => childMissionCard(q, { focus: false })).join('')}</div></details>`);
   }
 
-  // NEXT — compact + explicit label, no invented timing (an empty Evening can
-  // sit between, so "starts after <now>" would be misleading).
   if (day.next) {
     sections.push(`<section class="phase next compact"><div class="phase-head">
       <span class="phase-eyebrow">Next</span>
       <h3>${WINDOW_GLYPH[day.next.window]} ${esc(WINDOW_LABEL[day.next.window])}</h3></div></section>`);
   }
 
-  // LATER — compact labelled list of upcoming windows.
   if (day.later.length) {
     const items = day.later.map(g => `<li>${WINDOW_GLYPH[g.window]} ${esc(WINDOW_LABEL[g.window])}</li>`).join('');
     sections.push(`<section class="phase later compact"><div class="phase-head"><span class="phase-eyebrow">Later</span></div><ul class="later-list">${items}</ul></section>`);
   }
 
-  // ANYTIME — flexible-TIMING quests (not "optional"). Cap the initially visible
-  // list with a See all expander so it doesn't recreate the original wall.
   const anytimeOpen = day.anytime.filter(q => !doneIds.has(q.id));
   if (anytimeOpen.length) {
     const CAP = 3;
@@ -1029,8 +968,6 @@ function renderChildQuests() {
     sections.push(`<section class="phase anytime"><div class="phase-head"><h3>⭐ Anytime</h3><small>do these any time today</small></div>${cards}${toggle}</section>`);
   }
 
-  // Completed drawer — open state controlled by app state so a background
-  // re-render can't snap it shut while Sirus has it open.
   const finished = active.filter(q => completionStatus(q.id));
   const finishedHtml = finished.length
     ? `<details class="completed-quests"${state.completedOpen ? ' open' : ''}><summary data-toggle-completed>✓ Completed today <span class="done-count">${finished.length}</span></summary>
@@ -1044,6 +981,7 @@ function renderChildCats() {
   const canSwitch = state.child.childCanSwitchCat !== false;
   el('c-cats').innerHTML = Object.keys(CAT_DEFS).map(id => catCardHtml(id, canSwitch)).join('');
 }
+
 // Stable default slot per item (indexed by café-item order) so freshly-bought
 // décor lands somewhere sensible before Sirus drags it. 11 slots for 11 items;
 // each avoids the cat's center-bottom area and the other slots.
@@ -1059,26 +997,17 @@ const CAFE_SLOTS = [
 function cafeSlot(itemId) {
   const i = Math.max(0, CAFE_ITEM_IDS.indexOf(itemId));
   const [bx, by] = CAFE_SLOTS[i % CAFE_SLOTS.length];
-  const wrap = Math.floor(i / CAFE_SLOTS.length); // 0 for the first 11, 1 for 12–17
+  const wrap = Math.floor(i / CAFE_SLOTS.length);
   return [Math.min(74, bx + wrap * 7), Math.min(80, by + wrap * 4)];
 }
 function ownedCafeRecord(itemId) { return state.ownedItems.find(o => o.id === itemId); }
 
-// Active drag; also a render guard so a snapshot mid-drag doesn't rebuild the
-// placed layer and yank the item out of Sirus's hand.
 let cafeDrag = null;
 const clampNum = (v, a, b) => Math.max(a, Math.min(b, v));
-
-// ---- Café modes: Play (interact) vs Decorate (arrange) ----------------------
-// Two explicit modes so arranging furniture never triggers cat actions, and the
-// cat is only draggable while playing. `cafeUndo` holds the inverse of the last
-// decorate action for one-step Undo (cleared when the session ends).
 let cafeMode = 'play';
 let cafeUndo = null;
 
 function setCafeMode(mode) {
-  // Arranging the room takes priority over an in-progress play action. Leave the
-  // cat awake and stable instead of letting an old action finish behind the tray.
   if (mode === 'decorate' && catState !== 'idle') settleCatToRest();
   cafeMode = mode;
   catBeatsSinceWander = 0;
@@ -1117,9 +1046,6 @@ async function applyCafeUndo() {
     toast('Undone.');
   } catch (_) { toast('Could not undo — try again.'); }
 }
-// The café cat's resting look. It is driven by daily care — never the long-term
-// training Energy stat. Low Rest gets a quiet sleep pose; another low need keeps
-// the cat calm while the functional cue points toward a useful object.
 function catMood() {
   const id = state.child.activeCatId; const cat = state.cats[id] || {};
   const low = lowestCareNeed(activeCareNeeds(), 40);
@@ -1131,9 +1057,6 @@ function catMood() {
 }
 
 // ---- Daily care: Hunger + Rest + Happiness ---------------------------------
-// Existing Hunger-only cats are lazily migrated with healthy Rest/Happiness
-// defaults; a Set prevents duplicate writes while the realtime snapshot catches
-// up. All three needs use the same timestamp but distinct decay rates.
 const careInitPending = new Set();
 let careSpendPending = false;
 let careLockedView = null;
@@ -1191,7 +1114,6 @@ function renderNeedCue(needs) {
 
 function renderCafeCareStatus({ needsOverride = null, chargesOverride = null } = {}) {
   if (!state.child) return;
-
   const locked = careSpendPending && careLockedView ? careLockedView : null;
   const needs = needsOverride || (locked ? locked.needs : activeCareNeeds());
   const charges = chargesOverride == null
@@ -1227,19 +1149,16 @@ function ensureActiveCatCare(catId, cat) {
   store.ensureCatCare(state.familyId, catId)
     .catch(() => setTimeout(() => careInitPending.delete(catId), 5000));
 }
+
 // ---- Café cat behavior: one state, one timer -------------------------------
-// A single owner for what the cat is doing. Every transition cancels the pending
-// timer, so a stale beat can never override a newer action — the root cause of
-// the old "snap back to center / revert the pose" bug (a 900ms settle timer and
-// a separate stroll-return timer both fighting whatever was happening now).
 let catTapCount = 0;
-let catState = 'idle';     // idle | glance | wander | react | dragged | approach | eat | drink | play | sleep
-let catStateTimer = null;  // duration of the current transient state
-let catBeatTimer = null;   // schedules the next autonomous idle beat
+let catState = 'idle';
+let catStateTimer = null;
+let catBeatTimer = null;
 let catBeatsSinceWander = 0;
-let catAnimTimer = null;   // frame-swap loop for multi-frame poses (eat/play/walk)
+let catAnimTimer = null;
 let catAnimStopTimer = null;
-let catTargetId = null;    // placed object currently selected by Sirus
+let catTargetId = null;
 let catTargetEl = null;
 let catTargetHidden = false;
 const preloadedCatFrames = new Set();
@@ -1250,12 +1169,10 @@ function stopSpriteAnimation() {
   catAnimTimer = null;
   catAnimStopTimer = null;
 }
-
 function syncCatStateUI() {
   const wrap = el('c-cafe-cat-wrap');
   if (wrap) wrap.dataset.catState = catState;
 }
-
 function releaseCatTarget() {
   if (catTargetEl) catTargetEl.classList.remove('is-cat-target', 'is-in-use');
   document.querySelectorAll('#c-placed .is-cat-target, #c-placed .is-in-use')
@@ -1264,7 +1181,6 @@ function releaseCatTarget() {
   catTargetEl = null;
   catTargetHidden = false;
 }
-
 function markCatTarget(itemEl, hidden = false) {
   catTargetEl = itemEl || (catTargetId && document.querySelector(`[data-decor="${catTargetId}"]`));
   catTargetHidden = hidden;
@@ -1272,10 +1188,6 @@ function markCatTarget(itemEl, hidden = false) {
   catTargetEl.classList.add('is-cat-target');
   catTargetEl.classList.toggle('is-in-use', hidden);
 }
-
-// Load a selected cat's alternate frames before its first autonomous beat. This
-// avoids a network flash between frame A and B, while keeping the initial page
-// load small because unselected cats are not preloaded.
 function preloadCatFrames(def) {
   if (!def || !def.frames) return;
   Object.values(def.frames).flat().forEach((src) => {
@@ -1285,10 +1197,6 @@ function preloadCatFrames(def) {
     img.src = src;
   });
 }
-// Art for a café pose. Sleep always uses the cat-only transparent sprite layered
-// over the actual object Sirus selected. The old signature-bed composites made
-// Moss appear inside one bed while Nova and Ember appeared beside that same bed.
-// One shared layering path keeps every cat and every sleep object consistent.
 function cafePoseArt(def, poseKey) {
   if (!def.poses) return def.art;
   return def.poses[poseKey] || def.poses.sit || def.art;
@@ -1307,11 +1215,6 @@ function renderChildCafe() {
     wrap.className = `cafe-cat-wrap ${mood.cls}`;
     wrap.dataset.catState = catState;
   }
-  // The cat's position is owned by the behavior machine (drag + welcome-back +
-  // wander), not re-applied here — a data snapshot must never teleport a cat that
-  // has wandered or been dragged back to its base spot.
-  // Only refresh the resting sprite while the cat is actually resting; if it's
-  // mid-react/glance/wander, leave its pose alone so a snapshot can't cut it off.
   if (catState === 'idle') el('c-cafe-cat').src = catRestPoseSrc(cat, def);
   if (!cafeDrag) {
     el('c-placed').innerHTML = state.ownedItems.filter(o => o.placed !== false).map(o => {
@@ -1339,8 +1242,6 @@ function renderChildCafe() {
   }).join('');
 }
 
-// The Decorate-mode tray: every owned item, with a one-tap Place (bring it into
-// the room) or Store (put it away, keeping its saved spot for next time).
 function renderCafeTray() {
   const tray = el('c-tray');
   if (!tray || cafeMode !== 'decorate') return;
@@ -1359,10 +1260,7 @@ function renderCafeTray() {
   }).join('');
 }
 
-// ---- Café interactions ------------------------------------------------------
-// One pointer flow drives two modes: in Decorate, drag placed décor to rearrange;
-// in Play, drag the cat to move it (a tap that doesn't move is a pet/react). The
-// modes never overlap, so arranging furniture can't accidentally poke the cat.
+// Café interaction implementation remains unchanged below.
 function initCafeInteractions() {
   const room = el('c-cafe-room');
   if (!room) return;
@@ -1378,7 +1276,7 @@ function initCafeInteractions() {
                    grabX: e.clientX, grabY: e.clientY, moved: false,
                    fromX: (rec && rec.x != null) ? rec.x : dx, fromY: (rec && rec.y != null) ? rec.y : dy };
       img.classList.add('dragging');
-      try { img.setPointerCapture(e.pointerId); } catch (_) { /* older browsers */ }
+      try { img.setPointerCapture(e.pointerId); } catch (_) {}
       return;
     }
     if (cafeMode === 'play') {
@@ -1393,8 +1291,6 @@ function initCafeInteractions() {
       const interrupted = catState !== 'idle';
       releaseCatTarget();
       setCafeHint();
-      // Freeze at the currently rendered point before removing an approach
-      // transition; otherwise a mid-walk grab would jump to the old destination.
       wrap.style.transition = 'none';
       wrap.style.left = currentX + '%';
       wrap.style.top = currentY + '%';
@@ -1403,12 +1299,12 @@ function initCafeInteractions() {
       stopSpriteAnimation();
       const { cat: progress, def } = catCtx();
       cat.src = catRestPoseSrc(progress, def);
-      catState = 'dragged'; // a grab beats any pending beat
+      catState = 'dragged';
       syncCatStateUI();
       cafeDrag = { kind: 'cat', el: wrap, catEl: cat, rect: room.getBoundingClientRect(),
                    grabX: e.clientX, grabY: e.clientY, moved: false,
                    startX: currentX, startY: currentY, interrupted };
-      try { cat.setPointerCapture(e.pointerId); } catch (_) { /* older browsers */ }
+      try { cat.setPointerCapture(e.pointerId); } catch (_) {}
     }
   });
 
@@ -1418,8 +1314,6 @@ function initCafeInteractions() {
     if (!cafeDrag.moved) return;
     const r = cafeDrag.rect;
     if (cafeDrag.kind === 'decor') {
-      // Center the item under the finger; clamp so it stays fully inside the room.
-      // Décor is 26% wide and ~19.5% of the room tall (the room is a 3:4 box).
       const x = clampNum(((e.clientX - r.left) / r.width) * 100 - 13, 0, 74);
       const y = clampNum(((e.clientY - r.top) / r.height) * 100 - 9.75, 0, 80.5);
       cafeDrag.el.style.left = x + '%'; cafeDrag.el.style.top = y + '%';
@@ -1430,8 +1324,6 @@ function initCafeInteractions() {
         spawnFx('assets/fx-paw.png', room, { count: 1, cx: x + 13, cy: y + 10, spread: 0, size: 26, life: 700, mode: 'trail' });
       }
     } else if (cafeDrag.kind === 'cat') {
-      // The cat wrap is 40% wide (~30% tall); offset so the body sits under the
-      // finger, and keep it in the walkable part of the room.
       const x = clampNum(((e.clientX - r.left) / r.width) * 100 - 20, 2, 58);
       const y = clampNum(((e.clientY - r.top) / r.height) * 100 - 22, 12, 68);
       cafeDrag.el.style.left = x + '%'; cafeDrag.el.style.top = y + '%'; cafeDrag.el.style.bottom = 'auto';
@@ -1445,7 +1337,7 @@ function initCafeInteractions() {
     const round = (n) => Math.round(n * 10) / 10;
     if (d.kind === 'decor') {
       d.el.classList.remove('dragging');
-      try { d.el.releasePointerCapture(e.pointerId); } catch (_) { /* no-op */ }
+      try { d.el.releasePointerCapture(e.pointerId); } catch (_) {}
       if (d.moved && d.lastX != null) {
         setCafeUndo({ type: 'move', id: d.id, x: round(d.fromX), y: round(d.fromY) });
         try { await store.moveCafeItem(state.familyId, d.id, round(d.lastX), round(d.lastY)); }
@@ -1456,22 +1348,17 @@ function initCafeInteractions() {
       return;
     }
     if (d.kind === 'cat') {
-      d.el.style.transition = ''; // restore the gentle ease for autonomous strolls
-      try { d.catEl.releasePointerCapture(e.pointerId); } catch (_) { /* no-op */ }
+      d.el.style.transition = '';
+      try { d.catEl.releasePointerCapture(e.pointerId); } catch (_) {}
       catState = 'idle';
       syncCatStateUI();
       if (d.moved && d.lastX != null) {
         const x = round(d.lastX), y = round(d.lastY);
         catBeatsSinceWander = 0;
-        if (state.child) state.child.cafeCat = { x, y }; // optimistic: no snap-back before the write lands
+        if (state.child) state.child.cafeCat = { x, y };
         try { await store.moveCafeCat(state.familyId, x, y); }
         catch (_) { toast('Could not save that move.'); renderChildCafe(); }
       } else {
-        // The 256×256 cat PNG has a large transparent rectangle. If a visible
-        // bowl/toy/bed sits under that rectangle, the browser reports the cat as
-        // the tap target even though Sirus clearly touched the object. Look
-        // through the cat layer and prioritize that placed object so Water and
-        // Toy Basket cannot become mysteriously untappable after decorating.
         const behindCat = Number.isFinite(e.clientX) && Number.isFinite(e.clientY)
           && document.elementsFromPoint
           ? firstCafeDecorElement(document.elementsFromPoint(e.clientX, e.clientY))
@@ -1482,7 +1369,7 @@ function initCafeInteractions() {
           store.moveCafeCat(state.familyId, x, y).catch(() => {});
         }
         if (behindCat) return activateCafeItem(behindCat);
-        reactCat(e); // a tap, not a drag → pet/react
+        reactCat(e);
       }
     }
   };
@@ -1492,8 +1379,6 @@ function initCafeInteractions() {
     if (cafeMode !== 'play') return;
     const itemEl = e.target.closest('[data-decor]');
     if (itemEl) return activateCafeItem(itemEl);
-    // Cat taps are handled by the pointer flow above. A blank-room tap is a
-    // movement request: walk there, remain there, and persist the new spot.
     if (e.target.closest('#c-cafe-cat-wrap, .fx-sprite')) return;
     moveCatToRoomTap(e);
   });
@@ -1506,7 +1391,6 @@ function initCafeInteractions() {
   });
 }
 
-// The cat's mood-resting sprite (Hero art once evolved).
 function catRestPoseSrc(cat, def) {
   const m = catMood();
   return cat.evolved ? def.heroArt : cafePoseArt(def, m.pose || 'sit');
@@ -1515,12 +1399,11 @@ function catCtx() {
   const id = state.child.activeCatId;
   return { cat: state.cats[id] || {}, def: CAT_DEFS[id], catEl: el('c-cafe-cat'), wrap: el('c-cafe-cat-wrap') };
 }
-// Return to the resting look and mark the cat idle again.
 function settleCatToRest() {
   const { cat, def, catEl, wrap } = catCtx();
   clearTimeout(catStateTimer);
   catStateTimer = null;
-  stopSpriteAnimation(); // stop any frame loop so it can't outlive its state
+  stopSpriteAnimation();
   if (catEl) catEl.src = catRestPoseSrc(cat, def);
   if (wrap) wrap.style.transition = '';
   catState = 'idle';
@@ -1528,9 +1411,6 @@ function settleCatToRest() {
   releaseCatTarget();
   setCafeHint();
 }
-// Enter a transient state for `ms`, then run `onEnd` (default: settle to rest).
-// Cancels the old transition and its sprite loop first, so the newest action
-// always wins. Call playSprite() after catTransient() to start the new loop.
 function catTransient(next, ms, onEnd) {
   clearTimeout(catStateTimer);
   stopSpriteAnimation();
@@ -1538,18 +1418,11 @@ function catTransient(next, ms, onEnd) {
   syncCatStateUI();
   catStateTimer = ms == null ? null : setTimeout(onEnd || settleCatToRest, ms);
 }
-// Animate a multi-frame pose by cycling its frames. Falls back to a meaningful
-// still under reduced motion or when a pose has no alternate frame. A dedicated
-// stop timer is cleared on every new run so an older hold can never stop a newer
-// animation.
 function playSprite(poseKey, { fps = 3, holdMs = 0, heroAction = false, targetItemId = null } = {}) {
   const { cat, def, catEl } = catCtx();
   stopSpriteAnimation();
   if (!catEl || !def) return;
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // Hero is a permanent unlock, not an endpoint. Until dedicated Hero action
-  // frames exist, object interactions use the same cat's base action frames and
-  // return to Hero art afterward; ordinary idle reactions keep Hero art.
   const frames = (!cat.evolved || heroAction) && def.frames && def.frames[poseKey];
   const poseArt = cafePoseArt(def, poseKey, targetItemId);
   const still = cat.evolved && !heroAction
@@ -1561,7 +1434,6 @@ function playSprite(poseKey, { fps = 3, holdMs = 0, heroAction = false, targetIt
   if (holdMs) catAnimStopTimer = setTimeout(stopSpriteAnimation, holdMs);
 }
 
-// ---- Placed object → walk → lasting action ---------------------------------
 function pulseCafeItem(itemEl, item) {
   itemEl.classList.remove('wiggle'); void itemEl.offsetWidth; itemEl.classList.add('wiggle');
   const room = el('c-cafe-room');
@@ -1576,38 +1448,30 @@ function pulseCafeItem(itemEl, item) {
 }
 
 function actionHidesTarget(item) {
-  if (item.role === 'food') return true; // eat art already contains a bowl
+  if (item.role === 'food') return true;
   if (item.role === 'play' && (item.id === 'rug' || item.id === 'pinkYarn')) return true;
   return false;
 }
-
 function cafeActionHint(item, catName) {
   if (item.role === 'food') return `${catName} is eating.`;
   if (item.role === 'water') return `${catName} is getting a drink.`;
   if (item.role === 'rest') return `${catName} is sleeping · tap the cat or another object to wake up`;
   return `${catName} is playing!`;
 }
-
 function clearNeedGuides() {
   clearTimeout(needGuideTimer);
   document.querySelectorAll('.need-guide').forEach(node => node.classList.remove('need-guide'));
 }
-
 function holdNeedGuide(node) {
   if (!node) return;
   node.classList.remove('need-guide'); void node.offsetWidth; node.classList.add('need-guide');
   needGuideTimer = setTimeout(() => node.classList.remove('need-guide'), 2800);
 }
-
-// The cue is guidance only. It highlights a usable placed object, or opens the
-// owned-item tray when the matching object is stored. It never starts an action
-// or spends a Care Charge on Sirus's behalf.
 function guideCareNeed(need) {
   const meta = CARE_META[need];
   const def = state.child && CAT_DEFS[state.child.activeCatId];
   if (!meta || !def) return;
   clearNeedGuides();
-
   const placed = Array.from(document.querySelectorAll('#c-placed [data-decor]'))
     .find(node => CAFE_ITEMS[node.dataset.decor]?.need === need);
   if (placed) {
@@ -1615,7 +1479,6 @@ function guideCareNeed(need) {
     setCafeHint(`Tap the highlighted ${CAFE_ITEMS[placed.dataset.decor].name} to help ${def.name}'s ${meta.label}.`);
     return;
   }
-
   const stored = state.ownedItems.find(record =>
     record.placed === false && CAFE_ITEMS[record.id]?.need === need);
   if (stored) {
@@ -1625,11 +1488,9 @@ function guideCareNeed(need) {
     setCafeHint(`Place the highlighted ${CAFE_ITEMS[stored.id].name}, then tap Done to use it.`);
     return;
   }
-
   setCafeHint(`${def.name}'s ${meta.label} can be helped with ${meta.objects}.`);
   toast(`Place or buy ${meta.objects} to help ${meta.label}.`);
 }
-
 function showCareDelta(need, text, tone = 'gain') {
   const delta = el(`c-${need}-delta`);
   if (!delta) return;
@@ -1644,7 +1505,6 @@ function showCareDelta(need, text, tone = 'gain') {
     delta.textContent = '';
   }, 1800));
 }
-
 function showCareRefill(result, destination) {
   renderCafeCareStatus({ needsOverride: result.needsBefore, chargesOverride: result.chargesBefore });
   const bar = el(`c-${result.need}-bar`);
@@ -1652,19 +1512,16 @@ function showCareRefill(result, destination) {
   requestAnimationFrame(() => {
     renderCafeCareStatus({ needsOverride: result.needsAfter, chargesOverride: result.chargesAfter });
   });
-
   showCareDelta(result.need, `+${result.refill}`);
   if (result.restCost > 0) showCareDelta('rest', `−${result.restCost}`, 'cost');
   const charge = el('c-care-charges');
   if (charge) { charge.classList.remove('spent'); void charge.offsetWidth; charge.classList.add('spent'); }
-
   const room = el('c-cafe-room');
   if (room) spawnFx('assets/fx-sparkle.png', room, {
     count: 3, cx: destination.x + 20, cy: destination.y + 23,
     spread: 10, size: 30, life: 1000
   });
 }
-
 async function resolveCafeCare(item, destination) {
   if (!item.need || !CARE_META[item.need] || careSpendPending) return;
   const need = item.need;
@@ -1674,7 +1531,6 @@ async function resolveCafeCare(item, destination) {
   const needsBefore = activeCareNeeds();
   const before = needsBefore[need];
   const chargesBefore = careCharges(state.child.careCharges);
-
   if (isNeedFull(before)) {
     setCafeHint(`${def.name}'s ${meta.label} is full · no Care Charge used`);
     toast(`${meta.label} is full — your Care Charge is safe.`);
@@ -1685,12 +1541,10 @@ async function resolveCafeCare(item, destination) {
     toast('Complete a quest to earn a Care Charge.');
     return;
   }
-
   careSpendPending = true;
   careLockedView = { needs: needsBefore, charges: chargesBefore };
   renderCafeCareStatus();
   setCafeHint(`${def.name} is enjoying some care · saving…`);
-
   try {
     const result = await store.spendCare(state.familyId, catId, need);
     if (state.child) state.child.careCharges = result.chargesAfter;
@@ -1727,21 +1581,15 @@ function beginCafeObjectAction(item, destination) {
   if (catState !== 'approach' || catTargetId !== item.id) return;
   const action = cafeActionFor(item);
   if (!action) return settleCatToRest();
-
   const { def, wrap } = catCtx();
   if (wrap) wrap.style.transition = '';
   const liveTarget = el('c-placed').querySelector(`[data-decor="${item.id}"]`) || catTargetEl;
   markCatTarget(liveTarget, actionHidesTarget(item));
-
-  // The destination is now the cat's real location, not a temporary animation
-  // offset. Save it just like a direct drag so reopening the café doesn't snap
-  // back to the old spot; a failed offline write does not cancel the play action.
   const x = Math.round(destination.x * 10) / 10;
   const y = Math.round(destination.y * 10) / 10;
   catBeatsSinceWander = 0;
   if (state.child) state.child.cafeCat = { x, y };
   store.moveCafeCat(state.familyId, x, y).catch(() => {});
-
   catTransient(action.state, action.durationMs);
   playSprite(action.pose, {
     fps: action.state === 'sleep' ? 2 : 3,
@@ -1750,7 +1598,6 @@ function beginCafeObjectAction(item, destination) {
     targetItemId: item.id
   });
   setCafeHint(cafeActionHint(item, def.name));
-
   const room = el('c-cafe-room');
   if (room) spawnFx('assets/fx-paw.png', room, {
     count: 2, cx: destination.x + 20, cy: destination.y + 25,
@@ -1764,19 +1611,14 @@ function activateCafeItem(itemEl) {
   if (!item) return;
   pulseCafeItem(itemEl, item);
   const action = cafeActionFor(item);
-  if (!action) return; // decorative things acknowledge the tap but do not fake care
-
-  // Repeated taps on the same active object acknowledge without restarting its
-  // timer or flashing between walk/action frames. A different target interrupts.
+  if (!action) return;
   if (catTargetId === item.id && catState !== 'idle') return;
-
   const room = el('c-cafe-room');
   const { def, wrap } = catCtx();
   if (!room || !wrap || !def) return;
   releaseCatTarget();
   catTargetId = item.id;
   markCatTarget(itemEl);
-
   const rr = room.getBoundingClientRect();
   const ir = itemEl.getBoundingClientRect();
   const wr = wrap.getBoundingClientRect();
@@ -1792,19 +1634,14 @@ function activateCafeItem(itemEl) {
   });
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const travelMs = catWalkDuration(from, destination, reduce);
-
-  // Convert the current rendered location to left/top before removing `bottom`;
-  // this prevents the first walk from jumping a few pixels at its start.
   wrap.style.transition = 'none';
   wrap.style.left = from.x + '%';
   wrap.style.top = from.y + '%';
   wrap.style.bottom = 'auto';
   void wrap.offsetWidth;
-
   catTransient('approach', travelMs, () => beginCafeObjectAction(item, destination));
   playSprite('walk', { fps: 4, heroAction: true });
   setCafeHint(`${def.name} is walking to ${item.name}…`);
-
   if (travelMs === 0) {
     wrap.style.left = destination.x + '%';
     wrap.style.top = destination.y + '%';
@@ -1822,7 +1659,6 @@ function moveCatToRoomTap(e) {
   const room = el('c-cafe-room');
   const { def, wrap } = catCtx();
   if (!room || !wrap || !def) return;
-
   const rr = room.getBoundingClientRect();
   const wr = wrap.getBoundingClientRect();
   const from = {
@@ -1835,14 +1671,12 @@ function moveCatToRoomTap(e) {
   });
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const travelMs = catWalkDuration(from, destination, reduce);
-
   releaseCatTarget();
   wrap.style.transition = 'none';
   wrap.style.left = from.x + '%';
   wrap.style.top = from.y + '%';
   wrap.style.bottom = 'auto';
   void wrap.offsetWidth;
-
   const arrive = () => {
     if (catState !== 'approach' || catTargetId !== null) return;
     const x = Math.round(destination.x * 10) / 10;
@@ -1852,11 +1686,9 @@ function moveCatToRoomTap(e) {
     store.moveCafeCat(state.familyId, x, y).catch(() => toast('Could not save that spot.'));
     settleCatToRest();
   };
-
   catTransient('approach', travelMs, arrive);
   playSprite('walk', { fps: 4, heroAction: true });
   setCafeHint(`${def.name} is walking over…`);
-
   if (travelMs === 0) {
     wrap.style.left = destination.x + '%';
     wrap.style.top = destination.y + '%';
@@ -1871,19 +1703,13 @@ function moveCatToRoomTap(e) {
   }
 }
 
-// ---- Direct interaction: a pet/react ---------------------------------------
 function reactCat(e) {
   const { cat, def, catEl } = catCtx();
   const room = el('c-cafe-room');
   catTapCount++;
-
-  // Physical feedback: a springy squash-stretch (alternating with a wiggle) and a
-  // haptic tick, so a tap feels like touching a creature, not clicking "next".
   const anim = (catTapCount % 2) ? 'react' : 'react-wiggle';
   catEl.classList.remove('react', 'react-wiggle'); void catEl.offsetWidth; catEl.classList.add(anim);
   if (navigator.vibrate) { try { navigator.vibrate(8); } catch (_) {} }
-
-  // Burst right where the finger landed, not dead-center.
   let cx = 50, cy = 46;
   const px = e && (e.clientX ?? e.touches?.[0]?.clientX);
   const py = e && (e.clientY ?? e.touches?.[0]?.clientY);
@@ -1893,10 +1719,6 @@ function reactCat(e) {
   }
   spawnFx('assets/fx-sparkle.png', room, { count: 3, cx, cy, spread: 16, size: 40 });
   if (catTapCount % 3 === 0) spawnFx('assets/fx-paw.png', room, { count: 1, cx, cy: cy + 6, spread: 0, size: 30, life: 700, mode: 'trail' });
-
-  // Hold a happy pose for a readable beat, then settle back. Tapping again during
-  // the beat just refreshes it (catTransient cancels the old timer) — no flicker,
-  // no slideshow, and no stale timer snapping the pose back early.
   if (!cat.evolved && def.poses) {
     catTransient('react', 2600);
     playSprite((catTapCount % 2) ? 'play' : 'celebrate');
@@ -1905,15 +1727,11 @@ function reactCat(e) {
   }
 }
 
-// ---- Autonomous behavior: the cat lives on its own between taps -------------
-// Idle life mixes small in-place beats with occasional bounded travel. Wander
-// uses the same state owner and walk loop as directed movement, so any tap,
-// drag, mode change, or newer action interrupts it cleanly.
 function catPlayBeat() {
   const { cat, def } = catCtx();
   if (cat.evolved || !def.poses) return catHop();
   catTransient('glance', 1200);
-  playSprite('play');   // animated bat if the play frames exist, else the single pose
+  playSprite('play');
 }
 function catHop() {
   const { catEl } = catCtx();
@@ -1928,9 +1746,9 @@ function catWiggle() {
 function catBlink() {
   const { cat, def, catEl } = catCtx();
   const idle = !cat.evolved && def.frames && def.frames.idle;
-  if (!idle || idle.length < 2) return catWiggle();  // no blink frame yet → just wiggle
-  catTransient('glance', 180);                        // reopen (settle) shortly after
-  catEl.src = idle[1];                                // eyes closed
+  if (!idle || idle.length < 2) return catWiggle();
+  catTransient('glance', 180);
+  catEl.src = idle[1];
 }
 
 function cafeObstacleRects(room) {
@@ -1951,7 +1769,6 @@ function catWander(preferredNeed = null) {
   const room = el('c-cafe-room');
   const { wrap } = catCtx();
   if (!room || !wrap || cafeMode !== 'play' || catState !== 'idle') return false;
-
   const rr = room.getBoundingClientRect();
   const wr = wrap.getBoundingClientRect();
   if (!rr.width || !rr.height) return false;
@@ -1959,7 +1776,6 @@ function catWander(preferredNeed = null) {
     x: ((wr.left - rr.left) / rr.width) * 100,
     y: ((wr.top - rr.top) / rr.height) * 100
   };
-
   let preferred = null;
   if (preferredNeed) {
     const itemEl = Array.from(document.querySelectorAll('#c-placed [data-decor]'))
@@ -1974,33 +1790,27 @@ function catWander(preferredNeed = null) {
       itemWidth: (ir.width / rr.width) * 100
     });
   }
-
   const destination = catWanderDestination({
     from,
     obstacles: cafeObstacleRects(room),
     preferred
   });
   if (!destination) return false;
-
   const travelMs = catWalkDuration(from, destination, false);
   const arrive = () => {
     if (catState !== 'wander') return;
     const x = Math.round(destination.x * 10) / 10;
     const y = Math.round(destination.y * 10) / 10;
     if (state.child) state.child.cafeCat = { x, y };
-    // This ordinary room write is intentionally offline-safe. A transient sync
-    // failure must not snap the cat back or interrupt its autonomous life.
     store.moveCafeCat(state.familyId, x, y).catch(() => {});
     settleCatToRest();
   };
-
   releaseCatTarget();
   wrap.style.transition = 'none';
   wrap.style.left = from.x + '%';
   wrap.style.top = from.y + '%';
   wrap.style.bottom = 'auto';
   void wrap.offsetWidth;
-
   catTransient('wander', travelMs, arrive);
   playSprite('walk', { fps: 4, heroAction: true });
   wrap.style.transition = `left ${travelMs}ms linear, top ${travelMs}ms linear`;
@@ -2016,51 +1826,39 @@ function catIdleBeat() {
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const onCafe = state.role === 'child' && state.child
     && document.querySelector('[data-cscreen="cafe"]')?.classList.contains('active');
-  // Only stir when the café is open, in Play mode, the cat is at rest, and Sirus
-  // isn't mid-drag. Otherwise wait quietly for the next beat.
   if (!reduce && onCafe && !cafeDrag && cafeMode === 'play' && catState === 'idle') {
     const roll = Math.random();
     const low = lowestCareNeed(activeCareNeeds(), 40);
     if (low) {
-      // A cat asking for care stays quieter instead of performing a confusing
-      // autonomous play beat while one of its daily needs is low. Low Rest
-      // suppresses travel entirely; Hunger/Happiness may occasionally prompt a
-      // gentle walk near a matching placed object without using it or spending.
       const traveled = low.need !== 'rest' && roll >= 0.9 && catWander(low.need);
       if (traveled) catBeatsSinceWander = 0;
       else if (roll < 0.6) catBlink();
       else catWiggle();
     } else {
-      // Randomness keeps the cat from feeling clockwork; the five-beat ceiling
-      // keeps a valid build observable without making Sirus wait indefinitely.
       const travelDue = catBeatsSinceWander >= 5 || roll < 0.18;
       const traveled = travelDue && catWander();
       if (traveled) catBeatsSinceWander = 0;
       else {
         catBeatsSinceWander++;
-        if (roll < 0.46) catBlink();         // a slow blink (animated if frames exist)
-        else if (roll < 0.68) catWiggle();   // a little shimmy in place
-        else if (roll < 0.9) catPlayBeat();  // bat at a toy, then settle
-        else catHop();                       // a happy hop
+        if (roll < 0.46) catBlink();
+        else if (roll < 0.68) catWiggle();
+        else if (roll < 0.9) catPlayBeat();
+        else catHop();
       }
     }
   }
   scheduleCatBeat();
 }
-// A livelier cat (just did a quest) stirs a bit more often.
 function scheduleCatBeat() {
   clearTimeout(catBeatTimer);
   const moodCls = state.child ? catMood().cls : 'mood-calm';
   const base = moodCls === 'mood-happy' ? 5000 : 7000;
   catBeatTimer = setTimeout(catIdleBeat, base + Math.random() * 4000);
 }
-// Reopening the café shouldn't freeze the cat mid-center. Place it at its saved
-// spot in its resting pose and give a small wiggle hello (CSS, no walk needed).
 function catWelcomeBack() {
   if (!state.child) return;
   clearTimeout(catStateTimer);
   catBeatsSinceWander = 0;
-  // Place the cat at its saved spot (this is the one moment we apply it).
   const wrap = el('c-cafe-cat-wrap');
   const pos = state.child.cafeCat;
   if (wrap && pos && pos.x != null) { wrap.style.left = pos.x + '%'; wrap.style.top = pos.y + '%'; wrap.style.bottom = 'auto'; }
@@ -2069,7 +1867,6 @@ function catWelcomeBack() {
   if (!reduce) catStateTimer = setTimeout(() => { if (catState === 'idle' && cafeMode === 'play') catWiggle(); }, 700);
 }
 
-// Spawn a few effect sprites inside a positioned container. mode: rise | fall | pop.
 function spawnFx(src, container, { count = 1, cx = 50, cy = 50, spread = 20, size = 42, life = 1150, mode = 'rise' } = {}) {
   if (!container) return;
   for (let i = 0; i < count; i++) {
@@ -2083,8 +1880,6 @@ function spawnFx(src, container, { count = 1, cx = 50, cy = 50, spread = 20, siz
     setTimeout(() => s.remove(), life + i * 70);
   }
 }
-
-// Full-screen confetti burst (for quest completion / celebrations).
 function confettiBurst() {
   const layer = document.createElement('div');
   layer.className = 'fx-layer';
@@ -2092,6 +1887,7 @@ function confettiBurst() {
   spawnFx('assets/fx-confetti.png', layer, { count: 12, cx: 50, cy: 6, spread: 46, size: 34, life: 1500, mode: 'fall' });
   setTimeout(() => layer.remove(), 1900);
 }
+
 // ---- Events -----------------------------------------------------------------
 function bindEvents() {
   document.addEventListener('click', async (e) => {
@@ -2103,13 +1899,11 @@ function bindEvents() {
     const needCue = e.target.closest('#c-need-cue');
     if (needCue && needCue.dataset.need) { guideCareNeed(needCue.dataset.need); return; }
 
-    // Family-feedback card controls.
     const fbProgress = e.target.closest('[data-fb-progress]');
     if (fbProgress) { dismissFeedbackCard(fbProgress.closest('.feedback-card')); navChild('log'); return; }
     const fbDismiss = e.target.closest('[data-fb-dismiss]');
     if (fbDismiss) { dismissFeedbackCard(fbDismiss.closest('.feedback-card')); return; }
 
-    // ---- Day/Week ledger navigation (My Progress + Point Ledger) ----
     const historyMode = e.target.closest('[data-history-mode]');
     if (historyMode) { setHistoryMode(historyMode.dataset.historyMode); return; }
     if (e.target.closest('[data-week-current]')) { setWeekAnchor(startOfWeek(localDate())); return; }
@@ -2125,19 +1919,12 @@ function bindEvents() {
     const toggle = e.target.closest('[data-txn-toggle]');
     if (toggle) { state.expandedTxn = state.expandedTxn === toggle.dataset.txnToggle ? null : toggle.dataset.txnToggle; renderDayViews(); return; }
 
-    // "Completed today" drawer: drive the open state ourselves so a re-render
-    // preserves it. preventDefault stops the native <details> from also toggling.
     const completedToggle = e.target.closest('[data-toggle-completed]');
     if (completedToggle) { e.preventDefault(); state.completedOpen = !state.completedOpen; renderChildQuests(); return; }
-
-    // Focus Mode: enter on one mission / return to the full routine (§8).
     const focusOn = e.target.closest('[data-focus]');
     if (focusOn) { state.focusQuestId = focusOn.dataset.focus; renderChildQuests(); return; }
     const focusExit = e.target.closest('[data-focus-exit]');
     if (focusExit) { state.focusQuestId = null; renderChildQuests(); return; }
-
-    // Expand/collapse a "still needs doing" group; app-controlled so a background
-    // re-render can't reset it (like the Completed drawer).
     const stillToggle = e.target.closest('[data-toggle-still]');
     if (stillToggle) {
       e.preventDefault();
@@ -2146,7 +1933,6 @@ function bindEvents() {
       renderChildQuests();
       return;
     }
-    // Anytime "See all" / "Show less".
     const anytimeToggle = e.target.closest('[data-toggle-anytime]');
     if (anytimeToggle) { e.preventDefault(); state.anytimeExpanded = !state.anytimeExpanded; renderChildQuests(); return; }
 
@@ -2159,14 +1945,10 @@ function bindEvents() {
     const complete = e.target.closest('[data-complete]');
     if (complete) { await handleComplete(complete.dataset.complete); return; }
 
-    // Parent marks a quest done for Sirus from the "On Sirus's screen now" card.
     const sirusDone = e.target.closest('[data-sirus-done]');
     if (sirusDone) {
       const q = state.quests.find(x => x.id === sirusDone.dataset.sirusDone);
       if (!q) return;
-      // Approving Sirus's own pending tap is a straight yes (like the approvals
-      // card). Crediting a quest he hasn't tapped grants minutes he didn't
-      // request, so confirm that one.
       if (!completionStatus(q.id) && !confirm(`Mark “${q.title}” done for Sirus? He’ll get the reward now.`)) return;
       try { await store.parentCompleteQuest(state.familyId, state.uid, q.id); toast('Marked done ⭐'); }
       catch (err) { toast('Could not mark done — try again.'); }
@@ -2176,7 +1958,6 @@ function bindEvents() {
     const buy = e.target.closest('[data-buy]');
     if (buy) { try { await store.purchaseCafeItem(state.familyId, state.uid, buy.dataset.buy); toast('Added to the café!'); } catch (err) { toast(err.message === 'not-enough-coins' ? 'Not enough coins yet.' : 'Could not buy that.'); } return; }
 
-    // Café mode toggle (cat tap/drag is handled by the pointer flow, not here).
     if (e.target.closest('#c-decorate-btn')) return setCafeMode('decorate');
     if (e.target.closest('#c-done-btn')) return setCafeMode('play');
     if (e.target.closest('#c-undo-btn')) return applyCafeUndo();
@@ -2185,7 +1966,6 @@ function bindEvents() {
     if (putaway) { try { await store.setCafeItemPlaced(state.familyId, putaway.dataset.putaway, false); toast('Put away.'); } catch (err) { toast('Could not update the café.'); } return; }
     const place = e.target.closest('[data-place]');
     if (place) { try { await store.setCafeItemPlaced(state.familyId, place.dataset.place, true); toast('Placed!'); } catch (err) { toast('Could not update the café.'); } return; }
-    // Decorate-tray Place / Store, with one-step undo of that action.
     const placeTray = e.target.closest('[data-place-tray]');
     if (placeTray) { const id = placeTray.dataset.placeTray; try { await store.setCafeItemPlaced(state.familyId, id, true); setCafeUndo({ type: 'store', id }); toast('Placed!'); } catch (err) { toast('Could not update the café.'); } return; }
     const store2 = e.target.closest('[data-store]');
@@ -2193,7 +1973,7 @@ function bindEvents() {
 
     const delTxn = e.target.closest('[data-del-txn]');
     if (delTxn) {
-      if (state.role !== 'parent') return; // deleting a ledger entry is parent-only
+      if (state.role !== 'parent') return;
       const t = state.recentTxns.find(x => x.id === delTxn.dataset.delTxn);
       if (t && confirm('Delete this entry? Its points will be reversed.')) {
         try { await store.deleteTransaction(state.familyId, state.uid, t); toast('Entry deleted.'); }
@@ -2210,7 +1990,7 @@ function bindEvents() {
     if (toggleQ) {
       const q = state.quests.find(x => x.id === toggleQ.dataset.toggleQuest);
       if (!q) return;
-      const next = q.enabled === false; // currently off → turn on; currently on → lock off
+      const next = q.enabled === false;
       try { await store.setQuestEnabled(state.familyId, q.id, next); toast(next ? 'Task on for Sirus.' : '🔒 Task locked off.'); }
       catch (err) { toast('Could not update — try again.'); }
       return;
@@ -2248,7 +2028,7 @@ function bindEvents() {
       const avail = state.child.available || 0;
       el('redeem-available').textContent = avail;
       const input = el('redeem-minutes');
-      input.value = ''; input.max = String(avail); // cap so the picker can't exceed Available
+      input.value = ''; input.max = String(avail);
       el('redeem-note').value = '';
       const err = el('redeem-error'); err.hidden = true; err.textContent = '';
       el('redeem-dialog').showModal();
@@ -2260,18 +2040,13 @@ function bindEvents() {
     if (e.target.closest('#evo-close')) return el('evolution-dialog').close();
   });
 
-  // Native calendar jump (either day view). Future dates are blocked by the
-  // input's max, but clamp defensively too.
   document.addEventListener('change', (e) => {
     const cal = e.target.closest('.day-calendar');
     if (cal && cal.value) setSelectedDate(cal.value);
   });
 
-  // Deliver any waiting recognition the moment Sirus returns to the tab, so a
-  // point earned while he was away shows once he's actually present (§7.3).
   document.addEventListener('visibilitychange', () => { if (!document.hidden) processFeedback(); });
 
-  // Keyboard access for expanding a ledger row (rows are role="button").
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const toggle = e.target.closest('[data-txn-toggle]');
@@ -2286,7 +2061,6 @@ function bindEvents() {
     el('signin-note').textContent = 'Signing in…';
     try {
       const user = await parentSignIn(el('signin-email').value.trim(), el('signin-password').value);
-      // Owner path: first sign-in creates the family; later ones are a no-op.
       await store.setupFamily(user.uid, { parentName: 'Mom' });
       rememberDeviceRole('parent', user.uid, 'Mom', user.uid);
       await enterParent(user.uid, user, 'Mom');
@@ -2297,8 +2071,6 @@ function bindEvents() {
     el('coparent-note').textContent = 'Signing in…';
     try {
       const user = await parentSignIn(el('coparent-email').value.trim(), el('coparent-password').value);
-      // If THIS account has already joined on THIS device, no code is needed.
-      // (uid match guards against a shared device remembering a different parent.)
       let fid = (deviceRole() === 'parent' && deviceUid() === user.uid && deviceFamilyId())
         ? deviceFamilyId() : null;
       if (!fid) {
@@ -2309,7 +2081,6 @@ function bindEvents() {
       rememberDeviceRole('parent', fid, 'Abba', user.uid);
       await enterParent(fid, user, 'Abba');
     } catch (err) {
-      // Auth errors have a .code; join errors are plain messages we wrote.
       el('coparent-note').textContent = err && err.code ? friendlyAuthError(err) : (err && err.message) || 'Could not sign in.';
     }
   });
@@ -2328,9 +2099,6 @@ function bindEvents() {
     const note = el('redeem-note').value.trim();
     const avail = (state.child && state.child.available) || 0;
     const err = el('redeem-error');
-    // Block an over-limit request instead of silently clamping it (§10.3). The
-    // button lives in a method="dialog" form, so preventDefault keeps the dialog
-    // open on an invalid value.
     if (mins <= 0) { e.preventDefault(); err.textContent = 'Enter how many minutes were used.'; err.hidden = false; return; }
     if (mins > avail) { e.preventDefault(); err.textContent = `Only ${avail} minutes are available right now.`; err.hidden = false; return; }
     try {
@@ -2338,7 +2106,6 @@ function bindEvents() {
       el('redeem-note').value = '';
       toast(`Recorded ${mins} min used.`);
     } catch (ex) {
-      // A concurrent change dropped the balance between opening and confirming.
       e.preventDefault();
       const max = typeof ex.available === 'number' ? ex.available : avail;
       err.textContent = `Only ${max} minutes are available right now.`;
@@ -2364,8 +2131,6 @@ function bindEvents() {
 async function handleComplete(questId) {
   try {
     const result = await store.completeQuest(state.familyId, state.uid, questId);
-    // Immediate win even though the minutes are gated: celebrate + buzz so the
-    // tap feels great; the reward then stacks in the "waiting for Mom" pile.
     confettiBurst();
     if (navigator.vibrate) { try { navigator.vibrate(12); } catch (_) {} }
     toast(result && result.careChargeGranted
@@ -2380,7 +2145,9 @@ async function handleComplete(questId) {
 
 let editingQuestId = null;
 function syncQuestDaysRow() {
-  el('q-days-row').hidden = el('q-recurrence').value !== 'selected_days';
+  const type = el('q-recurrence').value;
+  el('q-days-row').hidden = type !== 'selected_days';
+  el('q-date-row').hidden = type !== 'one_time';
 }
 function openQuestDialog(id) {
   editingQuestId = id;
@@ -2388,13 +2155,11 @@ function openQuestDialog(id) {
   el('quest-dialog-title').textContent = id ? 'Edit quest' : 'Add quest';
   el('q-title').value = q ? q.title : '';
   el('q-section').value = q ? q.section : 'Morning';
-  // Routine fields fall back to Slice 1's read-time derivation for legacy quests,
-  // so opening an unedited quest shows its effective window/schedule; saving then
-  // persists them explicitly (write-on-edit — no bulk backfill).
   el('q-window').value = q ? questTimeWindow(q) : 'morning';
   el('q-essential').checked = q ? questIsDailyEssential(q) : false;
   const rec = q ? questRecurrence(q) : { type: 'everyday' };
-  el('q-recurrence').value = rec.type === 'one_time' ? 'everyday' : rec.type; // one_time not editable here yet
+  el('q-recurrence').value = rec.type;
+  el('q-one-time-date').value = rec.type === 'one_time' && rec.date ? rec.date : localDate();
   const days = new Set(rec.type === 'selected_days' && Array.isArray(rec.days) ? rec.days : []);
   document.querySelectorAll('.q-day').forEach(cb => { cb.checked = days.has(cb.value); });
   syncQuestDaysRow();
@@ -2407,9 +2172,9 @@ function openQuestDialog(id) {
 }
 function recurrenceFromDialog() {
   const type = el('q-recurrence').value;
+  if (type === 'one_time') return { type: 'one_time', date: el('q-one-time-date').value || localDate() };
   if (type !== 'selected_days') return { type };
   const days = [...document.querySelectorAll('.q-day')].filter(cb => cb.checked).map(cb => cb.value);
-  // No days chosen degrades to everyday rather than an unreachable quest.
   return days.length ? { type: 'selected_days', days } : { type: 'everyday' };
 }
 async function saveQuestFromDialog() {
@@ -2417,6 +2182,7 @@ async function saveQuestFromDialog() {
   const existing = editingQuestId ? state.quests.find(x => x.id === editingQuestId) : null;
   const timeWindow = el('q-window').value;
   const quest = {
+    ...(existing || {}),
     id: editingQuestId || `q-${Date.now()}`,
     title, section: el('q-section').value,
     points: Number(el('q-points').value) || 0,
@@ -2425,7 +2191,6 @@ async function saveQuestFromDialog() {
     coins: Math.max(0, Number(el('q-coins').value) || 0),
     enabled: el('q-enabled').checked,
     order: existing ? existing.order : state.quests.length,
-    // Explicit §18 routine fields, persisted on every save (write-on-edit).
     timeWindow,
     routineId: timeWindow,
     isDailyEssential: el('q-essential').checked,
@@ -2465,22 +2230,13 @@ async function boot() {
     if (user.isAnonymous) {
       const fid = deviceFamilyId();
       if (fid && deviceRole() === 'child') enterChild(fid, user.uid);
-      return; // otherwise, waiting for the pairing form to complete
+      return;
     }
-    // A signed-in parent (Mom or Abba). If this device already knows their
-    // family, route them straight in. First-time create/join is handled by the
-    // sign-in forms, so a brand-new account with no device memory falls through
-    // and waits for the form to finish.
     const fid = deviceFamilyId();
     const rememberedUid = deviceUid();
-    // Route only if this device's memory belongs to the account signing in.
-    // Legacy installs stored no uid — treat that as a match so Mom isn't logged
-    // out by this update; we backfill the uid below.
     const sameAccount = !rememberedUid || rememberedUid === user.uid;
     if (deviceRole() === 'parent' && fid && sameAccount) {
       try {
-        // Only the owner (familyId == their own uid) needs setup; a co-parent
-        // must never create a second family.
         if (fid === user.uid) await store.setupFamily(user.uid, { parentName: 'Mom' });
         rememberDeviceRole('parent', fid, deviceParentName(), user.uid);
         await enterParent(fid, user, deviceParentName());
