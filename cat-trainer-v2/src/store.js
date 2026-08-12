@@ -2,27 +2,27 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=cab56313';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=cab56313';
-import { seededQuests } from './data/quests.js?v=cab56313';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=cab56313';
+import { initFirebase, db, dbSdk } from './firebase.js?v=a604b175';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=a604b175';
+import { seededQuests } from './data/quests.js?v=a604b175';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=a604b175';
 import {
   CARE_NEEDS, areCareNeedsOkay, careCharges, freshCatNeeds, grantCareCharge,
   needsAt, refillNeed
-} from './care.js?v=cab56313';
+} from './care.js?v=a604b175';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=cab56313';
+} from './shared/rewards.js?v=a604b175';
 import {
   SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
   normalizeTransaction, summarizeDay
-} from './shared/ledger.js?v=cab56313';
+} from './shared/ledger.js?v=a604b175';
 import {
   FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable
-} from './shared/feedback.js?v=cab56313';
-import { localDate, localTimeLabel } from './shared/dates.js?v=cab56313';
+} from './shared/feedback.js?v=a604b175';
+import { localDate, localTimeLabel } from './shared/dates.js?v=a604b175';
 
 export const CHILD_ID = 'sirus';
 
@@ -273,6 +273,28 @@ export async function subscribeRangeActivity(familyId, dates, cb) {
     cb(marked);
   };
   const toRows = s => s.docs.map(d => d.data());
+  const uA = onSnapshot(query(p.txns(), where('activityDate', 'in', dates)), s => { a = toRows(s); emit(); });
+  const uL = onSnapshot(query(p.txns(), where('localDate', 'in', dates)), s => { l = toRows(s); emit(); });
+  return () => { uA(); uL(); };
+}
+
+// Live raw transactions for a seven-day reflection range. Like subscribeDay,
+// union activityDate + legacy localDate queries and let the caller normalize
+// placement. Seven dates stay safely under Firestore's `in` query limit.
+export async function subscribeRangeTransactions(familyId, dates, cb) {
+  const { database, sdk } = await fs();
+  const { onSnapshot, query, where } = sdk;
+  const p = paths(sdk, database, familyId);
+  if (!dates.length) { cb([]); return () => {}; }
+  let a = null, l = null;
+  const toRows = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
+  const emit = () => {
+    if (a === null || l === null) return;
+    const merged = new Map();
+    for (const d of a) merged.set(d.id, d);
+    for (const d of l) if (!merged.has(d.id)) merged.set(d.id, d);
+    cb([...merged.values()]);
+  };
   const uA = onSnapshot(query(p.txns(), where('activityDate', 'in', dates)), s => { a = toRows(s); emit(); });
   const uL = onSnapshot(query(p.txns(), where('localDate', 'in', dates)), s => { l = toRows(s); emit(); });
   return () => { uA(); uL(); };
