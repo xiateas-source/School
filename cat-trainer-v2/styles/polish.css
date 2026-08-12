@@ -587,3 +587,55 @@ button[data-polish-busy="true"]::after {
   margin: 0 0 6px;
 }
 [data-pscreen="quests"] .now-eyebrow { color: var(--green); }
+
+/* ---------- Quest Slice 2c: today-only overrides ---------- */
+/* Per-quest today actions (Skip · Later · Next) — small, secondary chips. */
+.today-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip-btn {
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 700;
+  font-size: .78rem;
+  padding: 5px 10px;
+  min-height: 32px;
+  cursor: pointer;
+}
+.chip-btn:active { background: var(--line); }
+.pill-btn.sm { padding: 5px 12px; font-size: .78rem; }
+
+/* Today is different — one-day exception card + its active-exception list. */
+.exception-card { border: 2px dashed var(--purple); }
+.today-preset-btn { background: var(--purple); color: #fff; margin-top: 2px; }
+.exception-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+}
+.exception-row .q-body { flex: 1; min-width: 0; }
+
+/* Preset picker dialog. */
+.preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0 4px; }
+.preset-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 84px;
+  font-size: 1.4rem;
+}
+.preset-choice span { font-size: .95rem; font-weight: 800; color: var(--ink); }
+.preset-choice small { font-size: .78rem; font-weight: 400; color: var(--muted); }
+.preset-choice:active { border-color: var(--purple); background: #fff; }

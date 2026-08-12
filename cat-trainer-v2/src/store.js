@@ -2,27 +2,28 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=10b57626';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=10b57626';
-import { seededQuests } from './data/quests.js?v=10b57626';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=10b57626';
+import { initFirebase, db, dbSdk } from './firebase.js?v=2fa8bc91';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=2fa8bc91';
+import { seededQuests } from './data/quests.js?v=2fa8bc91';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=2fa8bc91';
 import {
   CARE_NEEDS, areCareNeedsOkay, careCharges, freshCatNeeds, grantCareCharge,
   needsAt, refillNeed
-} from './care.js?v=10b57626';
+} from './care.js?v=2fa8bc91';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=10b57626';
+} from './shared/rewards.js?v=2fa8bc91';
 import {
   SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
   normalizeTransaction, summarizeDay
-} from './shared/ledger.js?v=10b57626';
+} from './shared/ledger.js?v=2fa8bc91';
 import {
   FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable
-} from './shared/feedback.js?v=10b57626';
-import { localDate, localTimeLabel } from './shared/dates.js?v=10b57626';
+} from './shared/feedback.js?v=2fa8bc91';
+import { localDate, localTimeLabel } from './shared/dates.js?v=2fa8bc91';
+import { questTimeWindow, questIsDailyEssential } from './shared/routines.js?v=2fa8bc91';
 
 export const CHILD_ID = 'sirus';
 
@@ -71,6 +72,8 @@ function paths(sdk, database, fid) {
     txn: (id) => doc(database, ...famRoot, 'pointTransactions', id),
     completion: (id) => doc(database, ...famRoot, 'questCompletions', id),
     completions: () => collection(database, ...famRoot, 'questCompletions'),
+    dayOverride: (id) => doc(database, ...famRoot, 'questDayOverrides', id),
+    dayOverrides: () => collection(database, ...famRoot, 'questDayOverrides'),
     feedback: (id) => doc(database, ...famRoot, 'familyFeedback', id),
     feedbacks: () => collection(database, ...famRoot, 'familyFeedback'),
     pairing: (code) => doc(database, 'pairings', code)
@@ -229,6 +232,21 @@ export async function subscribe(familyId, handlers = {}) {
       const items = s.docs.map(d => ({ id: d.id, ...d.data() }));
       items.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
       handlers.onPendingApprovals(items);
+    }
+  ));
+  // Today's quest overrides (§17.5/§17.6). Single-field equality on `date` (auto
+  // indexed); the map (questId → { action, window }) feeds planDay for BOTH the
+  // child and the parent Today view, so a one-day exception applies everywhere and
+  // auto-returns tomorrow because tomorrow's query simply won't match these docs.
+  if (handlers.onDayOverrides) unsubs.push(onSnapshot(
+    query(p.dayOverrides(), where('date', '==', today)),
+    s => {
+      const map = {};
+      s.forEach(d => {
+        const data = d.data();
+        if (data.questId && data.action) map[data.questId] = { action: data.action, window: data.window || null };
+      });
+      handlers.onDayOverrides(map);
     }
   ));
   // Compact "recent activity" feed only (dashboard's six rows). It is NO LONGER
@@ -1168,4 +1186,71 @@ export async function resetQuestCompletion(familyId, questId) {
   const { deleteDoc } = sdk;
   const p = paths(sdk, database, familyId);
   await deleteDoc(p.completion(`${CHILD_ID}_${questId}_${localDate()}`));
+}
+
+// --- Today-only overrides (§17.5 "For today", §17.6 "Today Is Different") ----
+// A one-day exception is a SCHEDULE action, never a point deduction. It is keyed
+// by quest + local date, so it applies only to today and auto-returns tomorrow
+// (tomorrow's date-scoped subscription simply won't match these docs). The
+// going-forward template is never touched — a parent must never rewrite every
+// future Tuesday to fix one Monday.
+const OVERRIDE_ACTIONS = ['skip', 'move', 'next'];
+function dayOverrideId(questId, date) { return `${questId}_${date}`; }
+
+export async function setDayOverride(familyId, uid, questId, action, window = null) {
+  if (!OVERRIDE_ACTIONS.includes(action)) throw new Error('bad-override-action');
+  const { database, sdk } = await fs();
+  const { setDoc, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+  const date = localDate();
+  const data = { questId, date, action, at: serverTimestamp(), by: uid };
+  if (action === 'move' && window) data.window = window;
+  await setDoc(p.dayOverride(dayOverrideId(questId, date)), data);
+}
+
+export async function clearDayOverride(familyId, questId) {
+  const { database, sdk } = await fs();
+  const { deleteDoc } = sdk;
+  const p = paths(sdk, database, familyId);
+  await deleteDoc(p.dayOverride(dayOverrideId(questId, localDate())));
+}
+
+// "Today Is Different" presets (§17.6). Each writes a batch of today-only skip
+// overrides over the quests it applies to; `custom` writes nothing (the parent
+// then uses the per-quest Skip / Move / Next controls directly). Auto-return is
+// inherent — these are date-keyed like any single override. Presets never
+// disable a quest or deduct points; tomorrow returns to normal on its own.
+export async function applyTodayPreset(familyId, uid, preset, quests = []) {
+  const { database, sdk } = await fs();
+  const { writeBatch, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+  const date = localDate();
+  const active = quests.filter(q => q && q.enabled !== false);
+
+  let targets;
+  switch (preset) {
+    case 'sick':      // Sick day — nothing expected today.
+    case 'out':       // Out all day — same effect: skip everything.
+      targets = active;
+      break;
+    case 'school_off': // School off — skip only the school-window quests.
+      targets = active.filter(q => questTimeWindow(q) === 'school');
+      break;
+    case 'easy_morning': // Easy morning — skip non-essential Morning quests only.
+      targets = active.filter(q => questTimeWindow(q) === 'morning' && !questIsDailyEssential(q));
+      break;
+    case 'custom':
+      return { skipped: 0 }; // parent drives per-quest controls; write nothing
+    default:
+      throw new Error('bad-preset');
+  }
+
+  const batch = writeBatch(database);
+  for (const q of targets) {
+    batch.set(p.dayOverride(dayOverrideId(q.id, date)), {
+      questId: q.id, date, action: 'skip', at: serverTimestamp(), by: uid, preset
+    });
+  }
+  await batch.commit();
+  return { skipped: targets.length };
 }

@@ -187,4 +187,37 @@ assert.equal(pool[0].timeWindow, undefined, 'source quest is not mutated');
 plan = planDay(pool, { ymd: '2026-08-10', overrides: { wkday: { action: 'next' } } });
 assert.equal(plan[0].id, 'wkday', 'make-next quest leads the plan');
 
+// --- Slice 2c: today-only overrides applied through planDay -------------------
+// A "Today Is Different" preset is a batch of skip overrides; planDay must drop
+// every skipped quest for the day while leaving the rest (and their windows)
+// untouched — and never mutate the source quests.
+const presetPool = [
+  { id: 'm-teeth', section: 'Morning', points: 1 },
+  { id: 'm-dress', section: 'Morning', points: 1 },
+  { id: 's-read', section: 'Brain', points: 1 },      // school window
+  { id: 'any-tidy', section: 'Tidy', points: 1 }      // anytime
+];
+// "Sick day" = skip everything today → an empty plan, source list intact.
+const sickOverrides = Object.fromEntries(presetPool.map(q => [q.id, { action: 'skip' }]));
+assert.deepEqual(planDay(presetPool, { ymd: '2026-08-10', overrides: sickOverrides }).map(q => q.id), [],
+  'sick-day preset skips every quest for today');
+assert.equal(presetPool.length, 4, 'preset overrides never mutate the source list');
+
+// "School off" = skip only the school-window quest; the rest stay.
+const schoolOff = { 's-read': { action: 'skip' } };
+assert.deepEqual(planDay(presetPool, { ymd: '2026-08-10', overrides: schoolOff }).map(q => q.id).sort(),
+  ['any-tidy', 'm-dress', 'm-teeth'], 'school-off preset skips only the school quest');
+
+// A single "Move to later" override reassigns the effective window for today only
+// and organizeDay then groups it under that later window, not its original one.
+const movePlan = planDay(presetPool, { ymd: '2026-08-10', overrides: { 'm-teeth': { action: 'move', window: 'evening' } } });
+const movedTeeth = movePlan.find(q => q.id === 'm-teeth');
+assert.equal(movedTeeth.timeWindow, 'evening', 'moved quest carries the later window');
+assert.equal(movedTeeth.movedToday, true, 'moved quest is flagged for the Today marker');
+assert.equal(presetPool[0].timeWindow, undefined, 'move override does not mutate the source quest');
+const moveDay = organizeDay(movePlan, { phase: 'morning', completedIds: [] });
+assert.equal(moveDay.now.quests.some(q => q.id === 'm-teeth'), false, 'moved quest leaves the morning Now block');
+assert.ok([moveDay.next, ...moveDay.later].some(g => g && g.window === 'evening' && g.quests.some(q => q.id === 'm-teeth')),
+  'moved quest now appears under the evening window');
+
 console.log('Routine organization + recurrence/overrides (Quest Slice 1–2): all checks passed.');

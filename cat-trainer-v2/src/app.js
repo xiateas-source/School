@@ -1,39 +1,39 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=10b57626';
+import { isConfigured } from './firebase.js?v=2fa8bc91';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=10b57626';
-import * as store from './store.js?v=10b57626';
-import { CAT_DEFS } from './data/cats.js?v=10b57626';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=10b57626';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=10b57626';
+} from './auth.js?v=2fa8bc91';
+import * as store from './store.js?v=2fa8bc91';
+import { CAT_DEFS } from './data/cats.js?v=2fa8bc91';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=2fa8bc91';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=2fa8bc91';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=10b57626';
+} from './cafe-interactions.js?v=2fa8bc91';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=10b57626';
+} from './care.js?v=2fa8bc91';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=10b57626';
+} from './shared/rewards.js?v=2fa8bc91';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=10b57626';
+} from './shared/ledger.js?v=2fa8bc91';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=10b57626';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=10b57626';
+} from './shared/dates.js?v=2fa8bc91';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=2fa8bc91';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questRecurrence,
-  WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=10b57626';
+  DAY_PHASES, WINDOW_LABEL, WINDOW_GLYPH
+} from './shared/routines.js?v=2fa8bc91';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -175,6 +175,9 @@ async function subscribeAll() {
     onOwnedItems: (o) => { state.ownedItems = o; renderAll(); },
     onTodayCompletions: (t) => { detectApproval(t); state.todayCompletions = t; renderAll(); },
     onPendingApprovals: (p) => { state.pendingApprovals = p; renderAll(); },
+    // Today-only overrides feed planDay for BOTH roles, so a parent's one-day
+    // exception immediately reshapes Sirus's view too and auto-returns tomorrow.
+    onDayOverrides: (o) => { state.dayOverrides = o; renderAll(); },
     onRecentTxns: (t) => { state.recentTxns = t; renderAll(); },
     onMembers: (m) => { state.members = m; renderAll(); }
   });
@@ -901,10 +904,34 @@ function parentTodayQuestRow(q) {
       : '<span class="status-chip todo">To do</span>';
   return `<div class="ptoday-row"><div class="q-body"><strong>${esc(q.title)}</strong>${todayFlagHtml(q)}</div>${chip}${todayActionsHtml(q)}</div>`;
 }
-// Slice 2c fills these in (today-only Skip/Move/Next markers + action buttons);
-// in Slice 2b they render nothing so the Today board is a clean read view.
-function todayFlagHtml(_q) { return ''; }
-function todayActionsHtml(_q) { return ''; }
+// The later daypart a "Move to later" sends a quest to: the next phase in the
+// day, or Anytime once there's no later phase (night / already-anytime).
+function laterWindow(win) {
+  const i = DAY_PHASES.indexOf(win);
+  return (i >= 0 && i < DAY_PHASES.length - 1) ? DAY_PHASES[i + 1] : 'anytime';
+}
+// Inline marker for a quest carrying a today-only move/next (skips leave the
+// board entirely and are managed from the Today-is-different card instead).
+function todayFlagHtml(q) {
+  if (q.movedToday) return ' · <em>moved to later</em>';
+  if (q.nextToday) return ' · <em>next</em>';
+  return '';
+}
+// Per-quest today-only actions (§17.5): Skip · Later · Next, a schedule change
+// for today only — never a point deduction. A quest already carrying a move/next
+// shows a single Undo instead. (A skipped quest isn't on the board, so it has no
+// row here — undo it from the Today-is-different card.)
+function todayActionsHtml(q) {
+  const ov = state.dayOverrides[q.id];
+  if (ov && (ov.action === 'move' || ov.action === 'next')) {
+    return `<button class="pill-btn reject sm" data-today-clear="${esc(q.id)}" aria-label="Undo today's change to ${esc(q.title)}">Undo</button>`;
+  }
+  return `<div class="today-actions">
+    <button class="chip-btn" data-today-skip="${esc(q.id)}" aria-label="Skip ${esc(q.title)} today">Skip</button>
+    <button class="chip-btn" data-today-move="${esc(q.id)}" aria-label="Move ${esc(q.title)} to later today">Later</button>
+    <button class="chip-btn" data-today-next="${esc(q.id)}" aria-label="Make ${esc(q.title)} the next mission">Next</button>
+  </div>`;
+}
 
 function renderParentToday() {
   const box = el('p-today');
@@ -956,8 +983,29 @@ function renderParentToday() {
 
   box.innerHTML = sections.join('');
 }
-// Slice 2c adds the "Today Is Different" bar; Slice 2b renders nothing here.
-function todayExceptionBarHtml() { return ''; }
+// "Today Is Different" (§17.6): a launcher for one-day presets plus the list of
+// exceptions currently in effect, each with an Undo. This is also the ONLY place
+// a skipped quest can be un-skipped, since a skip removes it from the board.
+// Exceptions are never framed as Sirus failing a task.
+function todayExceptionBarHtml() {
+  const entries = Object.entries(state.dayOverrides || {})
+    .filter(([, ov]) => ov && ov.action);
+  const n = entries.length;
+  const rows = entries.map(([qid, ov]) => {
+    const q = state.quests.find(x => x.id === qid);
+    const title = (q && q.title) || qid;
+    const what = ov.action === 'skip' ? 'Skipped today'
+      : ov.action === 'move' ? `Moved to ${WINDOW_LABEL[ov.window] || 'later'}`
+      : 'Made next';
+    return `<div class="exception-row"><div class="q-body"><strong>${esc(title)}</strong><br><small>${esc(what)}</small></div>
+      <button class="pill-btn reject" data-today-clear="${esc(qid)}" aria-label="Undo change to ${esc(title)}">Undo</button></div>`;
+  }).join('');
+  return `<section class="card exception-card">
+    <div class="card-head"><h3>Today is different</h3>${n?`<span class="badge">${n}</span>`:''}</div>
+    <p class="muted">${n ? `${n} one-day change${n>1?'s':''} in effect — back to normal tomorrow.` : 'One-off day? Sick day, school off, out all day — set a one-day exception.'}</p>
+    <button class="pill-btn today-preset-btn" data-today-presets>${n ? 'Add another exception' : 'Set up a one-day exception'}</button>
+    ${rows}</section>`;
+}
 
 // Quest Log (§17.11): what happened with responsibilities today — history, not
 // the home screen, and distinct from the Point Ledger. Date-nav + filters are
@@ -2272,6 +2320,48 @@ function bindEvents() {
       return;
     }
 
+    // Today-only overrides (§17.5). Each is a schedule action for today only —
+    // no points move — and auto-returns tomorrow.
+    const tSkip = e.target.closest('[data-today-skip]');
+    if (tSkip) {
+      try { await store.setDayOverride(state.familyId, state.uid, tSkip.dataset.todaySkip, 'skip'); toast('Skipped for today.'); }
+      catch (err) { toast('Could not update — try again.'); }
+      return;
+    }
+    const tMove = e.target.closest('[data-today-move]');
+    if (tMove) {
+      const q = state.quests.find(x => x.id === tMove.dataset.todayMove);
+      const win = laterWindow(questTimeWindow(q));
+      try { await store.setDayOverride(state.familyId, state.uid, tMove.dataset.todayMove, 'move', win); toast('Moved to later today.'); }
+      catch (err) { toast('Could not update — try again.'); }
+      return;
+    }
+    const tNext = e.target.closest('[data-today-next]');
+    if (tNext) {
+      try { await store.setDayOverride(state.familyId, state.uid, tNext.dataset.todayNext, 'next'); toast('Made next for today.'); }
+      catch (err) { toast('Could not update — try again.'); }
+      return;
+    }
+    const tClear = e.target.closest('[data-today-clear]');
+    if (tClear) {
+      try { await store.clearDayOverride(state.familyId, tClear.dataset.todayClear); toast('Back to normal for today.'); }
+      catch (err) { toast('Could not update — try again.'); }
+      return;
+    }
+    if (e.target.closest('[data-today-presets]')) { el('today-different-dialog').showModal(); return; }
+    const preset = e.target.closest('[data-preset]');
+    if (preset) {
+      const kind = preset.dataset.preset;
+      try {
+        const r = await store.applyTodayPreset(state.familyId, state.uid, kind, state.quests);
+        el('today-different-dialog').close();
+        toast(kind === 'custom'
+          ? 'Choose Skip / Later / Next on each quest below.'
+          : (r.skipped ? `Set for today — ${r.skipped} skipped.` : 'Nothing to change for today.'));
+      } catch (err) { toast('Could not apply — try again.'); }
+      return;
+    }
+
     const needCue = e.target.closest('#c-need-cue');
     if (needCue && needCue.dataset.need) { guideCareNeed(needCue.dataset.need); return; }
 
@@ -2571,7 +2661,9 @@ async function handleComplete(questId) {
 
 let editingQuestId = null;
 function syncQuestDaysRow() {
-  el('q-days-row').hidden = el('q-recurrence').value !== 'selected_days';
+  const type = el('q-recurrence').value;
+  el('q-days-row').hidden = type !== 'selected_days';
+  el('q-once-row').hidden = type !== 'one_time';
 }
 function openQuestDialog(id) {
   editingQuestId = id;
@@ -2585,9 +2677,10 @@ function openQuestDialog(id) {
   el('q-window').value = q ? questTimeWindow(q) : 'morning';
   el('q-essential').checked = q ? questIsDailyEssential(q) : false;
   const rec = q ? questRecurrence(q) : { type: 'everyday' };
-  el('q-recurrence').value = rec.type === 'one_time' ? 'everyday' : rec.type; // one_time not editable here yet
+  el('q-recurrence').value = rec.type;
   const days = new Set(rec.type === 'selected_days' && Array.isArray(rec.days) ? rec.days : []);
   document.querySelectorAll('.q-day').forEach(cb => { cb.checked = days.has(cb.value); });
+  el('q-once-date').value = rec.type === 'one_time' && rec.date ? rec.date : localDate();
   syncQuestDaysRow();
   el('q-points').value = q ? q.points : 1;
   el('q-brain').value = q ? q.brain : 0;
@@ -2598,10 +2691,18 @@ function openQuestDialog(id) {
 }
 function recurrenceFromDialog() {
   const type = el('q-recurrence').value;
-  if (type !== 'selected_days') return { type };
-  const days = [...document.querySelectorAll('.q-day')].filter(cb => cb.checked).map(cb => cb.value);
-  // No days chosen degrades to everyday rather than an unreachable quest.
-  return days.length ? { type: 'selected_days', days } : { type: 'everyday' };
+  if (type === 'selected_days') {
+    const days = [...document.querySelectorAll('.q-day')].filter(cb => cb.checked).map(cb => cb.value);
+    // No days chosen degrades to everyday rather than an unreachable quest.
+    return days.length ? { type: 'selected_days', days } : { type: 'everyday' };
+  }
+  if (type === 'one_time') {
+    const date = el('q-once-date').value;
+    // A one-time quest needs a date to ever be scheduled; without one, fall back
+    // to everyday rather than persist a quest that shows on no day at all.
+    return date ? { type: 'one_time', date } : { type: 'everyday' };
+  }
+  return { type };
 }
 async function saveQuestFromDialog() {
   const title = el('q-title').value.trim(); if (!title) return;

@@ -403,6 +403,17 @@ service cloud.firestore {
         allow update, delete: if isParent(fid);
       }
 
+      // --- Today-only quest overrides (§17.5, §17.6) -----------------------
+      // A one-day exception (skip / move / make-next) keyed by quest + date, so
+      // it auto-returns tomorrow and never mutates the going-forward template.
+      // Parent-only writes (a schedule action, not a reward); any member reads,
+      // so the child's own view reflects today's exceptions. Single-field
+      // (date ==) queries only — no composite index.
+      match /questDayOverrides/{overrideId} {
+        allow read: if isMember(fid);
+        allow create, update, delete: if isParent(fid);
+      }
+
       // --- Family feedback (the app's one shared delivery queue) ------------
       // Created only inside trusted parent writes (a positive recognition, or a
       // quest return). The child never creates an event, and may change ONLY the
