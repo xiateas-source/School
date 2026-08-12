@@ -10,7 +10,7 @@
 //   • activity date vs posted time — a quest done Aug 8 but approved Aug 9
 //     belongs under Aug 8 in the day view; posted time only drives audit order.
 
-import { QUICK_ACTION_BY_CODE } from './rewards.js?v=cab56313';
+import { QUICK_ACTION_BY_CODE } from './rewards.js?v=a604b175';
 
 export const SCHEMA_VERSION = 2;
 
@@ -142,6 +142,35 @@ export function summarizeDay(normalizedTxns) {
     roomToGrowCount, roomToGrowPoints,
     corrections
   };
+}
+
+// Weekly reflection uses the same correction-aware math as the day view, then
+// adds only the pattern fields named by §14. It never calculates a grade,
+// positive percentage, best/worst day, streak, or comparison score.
+export function summarizeWeek(normalizedTxns) {
+  const totals = summarizeDay(normalizedTxns);
+  const corrected = correctedOriginalIds(normalizedTxns);
+  let heroResets = 0;
+  let linkedRecoveries = 0;
+  const behaviorCounts = new Map();
+
+  for (const t of normalizedTxns) {
+    if (t.category === CATEGORY.CORRECTION || corrected.has(t.id)) continue;
+    if (t.category === CATEGORY.EARNED && t.reasonCode === 'hero_reset') {
+      heroResets++;
+      if (t.relatedTransactionId) linkedRecoveries++;
+    }
+    if (t.category === CATEGORY.ROOM_TO_GROW) {
+      const label = t.reasonLabel || QUICK_ACTION_BY_CODE[t.reasonCode]?.label || 'Other Room to Grow';
+      behaviorCounts.set(label, (behaviorCounts.get(label) || 0) + 1);
+    }
+  }
+
+  const behaviors = [...behaviorCounts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+  return { ...totals, heroResets, linkedRecoveries, behaviors };
 }
 
 // Amount-integrity fields for a new write. Given the balance before and the

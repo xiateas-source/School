@@ -594,3 +594,32 @@ main { padding: 0 16px; }
   .feedback-card { transition: none; }
   .fb-fly { display: none; }
 }
+
+
+/* ---------- Weekly reflection (Slice 4) ---------- */
+.history-mode-toggle {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+  background: var(--line); border-radius: 14px; margin: 10px 0 14px;
+}
+.history-mode-toggle button {
+  min-height: 42px; border: 0; border-radius: 11px; background: transparent;
+  color: var(--muted); font: inherit; font-weight: 800; cursor: pointer;
+}
+.history-mode-toggle button.active { background: var(--paper); color: var(--ink); box-shadow: 0 2px 8px rgba(120,96,64,.1); }
+.week-nav { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+.week-current { align-self: center; }
+.week-reflection { display: flex; flex-direction: column; gap: 12px; margin: 4px 0 14px; }
+.week-reflection-head h3 { margin: 2px 0 0; }
+.week-totals { margin: 0; }
+.week-recovery, .week-patterns {
+  background: var(--paper); border-radius: 14px; box-shadow: var(--shadow); padding: 13px 14px;
+}
+.week-recovery { display: flex; flex-direction: column; gap: 3px; }
+.week-recovery span { color: var(--muted); font-size: .84rem; }
+.week-patterns > strong { display: block; margin-bottom: 8px; }
+.week-pattern-list { display: flex; flex-wrap: wrap; gap: 7px; }
+.week-pattern {
+  display: inline-flex; align-items: center; min-height: 34px; padding: 6px 10px;
+  border-radius: 999px; background: var(--cream); color: var(--ink); font-size: .82rem; font-weight: 700;
+}
+.week-empty { margin: 0; font-size: .84rem; }

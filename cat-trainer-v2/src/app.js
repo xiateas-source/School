@@ -1,34 +1,34 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=cab56313';
+import { isConfigured } from './firebase.js?v=a604b175';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=cab56313';
-import * as store from './store.js?v=cab56313';
-import { CAT_DEFS } from './data/cats.js?v=cab56313';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=cab56313';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=cab56313';
+} from './auth.js?v=a604b175';
+import * as store from './store.js?v=a604b175';
+import { CAT_DEFS } from './data/cats.js?v=a604b175';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=a604b175';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=a604b175';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=cab56313';
+} from './cafe-interactions.js?v=a604b175';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=cab56313';
+} from './care.js?v=a604b175';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=cab56313';
+} from './shared/rewards.js?v=a604b175';
 import {
-  CATEGORY, normalizeTransaction, summarizeDay, correctedOriginalIds
-} from './shared/ledger.js?v=cab56313';
+  CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
+} from './shared/ledger.js?v=a604b175';
 import {
   localDate, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=cab56313';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=cab56313';
+} from './shared/dates.js?v=a604b175';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=a604b175';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -43,8 +43,10 @@ const state = {
   selectedDate: localDate(),      // the activity day being viewed
   weekAnchor: startOfWeek(localDate()), // Sunday of the visible 7-day strip
   dayFilter: 'all',               // all | earned | used | room_to_grow | correction
+  historyMode: 'day',              // day | week (§14)
   selectedDayTxns: [],            // raw rows for selectedDate (unioned query)
   weekActivity: new Set(),        // dates in the visible range that have activity
+  weekTxns: [],                    // raw rows for the visible weekly reflection
   expandedTxn: null,              // id of the row expanded for detail
   completedOpen: false,           // is the child's "Completed today" drawer open
   feedbackEvents: [],             // unseen family-feedback events (child only)
@@ -53,7 +55,7 @@ const state = {
 
 // Selected-day + week-activity subscriptions live outside the main snapshot fan-
 // out so navigating dates only re-listens to what changed (§12).
-let daySubUnsub = null, weekSubUnsub = null, daySubToken = 0, weekSubToken = 0;
+let daySubUnsub = null, weekSubUnsub = null, weekTxnUnsub = null, daySubToken = 0, weekSubToken = 0, weekTxnToken = 0;
 // Family-feedback delivery: one shared subscription + a re-entrancy guard so only
 // one card shows at a time (§7.0).
 let feedbackUnsub = null, feedbackShowing = false;
@@ -180,6 +182,17 @@ async function subscribeWeekActivity() {
   });
 }
 
+async function subscribeWeekTransactions() {
+  if (weekTxnUnsub) { weekTxnUnsub(); weekTxnUnsub = null; }
+  const token = ++weekTxnToken;
+  const dates = weekDates(state.weekAnchor);
+  weekTxnUnsub = await store.subscribeRangeTransactions(state.familyId, dates, rows => {
+    if (token !== weekTxnToken) return;
+    state.weekTxns = rows;
+    if (state.historyMode === 'week') renderDayViews();
+  });
+}
+
 function setSelectedDate(date, { reanchor = false } = {}) {
   const today = localDate();
   if (isAfterDate(date, today)) date = today; // never select the future (§6.2)
@@ -188,13 +201,26 @@ function setSelectedDate(date, { reanchor = false } = {}) {
   state.expandedTxn = null;
   if (weekChanged) state.weekAnchor = startOfWeek(date);
   subscribeSelectedDay();
-  if (weekChanged) subscribeWeekActivity();
+  if (weekChanged) { subscribeWeekActivity(); subscribeWeekTransactions(); }
   renderDayViews();
 }
 
 function setWeekAnchor(anchor) {
   state.weekAnchor = startOfWeek(anchor);
   subscribeWeekActivity();
+  subscribeWeekTransactions();
+  renderDayViews();
+}
+
+function setHistoryMode(mode) {
+  if (mode !== 'day' && mode !== 'week') return;
+  if (mode === 'week') {
+    state.weekAnchor = startOfWeek(state.selectedDate);
+    subscribeWeekActivity();
+    subscribeWeekTransactions();
+  }
+  state.historyMode = mode;
+  state.expandedTxn = null;
   renderDayViews();
 }
 
@@ -491,6 +517,59 @@ function emptyMessage() {
     : 'No point activity on this day.';
 }
 
+// Weekly reflection navigation and display (§14). This is deliberately small:
+// the same ledger truth, summarized without grades, rankings, streaks, or comparisons.
+function normalizedWeek() {
+  const dates = new Set(weekDates(state.weekAnchor));
+  return state.weekTxns
+    .map(t => normalizeTransaction(t, { members: state.members }))
+    .filter(t => dates.has(t.activityDate))
+    .sort((a, b) => (b.activityDate || '').localeCompare(a.activityDate || '')
+      || (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+}
+
+function historyModeToggleHtml() {
+  return `<div class="history-mode-toggle" role="group" aria-label="Progress time range">
+    <button type="button" data-history-mode="day" class="${state.historyMode === 'day' ? 'active' : ''}" aria-pressed="${state.historyMode === 'day'}">Day</button>
+    <button type="button" data-history-mode="week" class="${state.historyMode === 'week' ? 'active' : ''}" aria-pressed="${state.historyMode === 'week'}">Week</button>
+  </div>`;
+}
+
+function weekNavHtml() {
+  const today = localDate();
+  const current = startOfWeek(today);
+  const atCurrent = state.weekAnchor === current;
+  return `<div class="week-nav">
+    <div class="day-nav-row">
+      <button class="day-arrow" data-week-prev aria-label="Previous week">‹</button>
+      <div class="day-current">Week of ${esc(longDateLabel(state.weekAnchor))}</div>
+      <button class="day-arrow" data-week-next ${state.weekAnchor >= current ? 'disabled' : ''} aria-label="Next week">›</button>
+    </div>
+    ${atCurrent ? '' : '<button class="text-button week-current" data-week-current>This week</button>'}
+  </div>`;
+}
+
+function weekSummaryHtml(s, { parent }) {
+  const patterns = s.behaviors.length
+    ? `<div class="week-pattern-list">${s.behaviors.map(b => `<span class="week-pattern">${esc(b.label)} · ${b.count}</span>`).join('')}</div>`
+    : '<p class="muted week-empty">No Room to Grow moments recorded this week.</p>';
+  const resetText = s.heroResets
+    ? `${s.heroResets} Hero’s ${s.heroResets === 1 ? 'Reset' : 'Resets'} · ${s.linkedRecoveries} linked ${s.linkedRecoveries === 1 ? 'recovery' : 'recoveries'}`
+    : 'No Hero’s Resets recorded this week.';
+  return `<section class="week-reflection" aria-label="Weekly reflection">
+    <div class="week-reflection-head">
+      <div><p class="eyebrow purple">${parent ? 'WEEKLY REFLECTION' : 'YOUR WEEK'}</p><h3>How this week looked</h3></div>
+    </div>
+    <div class="day-summary week-totals">
+      <div class="sum earned"><strong>${s.earnedCount} ${s.earnedCount === 1 ? 'win' : 'wins'}</strong><span>+${s.earnedPoints} earned</span></div>
+      <div class="sum used"><strong>${s.usedMinutes} min</strong><span>screen used</span></div>
+      <div class="sum rtg"><strong>${s.roomToGrowCount} ${s.roomToGrowCount === 1 ? 'moment' : 'moments'}</strong><span>${s.roomToGrowPoints} Room to Grow</span></div>
+    </div>
+    <div class="week-recovery"><strong>Reset & recover</strong><span>${resetText}</span></div>
+    <div class="week-patterns"><strong>Room to Grow patterns</strong>${patterns}</div>
+  </section>`;
+}
+
 // The full date navigator: prev/next day, Today, 7-day strip with activity dots,
 // week nav, and a native calendar jump. Future days are disabled (§6.2).
 function dayNavHtml() {
@@ -614,6 +693,16 @@ function progressRow(t, { parent, corrected }) {
 function renderChildProgress() {
   const mount = el('c-progress-view');
   if (!mount) return;
+  if (state.historyMode === 'week') {
+    const summary = summarizeWeek(normalizedWeek());
+    const available = (state.child && state.child.available) || 0;
+    mount.innerHTML = `
+      <div class="available-banner"><span>Available now</span><strong>${available} min</strong></div>
+      ${historyModeToggleHtml()}
+      ${weekNavHtml()}
+      ${weekSummaryHtml(summary, { parent: false })}`;
+    return;
+  }
   const day = normalizedDay();
   const summary = summarizeDay(day);
   const corrected = correctedOriginalIds(day);
@@ -627,6 +716,7 @@ function renderChildProgress() {
     : `<div class="empty">${esc(emptyMessage())}</div>`;
   mount.innerHTML = `
     <div class="available-banner"><span>Available now</span><strong>${available} min</strong></div>
+    ${historyModeToggleHtml()}
     ${dayNavHtml()}
     ${daySummaryHtml(summary, { parent: false })}
     ${dayFilterHtml({ parent: false })}
@@ -638,6 +728,16 @@ function renderChildProgress() {
 function renderLedger() {
   const mount = el('p-ledger-view');
   if (!mount) return;
+  if (state.historyMode === 'week') {
+    const summary = summarizeWeek(normalizedWeek());
+    const available = (state.child && state.child.available) || 0;
+    mount.innerHTML = `
+      ${historyModeToggleHtml()}
+      ${weekNavHtml()}
+      ${weekSummaryHtml(summary, { parent: true })}
+      <div class="available-banner subtle"><span>Available now</span><strong>${available} min</strong></div>`;
+    return;
+  }
   const day = normalizedDay();
   const summary = summarizeDay(day);
   const corrected = correctedOriginalIds(day);
@@ -648,6 +748,7 @@ function renderLedger() {
     ? rows.map(t => progressRow(t, { parent: true, corrected: corrected.has(t.id) })).join('')
     : `<div class="empty">${esc(emptyMessage())}</div>`;
   mount.innerHTML = `
+    ${historyModeToggleHtml()}
     ${dayNavHtml()}
     ${daySummaryHtml(summary, { parent: true })}
     <div class="available-banner subtle"><span>Available now</span><strong>${available} min</strong></div>
@@ -1919,7 +2020,10 @@ function bindEvents() {
     const fbDismiss = e.target.closest('[data-fb-dismiss]');
     if (fbDismiss) { dismissFeedbackCard(fbDismiss.closest('.feedback-card')); return; }
 
-    // ---- Day-based ledger navigation (My Progress + Point Ledger) ----
+    // ---- Day/Week ledger navigation (My Progress + Point Ledger) ----
+    const historyMode = e.target.closest('[data-history-mode]');
+    if (historyMode) { setHistoryMode(historyMode.dataset.historyMode); return; }
+    if (e.target.closest('[data-week-current]')) { setWeekAnchor(startOfWeek(localDate())); return; }
     if (e.target.closest('[data-day-prev]')) { setSelectedDate(addDays(state.selectedDate, -1)); return; }
     if (e.target.closest('[data-day-next]')) { setSelectedDate(addDays(state.selectedDate, 1)); return; }
     if (e.target.closest('[data-day-today]')) { setSelectedDate(localDate(), { reanchor: true }); return; }
