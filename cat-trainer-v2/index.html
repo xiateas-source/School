@@ -8,8 +8,8 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=780f0308">
-  <link rel="stylesheet" href="styles/polish.css?v=780f0308">
+  <link rel="stylesheet" href="styles/base.css?v=24175612">
+  <link rel="stylesheet" href="styles/polish.css?v=24175612">
 </head>
 <body>
   <div id="app">
@@ -127,17 +127,36 @@
           <div id="p-ledger-view" class="progress-view"></div>
         </section>
 
-        <!-- Quests -->
+        <!-- Quests: Today · Routines · Log (Today opens by default, §17.1) -->
         <section class="screen" data-pscreen="quests">
           <h2 class="page-title">Quests</h2>
-          <button class="primary-button wide" id="add-quest-btn">+ Add a quest</button>
-          <section class="card">
-            <div class="card-head"><h3>On Sirus's screen now</h3></div>
-            <p class="muted" id="sirus-today-summary"></p>
-            <div id="sirus-today"></div>
-          </section>
-          <h3 class="section-label">Manage quests</h3>
-          <div id="parent-quests"></div>
+          <div class="subtab-bar" role="tablist" aria-label="Quest views">
+            <button class="subtab active" data-qtab="today" role="tab" aria-selected="true">Today</button>
+            <button class="subtab" data-qtab="routines" role="tab" aria-selected="false">Routines</button>
+            <button class="subtab" data-qtab="log" role="tab" aria-selected="false">Log</button>
+          </div>
+
+          <!-- Today — the calm operations screen (§17.2) -->
+          <div class="qpanel" data-qpanel="today">
+            <div id="p-today"></div>
+          </div>
+
+          <!-- Routines — configuration, one level deeper (§17.1) -->
+          <div class="qpanel" data-qpanel="routines" hidden>
+            <button class="primary-button wide" id="add-quest-btn">+ Add a quest</button>
+            <section class="card">
+              <div class="card-head"><h3>On Sirus's screen now</h3></div>
+              <p class="muted" id="sirus-today-summary"></p>
+              <div id="sirus-today"></div>
+            </section>
+            <h3 class="section-label">Manage quests</h3>
+            <div id="parent-quests"></div>
+          </div>
+
+          <!-- Log — what happened with responsibilities (§17.11) -->
+          <div class="qpanel" data-qpanel="log" hidden>
+            <div id="p-quest-log"></div>
+          </div>
         </section>
 
         <!-- Cats -->
@@ -311,17 +330,56 @@
     <h2 id="quest-dialog-title">Add quest</h2>
     <label>Name<input id="q-title" maxlength="50" required></label>
     <label>Section<select id="q-section"><option>Morning</option><option>Brain</option><option>Move</option><option>Tidy</option><option>Night</option><option>General</option></select></label>
+    <label>When<select id="q-window">
+      <option value="morning">Morning</option>
+      <option value="school">School</option>
+      <option value="anytime">Anytime</option>
+      <option value="evening">Evening</option>
+      <option value="night">Night</option>
+    </select></label>
+    <label>Repeats<select id="q-recurrence">
+      <option value="everyday">Every day</option>
+      <option value="weekdays">Weekdays (Mon–Fri)</option>
+      <option value="weekends">Weekends (Sat–Sun)</option>
+      <option value="selected_days">Chosen days…</option>
+      <option value="one_time">Just once…</option>
+    </select></label>
+    <div class="weekday-row" id="q-days-row" hidden>
+      <label><input type="checkbox" class="q-day" value="SU">Su</label>
+      <label><input type="checkbox" class="q-day" value="MO">Mo</label>
+      <label><input type="checkbox" class="q-day" value="TU">Tu</label>
+      <label><input type="checkbox" class="q-day" value="WE">We</label>
+      <label><input type="checkbox" class="q-day" value="TH">Th</label>
+      <label><input type="checkbox" class="q-day" value="FR">Fr</label>
+      <label><input type="checkbox" class="q-day" value="SA">Sa</label>
+    </div>
+    <label id="q-once-row" hidden>On<input id="q-once-date" type="date"></label>
     <div class="reward-inputs">
       <label>Points<input id="q-points" type="number" value="1"></label>
       <label>Brain<input id="q-brain" type="number" min="0" value="0"></label>
       <label>Energy<input id="q-energy" type="number" min="0" value="1"></label>
       <label>Coins<input id="q-coins" type="number" min="0" value="1"></label>
     </div>
+    <label class="check-row"><input id="q-essential" type="checkbox"> Daily Essential — expected every scheduled day</label>
     <label class="check-row"><input id="q-enabled" type="checkbox" checked> Active — Sirus can do this task</label>
     <div class="btn-row">
       <button class="text-button" value="cancel">Cancel</button>
       <button class="primary-button" id="quest-save" value="default">Save</button>
     </div>
+  </form></dialog>
+
+  <!-- Today Is Different — one-day exception presets (§17.6) -->
+  <dialog id="today-different-dialog" class="modal"><form method="dialog" class="modal-card">
+    <h2>Today is different</h2>
+    <p class="muted">A one-day exception. Tomorrow returns to normal on its own — this never changes Sirus's regular routine, and it's never counted as a missed task.</p>
+    <div class="preset-grid">
+      <button type="button" class="preset-choice" data-preset="sick">🤒<span>Sick day</span><small>Skip everything today</small></button>
+      <button type="button" class="preset-choice" data-preset="school_off">🏫<span>School off</span><small>Skip school-time quests</small></button>
+      <button type="button" class="preset-choice" data-preset="out">🚗<span>Out all day</span><small>Skip everything today</small></button>
+      <button type="button" class="preset-choice" data-preset="easy_morning">☀️<span>Easy morning</span><small>Just the essentials</small></button>
+      <button type="button" class="preset-choice" data-preset="custom">✎<span>Custom</span><small>Choose on each quest</small></button>
+    </div>
+    <div class="btn-row"><button class="text-button" value="cancel">Close</button></div>
   </form></dialog>
 
   <dialog id="evolution-dialog" class="modal evolution"><div class="modal-card">
@@ -334,10 +392,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=780f0308"></script>
-  <script type="module" src="src/ledger-actions.js?v=780f0308"></script>
+  <script type="module" src="src/app.js?v=24175612"></script>
+  <script type="module" src="src/ledger-actions.js?v=24175612"></script>
   <!-- Presentation-only device/accessibility layer; no store writes or game state. -->
-  <script type="module" src="src/polish.js?v=780f0308"></script>
+  <script type="module" src="src/polish.js?v=24175612"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.

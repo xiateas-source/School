@@ -2,27 +2,28 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=780f0308';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=780f0308';
-import { seededQuests } from './data/quests.js?v=780f0308';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=780f0308';
+import { initFirebase, db, dbSdk } from './firebase.js?v=24175612';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=24175612';
+import { seededQuests } from './data/quests.js?v=24175612';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=24175612';
 import {
   CARE_NEEDS, areCareNeedsOkay, careCharges, freshCatNeeds, grantCareCharge,
   needsAt, refillNeed
-} from './care.js?v=780f0308';
+} from './care.js?v=24175612';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=780f0308';
+} from './shared/rewards.js?v=24175612';
 import {
   SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
   normalizeTransaction, summarizeDay
-} from './shared/ledger.js?v=780f0308';
+} from './shared/ledger.js?v=24175612';
 import {
   FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable
-} from './shared/feedback.js?v=780f0308';
-import { localDate, localTimeLabel } from './shared/dates.js?v=780f0308';
+} from './shared/feedback.js?v=24175612';
+import { localDate, localTimeLabel } from './shared/dates.js?v=24175612';
+import { presetTargets } from './shared/routines.js?v=24175612';
 
 export const CHILD_ID = 'sirus';
 
@@ -71,6 +72,8 @@ function paths(sdk, database, fid) {
     txn: (id) => doc(database, ...famRoot, 'pointTransactions', id),
     completion: (id) => doc(database, ...famRoot, 'questCompletions', id),
     completions: () => collection(database, ...famRoot, 'questCompletions'),
+    dayOverride: (id) => doc(database, ...famRoot, 'questDayOverrides', id),
+    dayOverrides: () => collection(database, ...famRoot, 'questDayOverrides'),
     feedback: (id) => doc(database, ...famRoot, 'familyFeedback', id),
     feedbacks: () => collection(database, ...famRoot, 'familyFeedback'),
     pairing: (code) => doc(database, 'pairings', code)
@@ -181,7 +184,6 @@ export async function subscribe(familyId, handlers = {}) {
   const { database, sdk } = await fs();
   const { onSnapshot, query, where, orderBy, limit } = sdk;
   const p = paths(sdk, database, familyId);
-  const today = localDate();
   const unsubs = [];
 
   if (handlers.onChild) unsubs.push(onSnapshot(p.child(), s => handlers.onChild(s.data())));
@@ -200,17 +202,11 @@ export async function subscribe(familyId, handlers = {}) {
   if (handlers.onOwnedItems) unsubs.push(onSnapshot(p.ownedItems(), s => {
     handlers.onOwnedItems(s.docs.map(d => ({ id: d.id, ...d.data() })));
   }));
-  if (handlers.onTodayCompletions) unsubs.push(onSnapshot(
-    query(p.completions(), where('localDate', '==', today)),
-    // Carry status so the child UI can tell "waiting for Mom" (pending) apart from
-    // approved. Legacy docs predate the field, so a missing status reads approved.
-    // approvedBy lets the child's approval toast name the actual approving parent
-    // instead of a hard-coded "Mom" (§7.1).
-    s => handlers.onTodayCompletions(s.docs.map(d => ({ questId: d.data().questId, status: d.data().status || 'approved', approvedBy: d.data().approvedBy || null })))
-  ));
-  // Pending approvals across all days (a completion could span local midnight
-  // before a parent reviews it). Filter on the status field; sort newest-first in
-  // memory so no composite index is needed.
+  // Today's completions and today's overrides are DATE-SCOPED and therefore live
+  // in subscribeToday (below), re-pointed at local midnight so the day rolls over
+  // without a reload. Pending approvals span all days (a completion may await
+  // review past local midnight), so it stays here — status-filtered, sorted in
+  // memory, no composite index.
   if (handlers.onPendingApprovals) unsubs.push(onSnapshot(
     query(p.completions(), where('status', '==', 'pending')),
     s => {
@@ -225,6 +221,55 @@ export async function subscribe(familyId, handlers = {}) {
   if (handlers.onRecentTxns) unsubs.push(onSnapshot(
     query(p.txns(), orderBy('createdAt', 'desc'), limit(50)),
     s => handlers.onRecentTxns(s.docs.map(d => ({ id: d.id, ...d.data() })))
+  ));
+
+  return () => unsubs.forEach(u => u());
+}
+
+// The two DATE-SCOPED live reads: today's completions and today's overrides. Kept
+// separate from subscribe() so the caller can re-point them at local midnight —
+// otherwise a query built for one calendar day keeps returning that day's docs
+// after the date rolls over, and yesterday's completions/exceptions would go on
+// shaping "today" until a reload. `date` is 'YYYY-MM-DD' (the current local day).
+export async function subscribeToday(familyId, date, handlers = {}) {
+  const { database, sdk } = await fs();
+  const { onSnapshot, query, where } = sdk;
+  const p = paths(sdk, database, familyId);
+  const unsubs = [];
+
+  if (handlers.onTodayCompletions) unsubs.push(onSnapshot(
+    query(p.completions(), where('localDate', '==', date)),
+    // Carry status so the child UI can tell "waiting for Mom" (pending) apart from
+    // approved. Legacy docs predate the field, so a missing status reads approved.
+    // approvedBy lets the child's approval toast name the actual approving parent
+    // instead of a hard-coded "Mom" (§7.1). questTitle + createdAt (`at`) are
+    // carried so the parent Quest Log can render a titled, time-ordered history
+    // even if the quest was later edited/deleted; the child UI ignores the extras.
+    s => handlers.onTodayCompletions(s.docs.map(d => {
+      const data = d.data();
+      return {
+        questId: data.questId,
+        status: data.status || 'approved',
+        approvedBy: data.approvedBy || null,
+        questTitle: data.questTitle || null,
+        at: data.createdAt || null
+      };
+    }))
+  ));
+  // Today's quest overrides (§17.5/§17.6). Single-field equality on `date` (auto
+  // indexed); the map (questId → { action, window }) feeds planDay for BOTH the
+  // child and the parent Today view, so a one-day exception applies everywhere and
+  // auto-returns tomorrow because tomorrow's query simply won't match these docs.
+  if (handlers.onDayOverrides) unsubs.push(onSnapshot(
+    query(p.dayOverrides(), where('date', '==', date)),
+    s => {
+      const map = {};
+      s.forEach(d => {
+        const data = d.data();
+        if (data.questId && data.action) map[data.questId] = { action: data.action, window: data.window || null };
+      });
+      handlers.onDayOverrides(map);
+    }
   ));
 
   return () => unsubs.forEach(u => u());
@@ -1156,4 +1201,56 @@ export async function resetQuestCompletion(familyId, questId) {
   const { deleteDoc } = sdk;
   const p = paths(sdk, database, familyId);
   await deleteDoc(p.completion(`${CHILD_ID}_${questId}_${localDate()}`));
+}
+
+// --- Today-only overrides (§17.5 "For today", §17.6 "Today Is Different") ----
+// A one-day exception is a SCHEDULE action, never a point deduction. It is keyed
+// by quest + local date, so it applies only to today and auto-returns tomorrow
+// (tomorrow's date-scoped subscription simply won't match these docs). The
+// going-forward template is never touched — a parent must never rewrite every
+// future Tuesday to fix one Monday.
+const OVERRIDE_ACTIONS = ['skip', 'move', 'next'];
+function dayOverrideId(questId, date) { return `${questId}_${date}`; }
+
+export async function setDayOverride(familyId, uid, questId, action, window = null) {
+  if (!OVERRIDE_ACTIONS.includes(action)) throw new Error('bad-override-action');
+  const { database, sdk } = await fs();
+  const { setDoc, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+  const date = localDate();
+  const data = { questId, date, action, at: serverTimestamp(), by: uid };
+  if (action === 'move' && window) data.window = window;
+  await setDoc(p.dayOverride(dayOverrideId(questId, date)), data);
+}
+
+export async function clearDayOverride(familyId, questId) {
+  const { database, sdk } = await fs();
+  const { deleteDoc } = sdk;
+  const p = paths(sdk, database, familyId);
+  await deleteDoc(p.dayOverride(dayOverrideId(questId, localDate())));
+}
+
+// "Today Is Different" presets (§17.6). Writes a batch of today-only skip
+// overrides over the quests the preset applies to — computed by the pure
+// presetTargets() so recurrence can't leak a not-due quest in. `custom` writes
+// nothing (the parent uses the per-quest Skip / Move / Next controls directly).
+// Auto-return is inherent — these are date-keyed like any single override.
+// Presets never disable a quest or deduct points; tomorrow returns to normal.
+export async function applyTodayPreset(familyId, uid, preset, quests = []) {
+  if (preset === 'custom') return { skipped: 0 }; // per-quest controls; write nothing
+  if (!['sick', 'out', 'school_off', 'easy_morning'].includes(preset)) throw new Error('bad-preset');
+  const { database, sdk } = await fs();
+  const { writeBatch, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+  const date = localDate();
+  const targets = presetTargets(quests, preset, date);
+
+  const batch = writeBatch(database);
+  for (const q of targets) {
+    batch.set(p.dayOverride(dayOverrideId(q.id, date)), {
+      questId: q.id, date, action: 'skip', at: serverTimestamp(), by: uid, preset
+    });
+  }
+  await batch.commit();
+  return { skipped: targets.length };
 }
