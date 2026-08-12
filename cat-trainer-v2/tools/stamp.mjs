@@ -53,7 +53,8 @@ const FILES = [
   'src/shared/ledger.js',
   'src/shared/corrections.js',
   'src/shared/feedback.js',
-  'src/shared/dates.js'
+  'src/shared/dates.js',
+  'src/shared/routines.js'
 ];
 
 // Normalize a file to its canonical, un-stamped form so hashing and re-stamping
