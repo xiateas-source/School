@@ -145,6 +145,18 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
 > paste `firestore.rules` → Publish). Until Mom does this, the affected feature is
 > denied with "Missing or insufficient permissions." See `FIREBASE-SETUP.md` →
 > "Publishing / updating the security rules."
+> - 🚨 **ACTION REQUIRED — care-charge regression (2026-08-12):** Feed/Rest/Play
+>   all fail on Sirus's tablet with "Care did not save" and the charge is never
+>   spent. Root cause is this publish gap, **not** an app-code regression: the app
+>   (unchanged since 2026-08-09) writes all three needs on every care action and
+>   spends on Rest/Happiness, but the **live database is still running the older
+>   rule set** (the three-need + Hero-care follow-ups below were never published).
+>   Those stale rules only accept a 2-key `{hunger,lastUpdatedAt}` write for need
+>   `hunger`, so they reject every current care write — including Feed. **Fix:
+>   paste the current `firestore.rules` into the console and Publish.** No code
+>   change is needed to restore the loop. `tools/test-care-rules.mjs` now pins the
+>   app↔rules contract (and encodes this exact stale-rule rejection) so the next
+>   drift is caught in the suite instead of on-device.
 > - **Latest change (2026-08-09): Hunger care** allows a child to stamp only the
 >   migration-safe initial `catNeeds` value or perform a paired one-charge Hunger
 >   refill. Charge earning must be paired with its new pending quest completion;
