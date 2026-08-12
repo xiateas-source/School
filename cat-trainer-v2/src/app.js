@@ -1,34 +1,38 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=a604b175';
+import { isConfigured } from './firebase.js?v=bfd87b68';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=a604b175';
-import * as store from './store.js?v=a604b175';
-import { CAT_DEFS } from './data/cats.js?v=a604b175';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=a604b175';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=a604b175';
+} from './auth.js?v=bfd87b68';
+import * as store from './store.js?v=bfd87b68';
+import { CAT_DEFS } from './data/cats.js?v=bfd87b68';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=bfd87b68';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=bfd87b68';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=a604b175';
+} from './cafe-interactions.js?v=bfd87b68';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=a604b175';
+} from './care.js?v=bfd87b68';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=a604b175';
+} from './shared/rewards.js?v=bfd87b68';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=a604b175';
+} from './shared/ledger.js?v=bfd87b68';
 import {
   localDate, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=a604b175';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=a604b175';
+} from './shared/dates.js?v=bfd87b68';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=bfd87b68';
+import {
+  organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow,
+  WINDOW_LABEL, WINDOW_GLYPH
+} from './shared/routines.js?v=bfd87b68';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -49,6 +53,7 @@ const state = {
   weekTxns: [],                    // raw rows for the visible weekly reflection
   expandedTxn: null,              // id of the row expanded for detail
   completedOpen: false,           // is the child's "Completed today" drawer open
+  focusQuestId: null,             // Focus Mode: the one quest Sirus is on (§8)
   feedbackEvents: [],             // unseen family-feedback events (child only)
   clientId: null                  // stable per-install id for the claim lease
 };
@@ -921,35 +926,89 @@ function childQuestCard(q) {
     ${status==='pending'?'<div class="q-status">Done! Waiting for Mom ⭐</div>':''}</div>
     ${btn}</div>`;
 }
+// A mission card = the normal quest card plus a Focus affordance for actionable
+// (unhandled) missions. Finished cards render unchanged.
+function childMissionCard(q) {
+  if (completionStatus(q.id)) return childQuestCard(q);
+  return `<div class="mission-wrap">${childQuestCard(q)}<button class="focus-btn" data-focus="${esc(q.id)}" aria-label="Focus on ${esc(q.title)}">🔎 Focus</button></div>`;
+}
+
+// Now / Next / Later / Anytime + Routine Mode + Focus Mode (§6, §7, §8, §10.1).
+// Reward economics are untouched — this only changes how the same quests and the
+// same completion actions are organized on screen.
 function renderChildQuests() {
   const active = state.quests.filter(q => q.enabled !== false);
-  // "Available" = still actionable today. Anything Sirus has already tapped
-  // (waiting for Mom or approved) drops into the collapsed drawer so he never
-  // has to scroll past finished quests to find what's next.
-  const available = active.filter(q => !completionStatus(q.id));
+  // A quest with any completion (pending = waiting for Mom, or approved) is not
+  // actionable again today; both count as "handled".
+  const doneIds = new Set(active.filter(q => completionStatus(q.id)).map(q => q.id));
+
+  // Focus Mode: one task, everything else hidden. Falls through to the list if
+  // the focused quest was finished or turned off.
+  if (state.focusQuestId) {
+    const fq = active.find(q => q.id === state.focusQuestId);
+    if (fq && !doneIds.has(fq.id)) {
+      el('c-quests').innerHTML =
+        `<div class="focus-mode">
+           <button class="text-button focus-back" data-focus-exit>← Back to missions</button>
+           <div class="focus-card">${childQuestCard(fq)}</div>
+         </div>`;
+      return;
+    }
+    state.focusQuestId = null;
+  }
+
+  const day = organizeDay(active, { phase: phaseNow(), completedIds: doneIds });
+  const sections = [];
+
+  // NOW — Routine Mode: "Pick your next mission" (2–4 eligible).
+  if (day.now) {
+    const missions = nextMissions(day.now.quests, doneIds, 4);
+    const left = progressCounts(day.now.quests, doneIds).left;
+    const mins = minutesAvailable(day.now.quests, doneIds);
+    const head = `<div class="phase-head now"><h3>${WINDOW_GLYPH[day.now.window]} ${esc(WINDOW_LABEL[day.now.window])} Missions</h3>
+      <small>${left} left · ${mins} minute${mins === 1 ? '' : 's'} available to earn</small></div>`;
+    const body = missions.length
+      ? `<p class="pick-cue">Pick your next mission</p>${missions.map(childMissionCard).join('')}`
+      : `<div class="empty">All done here — great job! 🎉</div>`;
+    sections.push(`<section class="phase now">${head}${body}</section>`);
+  }
+
+  // STILL NEEDS DOING — past windows with unfinished work, neutral (§10.1).
+  for (const g of day.stillNeedsDoing) {
+    const unfinished = g.quests.filter(q => !doneIds.has(q.id));
+    sections.push(`<section class="phase still"><div class="phase-head"><h3>${WINDOW_GLYPH[g.window]} ${esc(WINDOW_LABEL[g.window])} — still needs doing</h3>
+      <small>${unfinished.length} left</small></div>${unfinished.map(childMissionCard).join('')}</section>`);
+  }
+
+  // NEXT — compact, so it stays discoverable without competing with Now (§6).
+  if (day.next) {
+    const after = day.now ? WINDOW_LABEL[day.now.window] : 'now';
+    sections.push(`<section class="phase next compact"><div class="phase-head"><h3>${WINDOW_GLYPH[day.next.window]} ${esc(WINDOW_LABEL[day.next.window])}</h3>
+      <small>Starts after ${esc(after)}</small></div></section>`);
+  }
+
+  // LATER — compact headings only.
+  if (day.later.length) {
+    const items = day.later.map(g => `<li>${WINDOW_GLYPH[g.window]} ${esc(WINDOW_LABEL[g.window])}</li>`).join('');
+    sections.push(`<section class="phase later compact"><div class="phase-head"><h3>Later</h3></div><ul class="later-list">${items}</ul></section>`);
+  }
+
+  // ANYTIME — eligible flexible quests as full cards.
+  const anytimeOpen = day.anytime.filter(q => !doneIds.has(q.id));
+  if (anytimeOpen.length) {
+    sections.push(`<section class="phase anytime"><div class="phase-head"><h3>⭐ Anytime</h3></div>${anytimeOpen.map(childMissionCard).join('')}</section>`);
+  }
+
+  // Completed drawer — open state controlled by app state so a background
+  // re-render can't snap it shut while Sirus has it open.
   const finished = active.filter(q => completionStatus(q.id));
-
-  const groups = SECTIONS.map(section => {
-    const qs = available.filter(q => q.section === section);
-    if (!qs.length) return '';
-    const meta = SECTION_META[section] || { glyph: '•' };
-    const icon = meta.icon ? `<img src="${meta.icon}" alt="">` : `<span class="section-glyph">${meta.glyph}</span>`;
-    return `<div class="quest-group"><h3>${icon}${esc(section)}</h3>${qs.map(childQuestCard).join('')}</div>`;
-  }).join('');
-
-  const availableHtml = groups || (finished.length
-    ? '<div class="empty">All done — great job! 🎉</div>'
-    : '<div class="empty">No quests yet.</div>');
-
-  // Open state is controlled by app state, not left to the native element, so a
-  // background re-render (an approval landing, the café cat saving its position)
-  // can't snap the drawer shut while Sirus has it open.
   const finishedHtml = finished.length
     ? `<details class="completed-quests"${state.completedOpen ? ' open' : ''}><summary data-toggle-completed>✓ Completed today <span class="done-count">${finished.length}</span></summary>
         <div class="completed-body">${finished.map(childQuestCard).join('')}</div></details>`
     : '';
 
-  el('c-quests').innerHTML = availableHtml + finishedHtml;
+  const body = sections.join('') || (finished.length ? '' : '<div class="empty">No quests yet.</div>');
+  el('c-quests').innerHTML = body + finishedHtml;
 }
 function renderChildCats() {
   const canSwitch = state.child.childCanSwitchCat !== false;
@@ -2040,6 +2099,12 @@ function bindEvents() {
     // preserves it. preventDefault stops the native <details> from also toggling.
     const completedToggle = e.target.closest('[data-toggle-completed]');
     if (completedToggle) { e.preventDefault(); state.completedOpen = !state.completedOpen; renderChildQuests(); return; }
+
+    // Focus Mode: enter on one mission / return to the full routine (§8).
+    const focusOn = e.target.closest('[data-focus]');
+    if (focusOn) { state.focusQuestId = focusOn.dataset.focus; renderChildQuests(); return; }
+    const focusExit = e.target.closest('[data-focus-exit]');
+    if (focusExit) { state.focusQuestId = null; renderChildQuests(); return; }
 
     const quick = e.target.closest('[data-quick]');
     if (quick) { const note = el('point-note').value.trim(); try { await store.adjustPoints(state.familyId, state.uid, { reasonCode: quick.dataset.quick, note }); const a = QUICK_ACTIONS.find(x=>x.code===quick.dataset.quick); el('point-note').value = ''; toast(`${a.amount>0?'+':''}${a.amount} · ${a.label}`); } catch (err) { toast('Could not save — check connection.'); } return; }
