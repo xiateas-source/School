@@ -1,0 +1,422 @@
+name: My Progress Slice 4 foundation
+
+on:
+  push:
+    branches:
+      - agent/my-progress-slice-4
+
+permissions:
+  contents: write
+
+jobs:
+  implement-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/my-progress-slice-4
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply Slice 4 weekly reflection foundation
+        working-directory: cat-trainer-v2
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f'{label} marker not found')
+              return text.replace(old, new, 1)
+
+          # ---- Shared weekly math ------------------------------------------
+          ledger = Path('src/shared/ledger.js')
+          text = ledger.read_text()
+          marker = '''// Amount-integrity fields for a new write. Given the balance before and the
+          // full intended signed delta, compute the delta Available Minutes can actually'''
+          weekly = '''// Weekly reflection uses the same correction-aware math as the day view, then
+          // adds only the pattern fields named by §14. It never calculates a grade,
+          // positive percentage, best/worst day, streak, or comparison score.
+          export function summarizeWeek(normalizedTxns) {
+            const totals = summarizeDay(normalizedTxns);
+            const corrected = correctedOriginalIds(normalizedTxns);
+            let heroResets = 0;
+            let linkedRecoveries = 0;
+            const behaviorCounts = new Map();
+
+            for (const t of normalizedTxns) {
+              if (t.category === CATEGORY.CORRECTION || corrected.has(t.id)) continue;
+              if (t.category === CATEGORY.EARNED && t.reasonCode === 'hero_reset') {
+                heroResets++;
+                if (t.relatedTransactionId) linkedRecoveries++;
+              }
+              if (t.category === CATEGORY.ROOM_TO_GROW) {
+                const label = t.reasonLabel || QUICK_ACTION_BY_CODE[t.reasonCode]?.label || 'Other Room to Grow';
+                behaviorCounts.set(label, (behaviorCounts.get(label) || 0) + 1);
+              }
+            }
+
+            const behaviors = [...behaviorCounts.entries()]
+              .map(([label, count]) => ({ label, count }))
+              .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+            return { ...totals, heroResets, linkedRecoveries, behaviors };
+          }
+
+          '''
+          text = replace_once(text, marker, weekly + marker, 'ledger weekly helper')
+          ledger.write_text(text)
+
+          # ---- Firestore week-range transaction subscription ---------------
+          store = Path('src/store.js')
+          text = store.read_text()
+          marker = '''// Derived "today" totals for the dashboard, computed from the ledger so there is
+          // never a reset counter to get out of sync.'''
+          week_sub = '''// Live raw transactions for a seven-day reflection range. Like subscribeDay,
+          // union activityDate + legacy localDate queries and let the caller normalize
+          // placement. Seven dates stay safely under Firestore's `in` query limit.
+          export async function subscribeRangeTransactions(familyId, dates, cb) {
+            const { database, sdk } = await fs();
+            const { onSnapshot, query, where } = sdk;
+            const p = paths(sdk, database, familyId);
+            if (!dates.length) { cb([]); return () => {}; }
+            let a = null, l = null;
+            const toRows = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
+            const emit = () => {
+              if (a === null || l === null) return;
+              const merged = new Map();
+              for (const d of a) merged.set(d.id, d);
+              for (const d of l) if (!merged.has(d.id)) merged.set(d.id, d);
+              cb([...merged.values()]);
+            };
+            const uA = onSnapshot(query(p.txns(), where('activityDate', 'in', dates)), s => { a = toRows(s); emit(); });
+            const uL = onSnapshot(query(p.txns(), where('localDate', 'in', dates)), s => { l = toRows(s); emit(); });
+            return () => { uA(); uL(); };
+          }
+
+          '''
+          text = replace_once(text, marker, week_sub + marker, 'store week subscription')
+          store.write_text(text)
+
+          # ---- App state, subscriptions, navigation, rendering -------------
+          app = Path('src/app.js')
+          text = app.read_text()
+          text = replace_once(
+              text,
+              'CATEGORY, normalizeTransaction, summarizeDay, correctedOriginalIds',
+              'CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds',
+              'app summarizeWeek import'
+          )
+          text = replace_once(
+              text,
+              "  dayFilter: 'all',               // all | earned | used | room_to_grow | correction\n",
+              "  dayFilter: 'all',               // all | earned | used | room_to_grow | correction\n  historyMode: 'day',              // day | week (§14)\n",
+              'app history mode state'
+          )
+          text = replace_once(
+              text,
+              "  weekActivity: new Set(),        // dates in the visible range that have activity\n",
+              "  weekActivity: new Set(),        // dates in the visible range that have activity\n  weekTxns: [],                    // raw rows for the visible weekly reflection\n",
+              'app week rows state'
+          )
+          text = replace_once(
+              text,
+              'let daySubUnsub = null, weekSubUnsub = null, daySubToken = 0, weekSubToken = 0;',
+              'let daySubUnsub = null, weekSubUnsub = null, weekTxnUnsub = null, daySubToken = 0, weekSubToken = 0, weekTxnToken = 0;',
+              'app week subscription state'
+          )
+
+          marker = 'function setSelectedDate(date, { reanchor = false } = {}) {'
+          week_fn = '''async function subscribeWeekTransactions() {
+            if (weekTxnUnsub) { weekTxnUnsub(); weekTxnUnsub = null; }
+            const token = ++weekTxnToken;
+            const dates = weekDates(state.weekAnchor);
+            weekTxnUnsub = await store.subscribeRangeTransactions(state.familyId, dates, rows => {
+              if (token !== weekTxnToken) return;
+              state.weekTxns = rows;
+              if (state.historyMode === 'week') renderDayViews();
+            });
+          }
+
+          '''
+          text = replace_once(text, marker, week_fn + marker, 'app week subscription function')
+          text = replace_once(
+              text,
+              '  if (weekChanged) subscribeWeekActivity();',
+              '  if (weekChanged) { subscribeWeekActivity(); subscribeWeekTransactions(); }',
+              'app selected date week subscriptions'
+          )
+          text = replace_once(
+              text,
+              '''function setWeekAnchor(anchor) {
+            state.weekAnchor = startOfWeek(anchor);
+            subscribeWeekActivity();
+            renderDayViews();
+          }
+          ''',
+              '''function setWeekAnchor(anchor) {
+            state.weekAnchor = startOfWeek(anchor);
+            subscribeWeekActivity();
+            subscribeWeekTransactions();
+            renderDayViews();
+          }
+          ''',
+              'app setWeekAnchor'
+          )
+          marker = 'function setDayFilter(filter) {'
+          history_mode = '''function setHistoryMode(mode) {
+            if (mode !== 'day' && mode !== 'week') return;
+            if (mode === 'week') {
+              state.weekAnchor = startOfWeek(state.selectedDate);
+              subscribeWeekActivity();
+              subscribeWeekTransactions();
+            }
+            state.historyMode = mode;
+            state.expandedTxn = null;
+            renderDayViews();
+          }
+
+          '''
+          text = replace_once(text, marker, history_mode + marker, 'app history mode setter')
+
+          marker = '// The full date navigator: prev/next day, Today, 7-day strip with activity dots,'
+          weekly_ui = '''// Weekly reflection navigation and display (§14). This is deliberately small:
+          // the same ledger truth, summarized without grades, rankings, streaks, or comparisons.
+          function normalizedWeek() {
+            const dates = new Set(weekDates(state.weekAnchor));
+            return state.weekTxns
+              .map(t => normalizeTransaction(t, { members: state.members }))
+              .filter(t => dates.has(t.activityDate))
+              .sort((a, b) => (b.activityDate || '').localeCompare(a.activityDate || '')
+                || (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+          }
+
+          function historyModeToggleHtml() {
+            return `<div class="history-mode-toggle" role="group" aria-label="Progress time range">
+              <button type="button" data-history-mode="day" class="${state.historyMode === 'day' ? 'active' : ''}" aria-pressed="${state.historyMode === 'day'}">Day</button>
+              <button type="button" data-history-mode="week" class="${state.historyMode === 'week' ? 'active' : ''}" aria-pressed="${state.historyMode === 'week'}">Week</button>
+            </div>`;
+          }
+
+          function weekNavHtml() {
+            const today = localDate();
+            const current = startOfWeek(today);
+            const atCurrent = state.weekAnchor === current;
+            return `<div class="week-nav">
+              <div class="day-nav-row">
+                <button class="day-arrow" data-week-prev aria-label="Previous week">‹</button>
+                <div class="day-current">Week of ${esc(longDateLabel(state.weekAnchor))}</div>
+                <button class="day-arrow" data-week-next ${state.weekAnchor >= current ? 'disabled' : ''} aria-label="Next week">›</button>
+              </div>
+              ${atCurrent ? '' : '<button class="text-button week-current" data-week-current>This week</button>'}
+            </div>`;
+          }
+
+          function weekSummaryHtml(s, { parent }) {
+            const patterns = s.behaviors.length
+              ? `<div class="week-pattern-list">${s.behaviors.map(b => `<span class="week-pattern">${esc(b.label)} · ${b.count}</span>`).join('')}</div>`
+              : '<p class="muted week-empty">No Room to Grow moments recorded this week.</p>';
+            const resetText = s.heroResets
+              ? `${s.heroResets} Hero’s ${s.heroResets === 1 ? 'Reset' : 'Resets'} · ${s.linkedRecoveries} linked ${s.linkedRecoveries === 1 ? 'recovery' : 'recoveries'}`
+              : 'No Hero’s Resets recorded this week.';
+            return `<section class="week-reflection" aria-label="Weekly reflection">
+              <div class="week-reflection-head">
+                <div><p class="eyebrow purple">${parent ? 'WEEKLY REFLECTION' : 'YOUR WEEK'}</p><h3>How this week looked</h3></div>
+              </div>
+              <div class="day-summary week-totals">
+                <div class="sum earned"><strong>${s.earnedCount} ${s.earnedCount === 1 ? 'win' : 'wins'}</strong><span>+${s.earnedPoints} earned</span></div>
+                <div class="sum used"><strong>${s.usedMinutes} min</strong><span>screen used</span></div>
+                <div class="sum rtg"><strong>${s.roomToGrowCount} ${s.roomToGrowCount === 1 ? 'moment' : 'moments'}</strong><span>${s.roomToGrowPoints} Room to Grow</span></div>
+              </div>
+              <div class="week-recovery"><strong>Reset & recover</strong><span>${resetText}</span></div>
+              <div class="week-patterns"><strong>Room to Grow patterns</strong>${patterns}</div>
+            </section>`;
+          }
+
+          '''
+          text = replace_once(text, marker, weekly_ui + marker, 'app weekly UI helpers')
+
+          child_prefix = '''function renderChildProgress() {
+            const mount = el('c-progress-view');
+            if (!mount) return;
+            const day = normalizedDay();'''
+          child_new = '''function renderChildProgress() {
+            const mount = el('c-progress-view');
+            if (!mount) return;
+            if (state.historyMode === 'week') {
+              const summary = summarizeWeek(normalizedWeek());
+              const available = (state.child && state.child.available) || 0;
+              mount.innerHTML = `
+                <div class="available-banner"><span>Available now</span><strong>${available} min</strong></div>
+                ${historyModeToggleHtml()}
+                ${weekNavHtml()}
+                ${weekSummaryHtml(summary, { parent: false })}`;
+              return;
+            }
+            const day = normalizedDay();'''
+          text = replace_once(text, child_prefix, child_new, 'app child week render')
+
+          parent_prefix = '''function renderLedger() {
+            const mount = el('p-ledger-view');
+            if (!mount) return;
+            const day = normalizedDay();'''
+          parent_new = '''function renderLedger() {
+            const mount = el('p-ledger-view');
+            if (!mount) return;
+            if (state.historyMode === 'week') {
+              const summary = summarizeWeek(normalizedWeek());
+              const available = (state.child && state.child.available) || 0;
+              mount.innerHTML = `
+                ${historyModeToggleHtml()}
+                ${weekNavHtml()}
+                ${weekSummaryHtml(summary, { parent: true })}
+                <div class="available-banner subtle"><span>Available now</span><strong>${available} min</strong></div>`;
+              return;
+            }
+            const day = normalizedDay();'''
+          text = replace_once(text, parent_prefix, parent_new, 'app parent week render')
+
+          # Both existing Day renderers get the mode switch immediately before the
+          # date navigator. Exactly two occurrences are expected.
+          old = '    ${dayNavHtml()}\n'
+          if text.count(old) != 2:
+              raise SystemExit(f'app dayNav render count was {text.count(old)}, expected 2')
+          text = text.replace(old, '    ${historyModeToggleHtml()}\n    ${dayNavHtml()}\n')
+
+          click_marker = '''    // ---- Day-based ledger navigation (My Progress + Point Ledger) ----
+              if (e.target.closest('[data-day-prev]'))'''
+          click_new = '''    // ---- Day/Week ledger navigation (My Progress + Point Ledger) ----
+              const historyMode = e.target.closest('[data-history-mode]');
+              if (historyMode) { setHistoryMode(historyMode.dataset.historyMode); return; }
+              if (e.target.closest('[data-week-current]')) { setWeekAnchor(startOfWeek(localDate())); return; }
+              if (e.target.closest('[data-day-prev]'))'''
+          text = replace_once(text, click_marker, click_new, 'app history mode click handlers')
+          app.write_text(text)
+
+          # ---- Styles -------------------------------------------------------
+          css = Path('styles/base.css')
+          text = css.read_text()
+          if '/* ---------- Weekly reflection (Slice 4) ---------- */' in text:
+              raise SystemExit('weekly reflection styles already present')
+          text += '''\n\n/* ---------- Weekly reflection (Slice 4) ---------- */
+          .history-mode-toggle {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+            background: var(--line); border-radius: 14px; margin: 10px 0 14px;
+          }
+          .history-mode-toggle button {
+            min-height: 42px; border: 0; border-radius: 11px; background: transparent;
+            color: var(--muted); font: inherit; font-weight: 800; cursor: pointer;
+          }
+          .history-mode-toggle button.active { background: var(--paper); color: var(--ink); box-shadow: 0 2px 8px rgba(120,96,64,.1); }
+          .week-nav { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+          .week-current { align-self: center; }
+          .week-reflection { display: flex; flex-direction: column; gap: 12px; margin: 4px 0 14px; }
+          .week-reflection-head h3 { margin: 2px 0 0; }
+          .week-totals { margin: 0; }
+          .week-recovery, .week-patterns {
+            background: var(--paper); border-radius: 14px; box-shadow: var(--shadow); padding: 13px 14px;
+          }
+          .week-recovery { display: flex; flex-direction: column; gap: 3px; }
+          .week-recovery span { color: var(--muted); font-size: .84rem; }
+          .week-patterns > strong { display: block; margin-bottom: 8px; }
+          .week-pattern-list { display: flex; flex-wrap: wrap; gap: 7px; }
+          .week-pattern {
+            display: inline-flex; align-items: center; min-height: 34px; padding: 6px 10px;
+            border-radius: 999px; background: var(--cream); color: var(--ink); font-size: .82rem; font-weight: 700;
+          }
+          .week-empty { margin: 0; font-size: .84rem; }
+          '''
+          css.write_text(text)
+
+          # ---- Slice 4 tests -----------------------------------------------
+          Path('tools/test-slice4.mjs').write_text(r'''import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { fileURLToPath } from 'node:url';
+          import { dirname, join } from 'node:path';
+          import { CATEGORY, normalizeTransaction, summarizeWeek } from '../src/shared/ledger.js';
+
+          const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+          const read = rel => readFileSync(join(ROOT, rel), 'utf8');
+
+          const rows = [
+            { id: 'e1', category: CATEGORY.EARNED, reasonCode: 'good_choice', reasonLabel: 'Good choice', requestedAmount: 1, amount: 1 },
+            { id: 'e2', category: CATEGORY.EARNED, reasonCode: 'quest', reasonLabel: 'Quest', requestedAmount: 1, amount: 1 },
+            { id: 'reset', category: CATEGORY.EARNED, reasonCode: 'hero_reset', reasonLabel: 'Hero’s Reset', requestedAmount: 1, amount: 1, relatedTransactionId: 'r1' },
+            { id: 'r1', category: CATEGORY.ROOM_TO_GROW, reasonCode: 'rebuttal', reasonLabel: 'Rebuttal', requestedAmount: -2, amount: -2 },
+            { id: 'r2', category: CATEGORY.ROOM_TO_GROW, reasonCode: 'rebuttal', reasonLabel: 'Rebuttal', requestedAmount: -2, amount: -1 },
+            { id: 'r3', category: CATEGORY.ROOM_TO_GROW, reasonCode: 'refused_breaths', reasonLabel: 'Refused breaths', requestedAmount: -2, amount: 0 },
+            { id: 'screen', category: CATEGORY.USED, reasonCode: 'screen_time', requestedAmount: -8, amount: -8 },
+            { id: 'junk', category: CATEGORY.EARNED, reasonCode: 'good_choice', reasonLabel: 'Good choice', requestedAmount: 1, amount: 1 },
+            { id: 'corr', category: CATEGORY.CORRECTION, reasonCode: 'correction', requestedAmount: -1, amount: -1, reversesTransactionId: 'junk' }
+          ].map(t => normalizeTransaction(t));
+
+          const week = summarizeWeek(rows);
+          assert.equal(week.earnedCount, 3, 'corrected positive is excluded from weekly wins');
+          assert.equal(week.earnedPoints, 3);
+          assert.equal(week.usedMinutes, 8, 'weekly Used remains screen time only');
+          assert.equal(week.roomToGrowCount, 3);
+          assert.equal(week.roomToGrowPoints, -6, 'weekly Room to Grow preserves full intended -2 impact');
+          assert.equal(week.heroResets, 1);
+          assert.equal(week.linkedRecoveries, 1);
+          assert.deepEqual(week.behaviors, [
+            { label: 'Rebuttal', count: 2 },
+            { label: 'Refused breaths', count: 1 }
+          ]);
+
+          const app = read('src/app.js');
+          const store = read('src/store.js');
+          const css = read('styles/base.css');
+          assert.match(app, /historyMode: 'day'/, 'Day remains the default view');
+          assert.match(app, /data-history-mode="week"/, 'Week view is explicitly selectable');
+          assert.match(app, /summarizeWeek\(normalizedWeek\(\)\)/, 'both screens use shared weekly math');
+          assert.match(app, /Room to Grow patterns/, 'week view names behavior patterns neutrally');
+          assert.match(store, /subscribeRangeTransactions/, 'week range has a live transaction query');
+          assert.match(css, /Weekly reflection \(Slice 4\)/, 'weekly reflection styles are present');
+
+          const weeklyUiStart = app.indexOf('function weekSummaryHtml');
+          const weeklyUiEnd = app.indexOf('// The full date navigator', weeklyUiStart);
+          const weeklyUi = app.slice(weeklyUiStart, weeklyUiEnd).toLowerCase();
+          for (const banned of ['best day', 'worst day', 'positive percentage', 'leaderboard', 'compared to']) {
+            assert.equal(weeklyUi.includes(banned), false, `weekly UI must not include ${banned}`);
+          }
+
+          console.log('Slice 4 weekly reflection: all checks passed.');
+          ''')
+          PY
+
+      - name: Syntax checks
+        working-directory: cat-trainer-v2
+        run: |
+          node --check src/app.js
+          node --check src/store.js
+          node --check src/shared/ledger.js
+          node --check tools/test-slice4.mjs
+
+      - name: Stamp cache version
+        run: node cat-trainer-v2/tools/stamp.mjs
+
+      - name: Run full Node suite
+        working-directory: cat-trainer-v2
+        run: |
+          set -e
+          node tools/test-feedback.mjs
+          node tools/test-ledger.mjs
+          node tools/test-dates.mjs
+          node tools/test-hero-care.mjs
+          node tools/test-care.mjs
+          node tools/test-cafe-interactions.mjs
+          node tools/test-corrections.mjs
+          node tools/test-slice3.mjs
+          node tools/test-slice4.mjs
+
+      - name: Commit implementation and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/slice4-start.yml
+          git add -A
+          git commit -m "Start My Progress Slice 4 weekly reflection"
+          git push origin HEAD:agent/my-progress-slice-4
