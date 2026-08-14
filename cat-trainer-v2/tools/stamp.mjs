@@ -54,7 +54,8 @@ const FILES = [
   'src/shared/corrections.js',
   'src/shared/feedback.js',
   'src/shared/dates.js',
-  'src/shared/routines.js'
+  'src/shared/routines.js',
+  'src/shared/pairing.js'
 ];
 
 // Normalize a file to its canonical, un-stamped form so hashing and re-stamping

@@ -5,15 +5,15 @@
 // rendering; this module adds parent ledger actions and lets those subscriptions
 // reflect the resulting Firestore changes.
 
-import { deviceFamilyId, deviceUid, deviceRole } from './auth.js?v=24175612';
-import * as store from './store.js?v=24175612';
-import { QUICK_ACTIONS } from './shared/rewards.js?v=24175612';
-import { localDate } from './shared/dates.js?v=24175612';
-import { reversibleRewardEffects } from './shared/corrections.js?v=24175612';
+import { deviceFamilyId, deviceUid, deviceRole } from './auth.js?v=08d5a06b';
+import * as store from './store.js?v=08d5a06b';
+import { QUICK_ACTIONS } from './shared/rewards.js?v=08d5a06b';
+import { localDate } from './shared/dates.js?v=08d5a06b';
+import { reversibleRewardEffects } from './shared/corrections.js?v=08d5a06b';
 import {
   correctTransaction, permanentDeleteTransaction, getLatestCorrectableTransaction,
   getTransaction, awardHeroReset
-} from './ledger-actions-store.js?v=24175612';
+} from './ledger-actions-store.js?v=08d5a06b';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];

@@ -44,23 +44,81 @@ service cloud.firestore {
     function isChild(fid) {
       return isMember(fid) && role(fid) == 'child';
     }
-    // A pairing code is valid for a given family + role if it exists, is active,
-    // and points at that family with that role. Used to gate self-joining as a
-    // child (tablet) or as a co-parent (a second parent, e.g. Abba).
+    // A pairing code is a short-lived, single-use bearer token. It is "alive"
+    // only while it is active, unconsumed, and inside the window measured from
+    // the SERVER-stamped createdAt — so a device with a wrong clock can neither
+    // stretch the window nor mint a code that outlives it. See src/shared/pairing.js.
+    function pairingTtl() {
+      return duration.value(15, 'm');
+    }
+    function pairingAlive(p) {
+      return p.get('active', false) == true
+        && p.get('consumedAt', null) == null
+        && p.get('createdAt', null) is timestamp
+        && p.createdAt + pairingTtl() > request.time;
+    }
+    // A pairing code is valid for a given family + role if it is alive and points
+    // at that family with that role. Used to gate self-joining as a child
+    // (tablet) or as a co-parent (a second parent, e.g. Abba).
     function validPairing(fid, code, wantRole) {
       return exists(/databases/$(database)/documents/pairings/$(code))
-        && pairing(code).active == true
+        && pairingAlive(pairing(code))
         && pairing(code).familyId == fid
         && pairing(code).role == wantRole;
     }
 
     // --- Pairing codes (top-level so an un-joined device can look one up) -----
-    // Any parent of the target family can create/manage codes for it (so either
-    // parent can pair the tablet or invite a co-parent).
+    // Any parent of the target family can create codes for it (so either parent
+    // can pair the tablet or invite a co-parent).
+    //
+    // SECURITY: a 6-digit code is only as safe as the size of the guess space it
+    // is drawn from, so these rules deny the two shortcuts that would make
+    // guessing unnecessary:
+    //   • `list` is denied outright. Previously `allow read: if signedIn()`
+    //     covered get AND list, which let ANY signed-in user (anonymous sign-in
+    //     is open to the world) fetch the whole collection and join a stranger's
+    //     family as their child. Codes must be known, never discovered.
+    //   • `get` is allowed only for a code that is still alive, so a dead code
+    //     can't be mined afterwards to learn which families exist.
+    // Together with the 15-minute window and single use below, an attacker has
+    // to guess one specific live code out of ~900k inside 15 minutes, blind.
     match /pairings/{code} {
-      allow read: if signedIn();
-      allow create: if signedIn() && isParent(request.resource.data.familyId);
-      allow update, delete: if signedIn() && isParent(resource.data.familyId);
+      // Redeeming a code burns it, in the same atomic write that creates the
+      // membership: the burn must be accompanied by a membership naming THIS
+      // code with the role the code grants. So a code can't be spent without
+      // joining, and joining always spends it.
+      function consumesPairing() {
+        let before = resource.data;
+        let after = request.resource.data;
+        let memberPath =
+          /databases/$(database)/documents/families/$(before.familyId)/members/$(request.auth.uid);
+        return signedIn()
+          && pairingAlive(before)
+          && after.diff(before).affectedKeys().hasOnly(['active', 'consumedAt', 'consumedBy'])
+          && after.active == false
+          && after.consumedAt == request.time
+          && after.consumedBy == request.auth.uid
+          && existsAfter(memberPath)
+          && getAfter(memberPath).data.pairingCode == code
+          && getAfter(memberPath).data.role == before.role;
+      }
+
+      allow get: if signedIn() && pairingAlive(resource.data);
+      allow list: if false;
+      allow create: if signedIn()
+        && isParent(request.resource.data.familyId)
+        && request.resource.data.keys().hasOnly([
+          'familyId', 'role', 'active', 'createdAt', 'createdBy'
+        ])
+        && request.resource.data.keys().hasAll([
+          'familyId', 'role', 'active', 'createdAt', 'createdBy'
+        ])
+        && (request.resource.data.role == 'child' || request.resource.data.role == 'parent')
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if (signedIn() && isParent(resource.data.familyId)) || consumesPairing();
+      allow delete: if signedIn() && isParent(resource.data.familyId);
     }
 
     match /families/{fid} {

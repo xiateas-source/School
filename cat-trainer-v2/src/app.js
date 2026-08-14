@@ -1,39 +1,40 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=24175612';
+import { isConfigured } from './firebase.js?v=08d5a06b';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=24175612';
-import * as store from './store.js?v=24175612';
-import { CAT_DEFS } from './data/cats.js?v=24175612';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=24175612';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=24175612';
+} from './auth.js?v=08d5a06b';
+import * as store from './store.js?v=08d5a06b';
+import { CAT_DEFS } from './data/cats.js?v=08d5a06b';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=08d5a06b';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=08d5a06b';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=24175612';
+} from './cafe-interactions.js?v=08d5a06b';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=24175612';
+} from './care.js?v=08d5a06b';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=24175612';
+} from './shared/rewards.js?v=08d5a06b';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=24175612';
+} from './shared/ledger.js?v=08d5a06b';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=24175612';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=24175612';
+} from './shared/dates.js?v=08d5a06b';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=08d5a06b';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=08d5a06b';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questRecurrence, laterWindowFor,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=24175612';
+} from './shared/routines.js?v=08d5a06b';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -2790,15 +2791,21 @@ async function saveQuestFromDialog() {
   toast(editingQuestId ? 'Quest updated.' : 'Quest added.');
 }
 
+// Codes are single-use and expire after PAIRING_TTL_MINUTES, so the display
+// says so plainly — "it stopped working" should read as expected, not broken.
 async function makePairingCode() {
-  const code = await store.createPairingCode(state.familyId);
-  const disp = el('pair-code-display'); disp.hidden = false; disp.textContent = code;
+  const code = await store.createPairingCode(state.familyId, state.uid);
+  const disp = el('pair-code-display'); disp.hidden = false;
+  disp.innerHTML = `<strong data-testid="pair-code-value">${esc(code)}</strong>
+    <small class="code-expiry">Works once · expires in ${PAIRING_TTL_MINUTES} minutes</small>`;
   toast('Enter this code on the tablet.');
 }
 
 async function makeCoparentCode() {
-  const code = await store.createParentInviteCode(state.familyId);
-  const disp = el('coparent-code-display'); disp.hidden = false; disp.textContent = code;
+  const code = await store.createParentInviteCode(state.familyId, state.uid);
+  const disp = el('coparent-code-display'); disp.hidden = false;
+  disp.innerHTML = `<strong data-testid="coparent-code-value">${esc(code)}</strong>
+    <small class="code-expiry">Works once · expires in ${PAIRING_TTL_MINUTES} minutes</small>`;
   toast('Give this code to Abba.');
 }
 

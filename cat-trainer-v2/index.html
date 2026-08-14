@@ -8,8 +8,8 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=24175612">
-  <link rel="stylesheet" href="styles/polish.css?v=24175612">
+  <link rel="stylesheet" href="styles/base.css?v=08d5a06b">
+  <link rel="stylesheet" href="styles/polish.css?v=08d5a06b">
 </head>
 <body>
   <div id="app">
@@ -60,7 +60,7 @@
         <form id="coparent-form" class="stack-form">
           <input id="coparent-email" type="email" required placeholder="you@email.com" autocomplete="email">
           <input id="coparent-password" type="password" required minlength="6" placeholder="Password (6+ characters)" autocomplete="current-password">
-          <input id="coparent-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Invite code (first time only)" class="code-input">
+          <input id="coparent-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Invite code (first time only)" class="code-input" autocomplete="one-time-code">
           <button class="primary-button" type="submit">Sign in</button>
         </form>
         <p class="gate-note" id="coparent-note"></p>
@@ -73,7 +73,7 @@
       <div class="gate-card">
         <img src="assets/sirus.png" alt="Sirus" class="signin-art">
         <h2>Connect to Mom</h2>
-        <p class="gate-sub">Ask Mom for the 6-digit code from her phone (Settings → Pair a device) and type it here.</p>
+        <p class="gate-sub">Ask Mom for the 6-digit code from her phone (Settings → Pair a device) and type it here. A code works once and expires after 15 minutes — if it stops working, ask for a fresh one.</p>
         <form id="pair-form" class="stack-form">
           <input id="pair-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456" class="code-input">
           <button class="primary-button" type="submit">Connect</button>
@@ -176,13 +176,13 @@
           <h2 class="page-title">Settings</h2>
           <section class="card">
             <h3>Pair Sirus's tablet</h3>
-            <p class="muted">Generate a code, then enter it on the tablet.</p>
+            <p class="muted">Generate a code, then enter it on the tablet. Each code works once and expires after 15 minutes.</p>
             <button class="primary-button" id="make-code-btn">Create pairing code</button>
             <div id="pair-code-display" class="code-display" hidden></div>
           </section>
           <section class="card">
             <h3>Invite Abba (co-parent)</h3>
-            <p class="muted">Give Abba his own login with the same powers as you. Generate a code, then on his phone he taps “I'm Abba” and enters it.</p>
+            <p class="muted">Give Abba his own login with the same powers as you. Generate a code, then on his phone he taps “I'm Abba” and enters it. Each code works once and expires after 15 minutes.</p>
             <button class="primary-button" id="make-coparent-code-btn">Create invite code</button>
             <div id="coparent-code-display" class="code-display" hidden></div>
           </section>
@@ -392,10 +392,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=24175612"></script>
-  <script type="module" src="src/ledger-actions.js?v=24175612"></script>
+  <script type="module" src="src/app.js?v=08d5a06b"></script>
+  <script type="module" src="src/ledger-actions.js?v=08d5a06b"></script>
   <!-- Presentation-only device/accessibility layer; no store writes or game state. -->
-  <script type="module" src="src/polish.js?v=24175612"></script>
+  <script type="module" src="src/polish.js?v=08d5a06b"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.
