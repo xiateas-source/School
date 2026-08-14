@@ -431,6 +431,8 @@ main { padding: 0 16px; }
 
 .code-display { font-family: var(--font-display); font-size: 1.5rem; line-height: 1.4; letter-spacing: .12em; text-align: center; color: var(--purple); background: var(--cream); border-radius: 14px; padding: 18px; margin-top: 12px; word-break: break-all; }
 .code-display .code-expiry { display: block; font-family: var(--font-body, inherit); font-size: .8rem; letter-spacing: normal; opacity: .75; margin-top: 6px; }
+.family-id-line { font-size: .75rem; opacity: .7; }
+.family-id-line code { word-break: break-all; }
 
 /* ---------- Nav ---------- */
 .bottom-nav {

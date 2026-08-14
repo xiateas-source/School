@@ -2,31 +2,31 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=08d5a06b';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=08d5a06b';
-import { seededQuests } from './data/quests.js?v=08d5a06b';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=08d5a06b';
+import { initFirebase, db, dbSdk } from './firebase.js?v=c8ee4665';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=c8ee4665';
+import { seededQuests } from './data/quests.js?v=c8ee4665';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=c8ee4665';
 import {
   CARE_NEEDS, areCareNeedsOkay, careCharges, freshCatNeeds, grantCareCharge,
   needsAt, refillNeed
-} from './care.js?v=08d5a06b';
+} from './care.js?v=c8ee4665';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=08d5a06b';
+} from './shared/rewards.js?v=c8ee4665';
 import {
   SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
   normalizeTransaction, summarizeDay
-} from './shared/ledger.js?v=08d5a06b';
+} from './shared/ledger.js?v=c8ee4665';
 import {
   FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable
-} from './shared/feedback.js?v=08d5a06b';
-import { localDate, localTimeLabel } from './shared/dates.js?v=08d5a06b';
+} from './shared/feedback.js?v=c8ee4665';
+import { localDate, localTimeLabel } from './shared/dates.js?v=c8ee4665';
 import {
   generatePairingCode, isPairingCodeShape, isPairingUsable, pairingErrorMessage
-} from './shared/pairing.js?v=08d5a06b';
-import { presetTargets } from './shared/routines.js?v=08d5a06b';
+} from './shared/pairing.js?v=c8ee4665';
+import { presetTargets } from './shared/routines.js?v=c8ee4665';
 
 export const CHILD_ID = 'sirus';
 
