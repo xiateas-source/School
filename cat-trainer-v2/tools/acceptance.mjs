@@ -44,13 +44,17 @@ const num = (text) => {
 const needValue = async (page, need) =>
   num(await page.getByTestId(`care-${need}-value`).textContent());
 
+// Navigate via the BOTTOM NAV specifically. Several in-page shortcuts reuse the
+// same attribute ("See all" -> quests/ledger, "Choose cat" -> cats), so an
+// unscoped [data-pgo]/[data-cgo] matches two elements and Playwright correctly
+// refuses to guess which one a human meant.
 const parentGo = async (page, screen) => {
-  await page.locator(`[data-pgo="${screen}"]`).click();
+  await page.locator(`[data-parent-nav] [data-pgo="${screen}"]`).click();
   await expect(page.locator(`[data-pscreen="${screen}"]`)).toHaveClass(/active/);
 };
 
 const childGo = async (page, screen) => {
-  await page.locator(`[data-cgo="${screen}"]`).click();
+  await page.locator(`[data-child-nav] [data-cgo="${screen}"]`).click();
   await expect(page.locator(`[data-cscreen="${screen}"]`)).toHaveClass(/active/);
 };
 
@@ -141,6 +145,9 @@ test.beforeAll(async ({ browser }) => {
   await parent.goto('./');
 
   await parent.getByTestId('role-parent').click();
+  // The app binds its gate handlers after an async Firebase boot, so the first
+  // click can land on nothing. Confirm the form is actually up before typing.
+  await expect(parent.locator('[data-screen="parent-signin"]')).toBeVisible({ timeout: 30_000 });
   await parent.getByTestId('signin-email').fill(EMAIL);
   await parent.getByTestId('signin-password').fill(PASSWORD);
   await parent.getByTestId('signin-submit').click();
@@ -171,6 +178,7 @@ test.beforeAll(async ({ browser }) => {
     const page = await childCtx.newPage();
     await page.goto('./');
     await page.getByTestId('role-child').click();
+    await expect(page.locator('[data-screen="child-pair"]')).toBeVisible({ timeout: 30_000 });
     await page.getByTestId('pair-code').fill(code);
     await page.getByTestId('pair-submit').click();
     await expect(page.getByTestId('child-shell')).toBeVisible({ timeout: 45_000 });
