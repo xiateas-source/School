@@ -180,6 +180,10 @@ fails if one disappears).
 | `parent-available` | Available minutes |
 | `approvals-card`, `approvals-count`, `approvals-list` | The Needs-approval queue |
 | `approval-row` | One pending completion; carries `data-quest-id` |
+| `ptoday-row` | A quest row on the Today board; carries `data-quest-id`. Its actions are `[data-today-skip]`, `[data-today-move]` (Later), `[data-today-next]`, `[data-today-clear]` (Undo) |
+| `exception-row` | A one-day exception in the Today-is-different card; carries `data-quest-id`. The **only** place a skip can be undone |
+| `sirus-today-row` | The parent's mirror of the child's screen; carries `data-quest-id` |
+| `parent-quest-row` | A row in the quest management list; carries `data-quest-id`, plus `[data-edit-quest]` / `[data-del-quest]` / `[data-toggle-quest]` |
 | `make-pair-code`, `pair-code-display`, `pair-code-value` | Child pairing code |
 | `make-coparent-code`, `coparent-code-display`, `coparent-code-value` | Co-parent invite code |
 | `settings-email`, `settings-family-id`, `signout` | Account card |
@@ -201,6 +205,68 @@ These existing attributes are also stable and already carry their own ids:
 `[data-complete]`, `[data-approve]`, `[data-reject]`, `[data-buy]`.
 
 ---
+
+## 6a. The automated acceptance suite (GitHub Actions)
+
+The checks a machine can own are automated in `tools/acceptance.mjs` and run from
+GitHub Actions — **no computer of your own required**. Playwright drives a real
+Chromium against the deployed app using the hooks above.
+
+### One-time setup: add three secrets
+
+On GitHub → the repo → **Settings → Secrets and variables → Actions → New
+repository secret**. Add these three, exactly named:
+
+| Secret | Value |
+| --- | --- |
+| `QA_PARENT_EMAIL` | the QA account's email |
+| `QA_PARENT_PASSWORD` | its password |
+| `QA_FAMILY_ID` | the Family ID from Settings → Account in the QA family |
+
+GitHub stores these encrypted and masks them in logs. **They must never appear
+in the repo, a workflow file, or a commit** — the workflow reads them from the
+secret store at run time, and `tools/test-testids.mjs` fails the build if this
+runbook ever grows a password.
+
+### Running it
+
+GitHub → **Actions** tab → **QA acceptance (browser)** → **Run workflow** →
+**Run workflow**. It takes a few minutes. Green check = everything passed;
+click into the run to see per-test PASS / SKIP lines. (The optional *App URL*
+input is only for testing a different deployment; leave it blank.)
+
+The workflow is **manual-trigger only** — it never runs on a push or a pull
+request, so a stranger's fork PR can't reach the secrets.
+
+### Reading the results
+
+- **PASS** — the behaviour held.
+- **SKIP** — the suite refused to guess. Each skip states its reason, e.g. *"no
+  genuinely-later daypart exists at the current time of day"* or *"every quest on
+  the QA child board is already done today"*. A skip is information, not a
+  failure: it usually names the deferred reset/seeding/fake-clock work that would
+  make that case deterministic.
+- **FAIL** — a real disagreement between the app and the expected behaviour.
+  Redacted screenshots are attached to the run under **Artifacts**.
+
+### Safety properties
+
+- The **first** thing the suite does after signing in is compare the signed-in
+  Family ID to `QA_FAMILY_ID`. On any mismatch it aborts **before a single
+  write**, and it never prints either value.
+- Playwright traces and videos are **off** by design: a trace records the
+  password typed into the form and the network bodies carrying it, and CI
+  artifacts on a public repo are world-readable. The suite takes its own
+  screenshots with the email, password, and Family ID blanked out of the DOM.
+- One run at a time (`concurrency`), because every test drives the same family.
+
+### Rerunnability
+
+There is no reset yet, so the suite never assumes a clean account: it creates its
+own uniquely-named quests (`QA-<runid>-*`), asserts before/after **deltas**
+rather than absolute totals, and deletes what it created. If a run dies
+mid-flight it may leave a `QA-*` quest behind — safe to delete by hand from
+Quests → Routines.
 
 ## 7. What agents should and shouldn't test
 
@@ -228,7 +294,8 @@ Not yet solved, on purpose. Note which ones actually hurt during real runs:
   means clicking through it every time.
 - **No time control.** Anything phrased "overdue this morning" can only be tested
   when it is genuinely that time of day in `America/Chicago`.
-- **Anonymous members accumulate** in the QA family with each re-pair.
+- **Anonymous members accumulate** in the QA family with each re-pair — the
+  acceptance suite pairs a fresh child on every run, so this grows fastest.
 - The QA family is seeded with the same names as ours (Mom, Sirus) — only the
   Family ID distinguishes it on screen.
 
