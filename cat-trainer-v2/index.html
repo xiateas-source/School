@@ -8,30 +8,30 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=24175612">
-  <link rel="stylesheet" href="styles/polish.css?v=24175612">
+  <link rel="stylesheet" href="styles/base.css?v=7ce7969f">
+  <link rel="stylesheet" href="styles/polish.css?v=7ce7969f">
 </head>
 <body>
   <div id="app">
     <!-- ===================== ROLE GATE ===================== -->
-    <section class="gate screen active" data-screen="gate">
+    <section class="gate screen active" data-screen="gate" data-testid="gate">
       <div class="gate-card">
         <p class="eyebrow">WELCOME TO</p>
         <h1 class="brand">Cat Trainer</h1>
         <p class="gate-sub">Who is using this device?</p>
-        <button class="big-choice mom" data-choose-role="parent">
+        <button class="big-choice mom" data-choose-role="parent" data-testid="role-parent">
           <img src="assets/mom.png" alt="Mom" class="choice-art">
           <span><strong>I'm Mom</strong><small>Manage points &amp; quests</small></span>
         </button>
-        <button class="big-choice dad" data-choose-role="coparent">
+        <button class="big-choice dad" data-choose-role="coparent" data-testid="role-coparent">
           <img src="assets/abba.png" alt="Abba" class="choice-art">
           <span><strong>I'm Abba</strong><small>Manage points &amp; quests</small></span>
         </button>
-        <button class="big-choice kid" data-choose-role="child">
+        <button class="big-choice kid" data-choose-role="child" data-testid="role-child">
           <img src="assets/sirus.png" alt="Sirus" class="choice-art">
           <span><strong>I'm Sirus</strong><small>Play &amp; train my cats</small></span>
         </button>
-        <p class="gate-note" id="gate-note"></p>
+        <p class="gate-note" id="gate-note" data-testid="gate-note"></p>
       </div>
     </section>
 
@@ -42,11 +42,11 @@
         <h2>Mom's sign-in</h2>
         <p class="gate-sub">Enter your email and a password. The first time signs you up; after that it signs you back in.</p>
         <form id="signin-form" class="stack-form">
-          <input id="signin-email" type="email" required placeholder="you@email.com" autocomplete="email">
-          <input id="signin-password" type="password" required minlength="6" placeholder="Password (6+ characters)" autocomplete="current-password">
-          <button class="primary-button" type="submit">Sign in</button>
+          <input id="signin-email" data-testid="signin-email" type="email" required placeholder="you@email.com" autocomplete="email">
+          <input id="signin-password" data-testid="signin-password" type="password" required minlength="6" placeholder="Password (6+ characters)" autocomplete="current-password">
+          <button class="primary-button" type="submit" data-testid="signin-submit">Sign in</button>
         </form>
-        <p class="gate-note" id="signin-note"></p>
+        <p class="gate-note" id="signin-note" data-testid="signin-note"></p>
         <button class="text-button" data-choose-role="back">← Back</button>
       </div>
     </section>
@@ -58,12 +58,12 @@
         <h2>Abba's sign-in</h2>
         <p class="gate-sub">Use your own email and a password. The first time also needs Mom's invite code (from her phone: Settings → Invite Abba). After that, just your email and password.</p>
         <form id="coparent-form" class="stack-form">
-          <input id="coparent-email" type="email" required placeholder="you@email.com" autocomplete="email">
-          <input id="coparent-password" type="password" required minlength="6" placeholder="Password (6+ characters)" autocomplete="current-password">
-          <input id="coparent-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Invite code (first time only)" class="code-input">
-          <button class="primary-button" type="submit">Sign in</button>
+          <input id="coparent-email" data-testid="coparent-email" type="email" required placeholder="you@email.com" autocomplete="email">
+          <input id="coparent-password" data-testid="coparent-password" type="password" required minlength="6" placeholder="Password (6+ characters)" autocomplete="current-password">
+          <input id="coparent-code" data-testid="coparent-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Invite code (first time only)" class="code-input" autocomplete="one-time-code">
+          <button class="primary-button" type="submit" data-testid="coparent-submit">Sign in</button>
         </form>
-        <p class="gate-note" id="coparent-note"></p>
+        <p class="gate-note" id="coparent-note" data-testid="coparent-note"></p>
         <button class="text-button" data-choose-role="back">← Back</button>
       </div>
     </section>
@@ -73,30 +73,30 @@
       <div class="gate-card">
         <img src="assets/sirus.png" alt="Sirus" class="signin-art">
         <h2>Connect to Mom</h2>
-        <p class="gate-sub">Ask Mom for the 6-digit code from her phone (Settings → Pair a device) and type it here.</p>
+        <p class="gate-sub">Ask Mom for the 6-digit code from her phone (Settings → Pair a device) and type it here. A code works once and expires after 15 minutes — if it stops working, ask for a fresh one.</p>
         <form id="pair-form" class="stack-form">
-          <input id="pair-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456" class="code-input">
-          <button class="primary-button" type="submit">Connect</button>
+          <input id="pair-code" data-testid="pair-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456" class="code-input" autocomplete="one-time-code">
+          <button class="primary-button" type="submit" data-testid="pair-submit">Connect</button>
         </form>
-        <p class="gate-note" id="pair-note"></p>
+        <p class="gate-note" id="pair-note" data-testid="pair-note"></p>
         <button class="text-button" data-choose-role="back">← Back</button>
       </div>
     </section>
 
     <!-- ===================== PARENT APP ===================== -->
-    <div class="app-shell" data-role-shell="parent" hidden>
+    <div class="app-shell" data-role-shell="parent" data-testid="parent-shell" hidden>
       <header class="topbar">
         <div><p class="eyebrow" id="p-dash-eyebrow">MOM'S DASHBOARD</p><h1 class="brand small">Cat Trainer</h1></div>
-        <div class="balance-chip"><small>AVAILABLE</small><strong id="p-available">0</strong><span>min</span></div>
+        <div class="balance-chip"><small>AVAILABLE</small><strong id="p-available" data-testid="parent-available">0</strong><span>min</span></div>
       </header>
       <main>
         <!-- Dashboard -->
         <section class="screen active" data-pscreen="dash">
           <!-- Quests Sirus finished, waiting to be turned into minutes -->
-          <section class="card approvals-card" id="approvals-card" hidden>
-            <div class="card-head"><h3>Needs approval <span class="badge" id="approvals-count" hidden>0</span></h3></div>
+          <section class="card approvals-card" id="approvals-card" data-testid="approvals-card" hidden>
+            <div class="card-head"><h3>Needs approval <span class="badge" id="approvals-count" data-testid="approvals-count" hidden>0</span></h3></div>
             <p class="muted">Sirus finished these — approve to turn them into minutes, or reject to give the quest back.</p>
-            <div id="pending-approvals"></div>
+            <div id="pending-approvals" data-testid="approvals-list"></div>
           </section>
           <div class="today-row">
             <div class="stat plus"><strong id="p-earned">0</strong><span>earned today</span></div>
@@ -176,20 +176,21 @@
           <h2 class="page-title">Settings</h2>
           <section class="card">
             <h3>Pair Sirus's tablet</h3>
-            <p class="muted">Generate a code, then enter it on the tablet.</p>
-            <button class="primary-button" id="make-code-btn">Create pairing code</button>
-            <div id="pair-code-display" class="code-display" hidden></div>
+            <p class="muted">Generate a code, then enter it on the tablet. Each code works once and expires after 15 minutes.</p>
+            <button class="primary-button" id="make-code-btn" data-testid="make-pair-code">Create pairing code</button>
+            <div id="pair-code-display" class="code-display" data-testid="pair-code-display" hidden></div>
           </section>
           <section class="card">
             <h3>Invite Abba (co-parent)</h3>
-            <p class="muted">Give Abba his own login with the same powers as you. Generate a code, then on his phone he taps “I'm Abba” and enters it.</p>
-            <button class="primary-button" id="make-coparent-code-btn">Create invite code</button>
-            <div id="coparent-code-display" class="code-display" hidden></div>
+            <p class="muted">Give Abba his own login with the same powers as you. Generate a code, then on his phone he taps “I'm Abba” and enters it. Each code works once and expires after 15 minutes.</p>
+            <button class="primary-button" id="make-coparent-code-btn" data-testid="make-coparent-code">Create invite code</button>
+            <div id="coparent-code-display" class="code-display" data-testid="coparent-code-display" hidden></div>
           </section>
           <section class="card">
             <h3>Account</h3>
-            <p class="muted" id="settings-email"></p>
-            <button class="wide-button" id="signout-btn">Sign out</button>
+            <p class="muted" id="settings-email" data-testid="settings-email"></p>
+            <p class="muted family-id-line">Family ID <code id="settings-family-id" data-testid="settings-family-id"></code></p>
+            <button class="wide-button" id="signout-btn" data-testid="signout">Sign out</button>
           </section>
         </section>
       </main>
@@ -203,12 +204,12 @@
     </div>
 
     <!-- ===================== CHILD APP ===================== -->
-    <div class="app-shell child" data-role-shell="child" hidden>
+    <div class="app-shell child" data-role-shell="child" data-testid="child-shell" hidden>
       <main>
         <!-- Home -->
         <section class="screen active" data-cscreen="home">
           <div class="child-hero">
-            <div class="time-badge"><img class="time-star" src="assets/game-time-star.png" alt=""><small>SCREEN TIME</small><strong id="c-available">0</strong><span>minutes</span></div>
+            <div class="time-badge"><img class="time-star" src="assets/game-time-star.png" alt=""><small>SCREEN TIME</small><strong id="c-available" data-testid="child-available">0</strong><span>minutes</span></div>
             <img id="c-cat-art" class="child-cat-art" alt="Your cat">
             <p class="earned-note">Earned today: <strong id="c-earned">0</strong></p>
           </div>
@@ -225,14 +226,14 @@
           </section>
           <section class="card soft">
             <div class="card-head"><h3>Available quests</h3><button class="text-button" data-cgo="quests">See all</button></div>
-            <div id="c-next-quests"></div>
+            <div id="c-next-quests" data-testid="child-next-quests"></div>
           </section>
         </section>
 
         <!-- Quests -->
         <section class="screen" data-cscreen="quests">
           <h2 class="page-title">My Quests</h2>
-          <div id="c-quests"></div>
+          <div id="c-quests" data-testid="child-quest-list"></div>
         </section>
 
         <!-- Cats -->
@@ -245,9 +246,9 @@
         <section class="screen" data-cscreen="cafe">
           <h2 class="page-title">Cat Café</h2>
           <div class="cafe-wallets">
-            <div class="coin-pill"><img class="coin-ico" src="assets/coin.png" alt=""> <span id="c-coins">0</span> coins</div>
+            <div class="coin-pill"><img class="coin-ico" src="assets/coin.png" alt=""> <span id="c-coins" data-testid="child-coins">0</span> coins</div>
             <div class="care-charge-pill" title="Complete a quest to earn one">
-              <span aria-hidden="true">✦</span> <strong id="c-care-charges" aria-live="polite">0</strong>
+              <span aria-hidden="true">✦</span> <strong id="c-care-charges" data-testid="child-care-charges" aria-live="polite">0</strong>
               <span>Care Charges</span>
             </div>
           </div>
@@ -262,7 +263,7 @@
             <div class="care-need" id="c-hunger-need">
               <div class="care-need-label">
                 <span><img src="assets/food-bowl-purple.png" alt=""> Hunger</span>
-                <span><small id="c-hunger-band">Thriving</small> <b id="c-hunger-val">80/100</b></span>
+                <span><small id="c-hunger-band" data-testid="care-hunger-band">Thriving</small> <b id="c-hunger-val" data-testid="care-hunger-value">80/100</b></span>
               </div>
               <div class="care-meter" id="c-hunger-meter" role="progressbar" aria-label="Hunger" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80">
                 <i id="c-hunger-bar"></i>
@@ -272,7 +273,7 @@
             <div class="care-need" id="c-rest-need">
               <div class="care-need-label">
                 <span><img src="assets/night-routine-icon.png" alt=""> Rest</span>
-                <span><small id="c-rest-band">Thriving</small> <b id="c-rest-val">80/100</b></span>
+                <span><small id="c-rest-band" data-testid="care-rest-band">Thriving</small> <b id="c-rest-val" data-testid="care-rest-value">80/100</b></span>
               </div>
               <div class="care-meter" id="c-rest-meter" role="progressbar" aria-label="Rest" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80">
                 <i id="c-rest-bar"></i>
@@ -282,7 +283,7 @@
             <div class="care-need" id="c-happiness-need">
               <div class="care-need-label">
                 <span><img src="assets/yarn-blue.png" alt=""> Happiness</span>
-                <span><small id="c-happiness-band">Thriving</small> <b id="c-happiness-val">80/100</b></span>
+                <span><small id="c-happiness-band" data-testid="care-happiness-band">Thriving</small> <b id="c-happiness-val" data-testid="care-happiness-value">80/100</b></span>
               </div>
               <div class="care-meter" id="c-happiness-meter" role="progressbar" aria-label="Happiness" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80">
                 <i id="c-happiness-bar"></i>
@@ -290,7 +291,7 @@
               <span class="care-delta" id="c-happiness-delta" aria-live="polite"></span>
             </div>
           </section>
-          <div class="cafe-room" id="c-cafe-room"><div id="c-placed"></div><div id="c-cafe-cat-wrap" class="cafe-cat-wrap"><button id="c-need-cue" class="need-cue" type="button" hidden><img id="c-need-cue-icon" alt=""></button><img id="c-cafe-cat" class="cafe-cat" alt=""></div></div>
+          <div class="cafe-room" id="c-cafe-room"><div id="c-placed"></div><div id="c-cafe-cat-wrap" class="cafe-cat-wrap"><button id="c-need-cue" class="need-cue" type="button" data-testid="care-need-cue" hidden><img id="c-need-cue-icon" alt=""></button><img id="c-cafe-cat" class="cafe-cat" alt=""></div></div>
           <p class="cafe-hint" id="c-cafe-hint">Tap anywhere to call the cat · bowls, beds, and toys are playable</p>
           <div id="c-tray" class="cafe-tray" hidden></div>
           <h3 class="shop-heading">Cozy things</h3>
@@ -392,10 +393,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=24175612"></script>
-  <script type="module" src="src/ledger-actions.js?v=24175612"></script>
+  <script type="module" src="src/app.js?v=7ce7969f"></script>
+  <script type="module" src="src/ledger-actions.js?v=7ce7969f"></script>
   <!-- Presentation-only device/accessibility layer; no store writes or game state. -->
-  <script type="module" src="src/polish.js?v=24175612"></script>
+  <script type="module" src="src/polish.js?v=7ce7969f"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.

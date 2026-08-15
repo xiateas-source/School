@@ -1,39 +1,40 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=24175612';
+import { isConfigured } from './firebase.js?v=7ce7969f';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=24175612';
-import * as store from './store.js?v=24175612';
-import { CAT_DEFS } from './data/cats.js?v=24175612';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=24175612';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=24175612';
+} from './auth.js?v=7ce7969f';
+import * as store from './store.js?v=7ce7969f';
+import { CAT_DEFS } from './data/cats.js?v=7ce7969f';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=7ce7969f';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=7ce7969f';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=24175612';
+} from './cafe-interactions.js?v=7ce7969f';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=24175612';
+} from './care.js?v=7ce7969f';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=24175612';
+} from './shared/rewards.js?v=7ce7969f';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=24175612';
+} from './shared/ledger.js?v=7ce7969f';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=24175612';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=24175612';
+} from './shared/dates.js?v=7ce7969f';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=7ce7969f';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=7ce7969f';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questRecurrence, laterWindowFor,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=24175612';
+} from './shared/routines.js?v=7ce7969f';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -147,6 +148,11 @@ async function enterParent(familyId, user, name) {
   const eyebrow = el('p-dash-eyebrow');
   if (eyebrow) eyebrow.textContent = `${label.toUpperCase()}’S DASHBOARD`;
   el('settings-email').textContent = user.email || '';
+  // Which family this session is actually in. Mostly invisible day to day, but
+  // it is how a browser-agent test proves it is in the throwaway QA family and
+  // not the real one before it touches anything (see QA-TESTING.md).
+  const famEl = el('settings-family-id');
+  if (famEl) famEl.textContent = familyId;
   // Skip re-subscribing if we're already in this exact family (avoids a double
   // subscribe when both a form and the auth listener route the same sign-in).
   if (state.role === 'parent' && state.familyId === familyId && state.uid === user.uid) return;
@@ -1098,7 +1104,7 @@ function renderApprovals() {
     const pts = q ? q.points : (r.points || 0);
     const coins = q ? q.coins : (r.coins || 0);
     const reward = `+${pts}m${q&&q.brain?' · ★'+q.brain:(r.brain?' · ★'+r.brain:'')}${q&&q.energy?' · ⚡'+q.energy:(r.energy?' · ⚡'+r.energy:'')} · ♥${QUEST_BOND}${coins?' · 🪙'+coins:''}`;
-    return `<div class="approval-row"><div class="q-body"><strong>${esc(title)}</strong><br><small>${reward}</small></div>
+    return `<div class="approval-row" data-testid="approval-row" data-quest-id="${esc(c.questId || '')}"><div class="q-body"><strong>${esc(title)}</strong><br><small>${reward}</small></div>
       <button class="pill-btn reject" data-reject="${esc(c.id)}" aria-label="Reject ${esc(title)}">✕</button>
       <button class="pill-btn approve" data-approve="${esc(c.id)}" aria-label="Approve ${esc(title)}">✓ Approve</button></div>`;
   }).join('') || '<div class="empty">Nothing waiting — all caught up!</div>';
@@ -1184,7 +1190,10 @@ function childQuestCard(q) {
     : status === 'pending'
       ? `<span class="quest-pending" aria-label="Waiting for Mom">⏳</span>`
       : `<button class="quest-complete" data-complete="${esc(q.id)}">+</button>`;
-  return `<div class="quest-card ${cls}"><div class="q-body"><div class="q-title">${esc(q.title)}</div>
+  // data-quest-status is the card's state in one attribute ('todo' | 'pending' |
+  // 'approved') so a test can read where a quest stands without inferring it
+  // from which control happens to be rendered.
+  return `<div class="quest-card ${cls}" data-testid="quest-card" data-quest-id="${esc(q.id)}" data-quest-status="${status || 'todo'}"><div class="q-body"><div class="q-title">${esc(q.title)}</div>
     <div class="q-reward">${reward}</div>
     ${status==='pending'?'<div class="q-status">Done! Waiting for Mom ⭐</div>':''}</div>
     ${btn}</div>`;
@@ -2790,15 +2799,21 @@ async function saveQuestFromDialog() {
   toast(editingQuestId ? 'Quest updated.' : 'Quest added.');
 }
 
+// Codes are single-use and expire after PAIRING_TTL_MINUTES, so the display
+// says so plainly — "it stopped working" should read as expected, not broken.
 async function makePairingCode() {
-  const code = await store.createPairingCode(state.familyId);
-  const disp = el('pair-code-display'); disp.hidden = false; disp.textContent = code;
+  const code = await store.createPairingCode(state.familyId, state.uid);
+  const disp = el('pair-code-display'); disp.hidden = false;
+  disp.innerHTML = `<strong data-testid="pair-code-value">${esc(code)}</strong>
+    <small class="code-expiry">Works once · expires in ${PAIRING_TTL_MINUTES} minutes</small>`;
   toast('Enter this code on the tablet.');
 }
 
 async function makeCoparentCode() {
-  const code = await store.createParentInviteCode(state.familyId);
-  const disp = el('coparent-code-display'); disp.hidden = false; disp.textContent = code;
+  const code = await store.createParentInviteCode(state.familyId, state.uid);
+  const disp = el('coparent-code-display'); disp.hidden = false;
+  disp.innerHTML = `<strong data-testid="coparent-code-value">${esc(code)}</strong>
+    <small class="code-expiry">Works once · expires in ${PAIRING_TTL_MINUTES} minutes</small>`;
   toast('Give this code to Abba.');
 }
 

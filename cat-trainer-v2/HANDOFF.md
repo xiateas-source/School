@@ -136,10 +136,24 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
   `tools/test-cafe-interactions.mjs`.
 - **Membership joins** — a user can create only their *own* member doc, and only
   as (1) the family owner bootstrapping their parent membership, (2) a **co-parent**
-  presenting an active `role:'parent'` invite code for the family, or (3) a child
-  device presenting an active `role:'child'` pairing code. Codes are validated by
+  presenting a live `role:'parent'` invite code for the family, or (3) a child
+  device presenting a live `role:'child'` pairing code. Codes are validated by
   the `validPairing(fid, code, wantRole)` helper. Either parent can now mint codes
   (`pairings` create/manage gated by `isParent(familyId)`, not just the owner).
+- **Pairing codes are short-lived, single-use bearer tokens.** `/pairings` denies
+  `list` outright — the collection must never be enumerable — and allows `get`
+  only for a code that is still *alive*: active, unconsumed, and within 15 minutes
+  of its **server-stamped** `createdAt`. Redeeming a code burns it in the same
+  atomic batch that creates the membership, and the rules tie the two halves
+  together (the new member must name that code and take exactly the role it
+  grants). **That redemption is the only permitted update** — there is no parent
+  update branch, because authorizing on the pre-write `familyId` while leaving the
+  post-write document unconstrained would let a parent of one family repoint a
+  code at another and join it. Minting is `create`, cleanup is `delete`.
+  Lifecycle constants live in `src/shared/pairing.js`; the window and the rule
+  invariants are checked by `tools/test-pairing.mjs`. Note that the client never
+  judges expiry — only the server does, so a wrong device clock can't lock pairing
+  out.
 
 > ⚠️ **Rules must be re-published in the console** (Firestore Database → Rules →
 > paste `firestore.rules` → Publish). Until Mom does this, the affected feature is
@@ -160,6 +174,16 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
 >   a migration-safe 80 starting value for those new fields, and prevents any
 >   non-selected need from increasing. **Publish this newest rules file before
 >   testing the Rest/Happiness branch.**
+> - **Pairing hardening (2026-08-14) — SECURITY, publish promptly.** The old
+>   `/pairings` rule was `allow read: if signedIn()`, which covers `list`: any
+>   signed-in user — and anonymous sign-in is open to the whole internet — could
+>   fetch every pairing code in the project and join a stranger's family as their
+>   child. The new rules deny `list`, allow `get` only for a live code, and make
+>   redemption single-use. **After publishing, every code minted before the
+>   publish stops working** (they have no live window left) — that is the point.
+>   Already-paired devices are unaffected: they never re-join. Anyone who has not
+>   paired yet needs a fresh code from Settings. Delete the old `pairings`
+>   documents in the console once published.
 > - Earlier changes (co-parent login, ledger-delete) were already published on
 >   2026-08-07; the café one is a *new* change on top.
 >

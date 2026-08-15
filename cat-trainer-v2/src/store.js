@@ -2,28 +2,31 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=24175612';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=24175612';
-import { seededQuests } from './data/quests.js?v=24175612';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=24175612';
+import { initFirebase, db, dbSdk } from './firebase.js?v=7ce7969f';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=7ce7969f';
+import { seededQuests } from './data/quests.js?v=7ce7969f';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=7ce7969f';
 import {
   CARE_NEEDS, areCareNeedsOkay, careCharges, freshCatNeeds, grantCareCharge,
   needsAt, refillNeed
-} from './care.js?v=24175612';
+} from './care.js?v=7ce7969f';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=24175612';
+} from './shared/rewards.js?v=7ce7969f';
 import {
   SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
   normalizeTransaction, summarizeDay
-} from './shared/ledger.js?v=24175612';
+} from './shared/ledger.js?v=7ce7969f';
 import {
   FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable
-} from './shared/feedback.js?v=24175612';
-import { localDate, localTimeLabel } from './shared/dates.js?v=24175612';
-import { presetTargets } from './shared/routines.js?v=24175612';
+} from './shared/feedback.js?v=7ce7969f';
+import { localDate, localTimeLabel } from './shared/dates.js?v=7ce7969f';
+import {
+  generatePairingCode, isPairingCodeShape, isPairingUsable, pairingErrorMessage
+} from './shared/pairing.js?v=7ce7969f';
+import { presetTargets } from './shared/routines.js?v=7ce7969f';
 
 export const CHILD_ID = 'sirus';
 
@@ -121,30 +124,69 @@ export async function setupFamily(parentUid, { familyName = 'Our Family', parent
 }
 
 // --- Pairing (parent creates code, tablet joins) -----------------------------
-export async function createPairingCode(familyId) {
+// A code is a short-lived, single-use bearer token (see src/shared/pairing.js).
+// `createdAt` is a SERVER timestamp and the 15-minute window is measured from it
+// by the security rules, so the expiry can't be stretched by a device clock.
+async function mintPairingCode(familyId, uid, role) {
   const { database, sdk } = await fs();
   const { setDoc, serverTimestamp } = sdk;
   const p = paths(sdk, database, familyId);
-  const code = String(Math.floor(100000 + Math.random() * 900000)); // 6 digits
+  const code = generatePairingCode();
   await setDoc(p.pairing(code), {
-    familyId, role: 'child', active: true, createdAt: serverTimestamp()
+    familyId, role, active: true, createdAt: serverTimestamp(), createdBy: uid
   });
   return code;
 }
 
-export async function joinWithPairingCode(childUid, code, displayName = 'Sirus’s tablet') {
+// Redeem a code: create this device's membership AND burn the code in ONE batch.
+// The rules validate each half against the other (the membership must name this
+// code; the burn must accompany that membership), so a code can never be spent
+// without joining, and joining always spends it.
+async function redeemPairingCode(uid, code, wantRole, displayName) {
   const { database, sdk } = await fs();
-  const { getDoc, setDoc } = sdk;
-  const p = paths(sdk, database, code);
-  const snap = await getDoc(p.pairing(code));
-  const data = snap.exists() ? snap.data() : null;
-  if (!data || data.active !== true || (data.role && data.role !== 'child')) {
-    throw new Error('That pairing code is not valid. Ask Mom for a new one.');
-  }
+  const { doc, getDoc, writeBatch, serverTimestamp } = sdk;
+  // Codes live at the top level, outside any family — the joining device doesn't
+  // know which family it is about to join yet.
+  const pairingRef = doc(database, 'pairings', code);
+  const errorKind = wantRole === 'parent' ? 'parent' : 'child';
+  if (!isPairingCodeShape(code)) throw new Error(pairingErrorMessage(errorKind));
+
+  // Reads of dead codes are denied by the rules, so a permission error here is
+  // just another "not valid" — never surface it as a crash.
+  let data = null;
+  try {
+    const snap = await getDoc(pairingRef);
+    data = snap.exists() ? snap.data() : null;
+  } catch (_) { data = null; }
+  // Pre-flight only, and deliberately WITHOUT a clock: expiry is the server's
+  // call (see pairingRejection). This catches the obviously-wrong cases early;
+  // an expired code is refused by the rules and reported the same way.
+  if (!isPairingUsable(data, wantRole)) throw new Error(pairingErrorMessage(errorKind));
+
   const familyId = data.familyId;
   const fp = paths(sdk, database, familyId);
-  await setDoc(fp.member(childUid), { role: 'child', displayName, pairingCode: code });
+  const batch = writeBatch(database);
+  batch.set(fp.member(uid), { role: wantRole, displayName, pairingCode: code });
+  batch.update(pairingRef, {
+    active: false, consumedAt: serverTimestamp(), consumedBy: uid
+  });
+  try {
+    await batch.commit();
+  } catch (err) {
+    // The rules are the authority; a denial means the code died between our read
+    // and our write (expired, or another device just used it).
+    if (err && err.code === 'permission-denied') throw new Error(pairingErrorMessage(errorKind));
+    throw err;
+  }
   return familyId;
+}
+
+export async function createPairingCode(familyId, uid) {
+  return mintPairingCode(familyId, uid, 'child');
+}
+
+export async function joinWithPairingCode(childUid, code, displayName = 'Sirus’s tablet') {
+  return redeemPairingCode(childUid, code, 'child', displayName);
 }
 
 // --- Co-parent (a second parent, e.g. Abba, joins the SAME family) -----------
@@ -153,30 +195,12 @@ export async function joinWithPairingCode(childUid, code, displayName = 'Sirus�
 // 'parent', so the rules grant management access rather than the limited child
 // role. The co-parent keeps their own email+password account (own identity in
 // the ledger); this only adds their membership to the existing family.
-export async function createParentInviteCode(familyId) {
-  const { database, sdk } = await fs();
-  const { setDoc, serverTimestamp } = sdk;
-  const p = paths(sdk, database, familyId);
-  const code = String(Math.floor(100000 + Math.random() * 900000)); // 6 digits
-  await setDoc(p.pairing(code), {
-    familyId, role: 'parent', active: true, createdAt: serverTimestamp()
-  });
-  return code;
+export async function createParentInviteCode(familyId, uid) {
+  return mintPairingCode(familyId, uid, 'parent');
 }
 
 export async function joinFamilyAsParent(uid, code, displayName = 'Abba') {
-  const { database, sdk } = await fs();
-  const { getDoc, setDoc } = sdk;
-  const p = paths(sdk, database, code);
-  const snap = await getDoc(p.pairing(code));
-  const data = snap.exists() ? snap.data() : null;
-  if (!data || data.active !== true || data.role !== 'parent') {
-    throw new Error('That invite code is not valid. Ask Mom for a new one.');
-  }
-  const familyId = data.familyId;
-  const fp = paths(sdk, database, familyId);
-  await setDoc(fp.member(uid), { role: 'parent', displayName, pairingCode: code });
-  return familyId;
+  return redeemPairingCode(uid, code, 'parent', displayName);
 }
 
 // --- Realtime subscriptions --------------------------------------------------
