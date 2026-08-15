@@ -10,7 +10,7 @@
 //   • activity date vs posted time — a quest done Aug 8 but approved Aug 9
 //     belongs under Aug 8 in the day view; posted time only drives audit order.
 
-import { QUICK_ACTION_BY_CODE } from './rewards.js?v=7ce7969f';
+import { QUICK_ACTION_BY_CODE } from './rewards.js?v=b3b3c1a2';
 
 export const SCHEMA_VERSION = 2;
 

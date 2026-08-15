@@ -44,7 +44,13 @@ const DYNAMIC_IDS = [
   'pair-code-value',    // the 6 digits, split out of the expiry copy around them
   'coparent-code-value',
   'approval-row',       // carries data-quest-id
-  'quest-card'          // carries data-quest-id + data-quest-status
+  'quest-card',         // carries data-quest-id + data-quest-status
+  // Row hooks the acceptance suite drives. Each carries data-quest-id so a test
+  // can act on one specific quest instead of matching on displayed text.
+  'ptoday-row',         // a quest row on the parent's Today board
+  'exception-row',      // a today-only exception in the Today-is-different card
+  'sirus-today-row',    // the parent's mirror of the child's screen
+  'parent-quest-row'    // a row in the quest management list
 ];
 
 for (const id of STATIC_IDS) {
@@ -76,6 +82,21 @@ assert.match(
 // Every hook must be documented, or agents can't discover it.
 for (const id of [...STATIC_IDS, ...DYNAMIC_IDS]) {
   assert.ok(doc.includes(`\`${id}\``), `QA-TESTING.md must document the ${id} hook`);
+}
+
+// Every hook the acceptance suite reaches for must be one that actually exists.
+// The suite runs against the deployed app from CI, so a typo there surfaces as a
+// confusing timeout minutes into a run; catching it here costs nothing.
+{
+  const suite = readFileSync(join(ROOT, 'tools/acceptance.mjs'), 'utf8');
+  const known = new Set([...STATIC_IDS, ...DYNAMIC_IDS]);
+  const used = new Set();
+  for (const m of suite.matchAll(/getByTestId\(\s*['"`]([^'"`$]+)['"`]\s*\)/g)) used.add(m[1]);
+  for (const m of suite.matchAll(/\[data-testid="([^"$]+)"\]/g)) used.add(m[1]);
+  for (const id of used) {
+    assert.ok(known.has(id), `tools/acceptance.mjs uses data-testid="${id}", which the app does not define`);
+  }
+  assert.ok(used.size >= 10, 'the acceptance suite should be driving the testid contract, not text selectors');
 }
 
 // The docs must never carry a real credential. QA accounts are real accounts;
