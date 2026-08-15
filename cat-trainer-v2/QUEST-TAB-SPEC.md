@@ -1,7 +1,7 @@
 # Cat Trainer — Quest Tab & Daily Essentials
 
-**Status:** Draft 0.3 — reconciled with Activities spec + current code (`cat-trainer-v2`)
-**Date:** August 12, 2026
+**Status:** Draft 0.4 — Slices 1–2 accepted; reduced Slice 3 implemented, pending acceptance
+**Date:** August 15, 2026
 **App:** Cat Trainer / Sirus app
 **Feature type:** Child routine / quest experience + parent quest management
 **Ownership:** Quest is the **responsibility** system. It OWNS routines, Daily Essentials, required tasks, timers/Beat-the-Clock, First→Then, support/help/read-aloud, and independence/mastery. It EXPOSES a small set of contracts that the Activities spec consumes (see §26). Implement **Quest first, Activities second.**
@@ -93,7 +93,7 @@ Some Daily Essentials still require adult follow-through even if Sirus does not 
 **Implemented today (`store.js`) and authoritative:**
 
 1. Sirus marks a Quest complete → files a `pending` completion.
-2. That completion grants **one immediate flexible Care Charge**, subject to the Café's current cap (6).
+2. The first completion attempt for that Quest/date records one immutable Care-award marker and grants **one immediate flexible Care Charge**, subject to the Café's current cap (6). A capped first attempt records zero; return, retry, correction, or reopen never creates fresh eligibility.
 3. **Parent approval** later grants the permanent reward effects — screen-time points, coins, Brain, Energy, Bond — recomputed from the live quest at approval time.
 4. Parent return/rejection does not claw back an already-granted or spent Care Charge.
 5. Parent approval does not grant a second Care Charge.
@@ -496,11 +496,23 @@ Run the §18.1 classification first (move optional items to Activities). Then: N
 - **RIGHT NOW stays visible with "All done here — great job! 🎉"** once the current routine is complete — this empty-but-present state tested well; keep it.
 - **Home's "Available quests" preview still works** but may eventually need to respect the newer routine prioritization. **Out of Slice 1 scope — do not change now;** note for a future slice.
 
-### Slice 2 — Parent Today portal + routine foundations
+### Slice 2 — Parent Today portal + routine foundations — ✅ ACCEPTED (device + automated, Aug 15 2026)
 Today·Routines·Log shell (Today default) · Needs You (§26.3) · batch approval · routine groups/templates + dayparts · recurrence · today-only Skip/Move/Next/reorder · Today Is Different · overrides never mutate templates.
 
-### Slice 3 — Parent configuration efficiency
-Routine editor (drag/dependencies) · duplicate/pause/archive/bulk · Quest Library · date-based Log + filters · quick return presets.
+**Acceptance result.** Current merged code passed device testing and the automated Slice 2 harness (12 PASS, 1 honest SKIP, 0 FAIL). The skip is Feed/Rest/Play because the QA cat did not expose a low-need cue; that same Care regression passed on a real device. Reset/scenario/fake-clock infrastructure is not required to close Slice 2.
+
+### Slice 3 — Reduced parent configuration + Activities contract — IMPLEMENTED, PENDING ACCEPTANCE
+
+The approved reduced slice is intentionally smaller than Draft 0.3's original line item:
+
+- phone-first reusable-Quest management grouped by daypart, with Daily Essentials and Bonus quests visibly separate;
+- accessible one-row Up/Down reorder, duplicate-to-paused-copy, Pause/Resume (`enabled`), and distinct recoverable Archive/Restore (`archived`);
+- conservative bulk Pause/Resume, Archive/Restore, daypart, recurrence, and Essential/Bonus only — **no bulk reorder**;
+- gentle quick-return presets plus an optional short note, with no point or Care clawback;
+- immutable per-Quest/date Care-award markers, including award-zero at the cap and migration backfill before a legacy pending completion is returned or an approved completion is corrected/reopened;
+- pure read-only `routineCue(...)` contract for Activities, derived from Quest scheduling and explicitly non-locking.
+
+**Deferred from the old Slice 3 bundle:** drag reorder, dependency authoring, Quest Library, and the full date-based Quest Log/filter expansion. Existing dependency data remains honored; Today and the accepted Log shell remain unchanged. These are later product choices, not blockers for Activities.
 
 ### Slice 4 — Timers and playful challenge
 Reusable timer component · fixed-duration · 2:00 toothbrush · optional Beat the Clock · count-up · first wrappers. Reward amount unchanged.
@@ -509,7 +521,7 @@ Reusable timer component · fixed-duration · 2:00 toothbrush · optional Beat t
 I need help · read-aloud · Build My Routine · support-level controls · per-completion `independenceSignal` capture (§16.3.1) · rolling 5-of-7 mastery detector + tiers · Mastered ⭐ marker (sticky) · one-time Mastered celebration via `familyFeedback` · 🌱 Independence Mastery block in the weekly reflection (§26.5) · evaluate per-Quest trusted self-completion **only after the §26.2 security model exists**.
 
 ### Slice 6 — Refinement
-General/optional-Quest ↔ Activities boundary · phone test of Today flow · normal-week test · minimal-prompt routine test.
+General/optional-Quest ↔ Activities migration · normal-week observation · minimal-prompt routine observation. Activities implementation may begin after reduced Slice 3; it does not wait for Quest timers, mastery, Library, or full Log work.
 
 ---
 
@@ -563,7 +575,7 @@ General/optional-Quest ↔ Activities boundary · phone test of Today flow · no
 Activities depends on these. Each is defined **once**, here.
 
 ### 26.1 Routine-state / First→Then read model
-Quest exposes the **current routine and its First→Then cue** as a read-only view Activities can render (e.g. `First: Morning Essentials → Then: Choose what's next`). The cue carries no locking semantics (§9.1). Activities must only *reflect* it and must not read or duplicate Quest scheduling, recurrence, or window logic. Until Quest ships this read model, Activities shows **no** routine cue (it degrades to just the library).
+Quest exposes the **current routine and its First→Then cue** as a read-only view Activities can render (e.g. `First: Brush teeth → Then: Get dressed`). The cue carries no locking semantics (§9.1). Activities must only *reflect* it and must not read or duplicate Quest scheduling, recurrence, or window logic. Reduced Slice 3 implements this as pure `routineCue(...)` in `src/shared/routines.js`, returning `routineId`, `routineLabel`, `remainingEssentialCount`, nullable `first`/`then` items, and `blocking:false`. Activities must degrade to just its library if no cue item is available.
 
 ### 26.2 Approval-mode contract (`parent | self | together`)
 One shared enum and one shared security model for completions in **both** systems:
