@@ -2,31 +2,31 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=c8ee4665';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=c8ee4665';
-import { seededQuests } from './data/quests.js?v=c8ee4665';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=c8ee4665';
+import { initFirebase, db, dbSdk } from './firebase.js?v=7ce7969f';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=7ce7969f';
+import { seededQuests } from './data/quests.js?v=7ce7969f';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=7ce7969f';
 import {
   CARE_NEEDS, areCareNeedsOkay, careCharges, freshCatNeeds, grantCareCharge,
   needsAt, refillNeed
-} from './care.js?v=c8ee4665';
+} from './care.js?v=7ce7969f';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=c8ee4665';
+} from './shared/rewards.js?v=7ce7969f';
 import {
   SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
   normalizeTransaction, summarizeDay
-} from './shared/ledger.js?v=c8ee4665';
+} from './shared/ledger.js?v=7ce7969f';
 import {
   FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable
-} from './shared/feedback.js?v=c8ee4665';
-import { localDate, localTimeLabel } from './shared/dates.js?v=c8ee4665';
+} from './shared/feedback.js?v=7ce7969f';
+import { localDate, localTimeLabel } from './shared/dates.js?v=7ce7969f';
 import {
   generatePairingCode, isPairingCodeShape, isPairingUsable, pairingErrorMessage
-} from './shared/pairing.js?v=c8ee4665';
-import { presetTargets } from './shared/routines.js?v=c8ee4665';
+} from './shared/pairing.js?v=7ce7969f';
+import { presetTargets } from './shared/routines.js?v=7ce7969f';
 
 export const CHILD_ID = 'sirus';
 
@@ -158,6 +158,9 @@ async function redeemPairingCode(uid, code, wantRole, displayName) {
     const snap = await getDoc(pairingRef);
     data = snap.exists() ? snap.data() : null;
   } catch (_) { data = null; }
+  // Pre-flight only, and deliberately WITHOUT a clock: expiry is the server's
+  // call (see pairingRejection). This catches the obviously-wrong cases early;
+  // an expired code is refused by the rules and reported the same way.
   if (!isPairingUsable(data, wantRole)) throw new Error(pairingErrorMessage(errorKind));
 
   const familyId = data.familyId;

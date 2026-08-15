@@ -146,8 +146,14 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
   of its **server-stamped** `createdAt`. Redeeming a code burns it in the same
   atomic batch that creates the membership, and the rules tie the two halves
   together (the new member must name that code and take exactly the role it
-  grants). Lifecycle constants live in `src/shared/pairing.js`; the window and the
-  rule invariants are checked by `tools/test-pairing.mjs`.
+  grants). **That redemption is the only permitted update** — there is no parent
+  update branch, because authorizing on the pre-write `familyId` while leaving the
+  post-write document unconstrained would let a parent of one family repoint a
+  code at another and join it. Minting is `create`, cleanup is `delete`.
+  Lifecycle constants live in `src/shared/pairing.js`; the window and the rule
+  invariants are checked by `tools/test-pairing.mjs`. Note that the client never
+  judges expiry — only the server does, so a wrong device clock can't lock pairing
+  out.
 
 > ⚠️ **Rules must be re-published in the console** (Firestore Database → Rules →
 > paste `firestore.rules` → Publish). Until Mom does this, the affected feature is

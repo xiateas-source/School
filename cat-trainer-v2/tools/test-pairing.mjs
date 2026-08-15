@@ -87,6 +87,39 @@ assert.equal(pairingRejection(alive(), 'child', NOW + PAIRING_TTL_MS + 60_000), 
 assert.equal(pairingRejection({ familyId: 'f', role: 'child', active: true }, 'child', NOW), 'expired');
 assert.equal(pairingRejection({ ...alive(), createdAt: {} }, 'child', NOW), 'expired');
 
+// --- The client must NOT judge expiry -----------------------------------------
+// The whole point of measuring the window from a server timestamp against server
+// time is that a wrong device clock can't break pairing. That guarantee is void
+// if the client refuses the code first, so the default is "no clock, no verdict".
+assert.equal(
+  pairingRejection(alive(), 'child'), null,
+  'with no clock supplied, expiry is left to the server'
+);
+assert.equal(
+  isPairingUsable(alive(), 'child'), true,
+  'a device whose clock runs hours fast must still attempt a server-valid code'
+);
+{
+  // The regression precisely: a code the SERVER considers alive, on a device
+  // whose clock is a day ahead. Judging locally would reject it; we must not.
+  const skewed = alive();
+  const deviceClockADayFast = NOW + 24 * 60 * 60 * 1000;
+  assert.equal(
+    pairingRejection(skewed, 'child', deviceClockADayFast), 'expired',
+    'sanity: with that clock, a local verdict WOULD reject it'
+  );
+  assert.equal(
+    pairingRejection(skewed, 'child'), null,
+    'so production must not ask for a local verdict'
+  );
+}
+// Clock-independent failures are still caught before any write, so an obviously
+// dead code costs no round trip.
+assert.equal(pairingRejection(null, 'child'), 'missing');
+assert.equal(pairingRejection({ ...alive(), active: false }, 'child'), 'consumed');
+assert.equal(pairingRejection({ ...alive(), consumedAt: NOW }, 'child'), 'consumed');
+assert.equal(pairingRejection(alive(), 'parent'), 'wrong-role');
+
 // --- The error message is not an oracle --------------------------------------
 // Every failure mode must produce the SAME text, or the pairing screen becomes a
 // way to confirm which codes exist.
@@ -145,9 +178,179 @@ assert.match(pairingsBlock, /existsAfter\(memberPath\)/, 'burning a code require
 assert.match(pairingsBlock, /getAfter\(memberPath\)\.data\.pairingCode == code/, 'and it must name THIS code');
 assert.match(pairingsBlock, /getAfter\(memberPath\)\.data\.role == before\.role/, 'and take only the granted role');
 assert.match(pairingsBlock, /consumedAt == request\.time/, 'the consumed stamp is server time');
-assert.ok(
-  PAIRING_CONSUME_FIELDS.every(f => new RegExp(`'${f}'`).test(pairingsBlock)),
-  'the consume rule must pin exactly the consume fields'
+{
+  // The mutable-field allowlist must be EXACTLY the three lifecycle fields —
+  // asserting only that they are *mentioned* would let an extra entry through,
+  // and one extra entry (familyId) is the whole cross-family exploit. Everything
+  // absent from this list is immutable on the only permitted update, which is
+  // what makes familyId / role / createdAt / createdBy unrewritable.
+  const hasOnly = pairingsBlock.match(/affectedKeys\(\)\.hasOnly\(\[([^\]]*)\]\)/);
+  assert.ok(hasOnly, 'the consume rule must constrain affectedKeys with hasOnly');
+  const listed = hasOnly[1].split(',').map(s => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
+  assert.deepEqual(
+    listed.slice().sort(), PAIRING_CONSUME_FIELDS.slice().sort(),
+    'redemption may touch exactly active/consumedAt/consumedBy — nothing else'
+  );
+  for (const immutable of ['familyId', 'role', 'createdAt', 'createdBy']) {
+    assert.ok(
+      !listed.includes(immutable),
+      `${immutable} must NOT be writable on an update (that is the cross-family exploit)`
+    );
+  }
+}
+
+// --- Cross-family authorization on UPDATE ------------------------------------
+// The vulnerability this guards (found in review of PR #56): the update rule
+// used to read
+//
+//   allow update: if (signedIn() && isParent(resource.data.familyId)) || consumesPairing();
+//
+// The parent branch authorized on the PRE-write familyId and then constrained
+// the POST-write document not at all — and `create`'s field pinning does not
+// apply to an update. So a parent of family A could mint a code for A, rewrite
+// it to {familyId: B, role: 'child', createdAt: <any>}, and redeem it to join
+// victim family B. The fix removes the branch: redemption is the only legal
+// update. These assertions prove the branch cannot come back.
+assert.match(
+  pairingsBlock, /allow update: if consumesPairing\(\);/,
+  'redemption must be the ONLY authorized update'
+);
+{
+  // Pull out every `allow update` line and require exactly one, delegating
+  // wholly to consumesPairing(). Any `||` branch, or any mention of isParent,
+  // would be a second authorization path.
+  const updateLines = pairingsBlock.split('\n').filter(l => /allow\s+[^;]*\bupdate\b/.test(l));
+  assert.equal(updateLines.length, 1, 'exactly one update rule on /pairings');
+  assert.equal(
+    updateLines[0].trim(), 'allow update: if consumesPairing();',
+    'the update rule must delegate wholly to consumesPairing() — no extra branch'
+  );
+  assert.doesNotMatch(
+    updateLines[0], /isParent/,
+    'a parent must never be authorized to update a pairing document'
+  );
+}
+// The member path consumption checks must be derived from the PRE-write
+// document, so an attacker cannot point the check at a family of their choosing.
+assert.match(
+  pairingsBlock, /families\/\$\(before\.familyId\)\/members/,
+  'the membership check must use the code\'s own (pre-write) familyId'
+);
+
+// A model of the surviving update rule, mirrored from consumesPairing() above.
+// The source assertions immediately preceding are what tie this model to the
+// real rule; this function makes the consequences legible. (True end-to-end
+// proof would need the Firestore emulator, which this no-build repo doesn't run.)
+const REQUEST_TIME = NOW + 5000;
+function updateAllowed({ before, after, uid, memberAfter }) {
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  const affected = [...keys].filter(k => before[k] !== after[k]);
+  const aliveBefore = before.active === true
+    && before.consumedAt == null
+    && typeof before.createdAt === 'number'
+    && before.createdAt + PAIRING_TTL_MS > REQUEST_TIME;
+  return Boolean(uid)
+    && aliveBefore
+    && affected.every(k => ['active', 'consumedAt', 'consumedBy'].includes(k))
+    && after.active === false
+    && after.consumedAt === REQUEST_TIME
+    && after.consumedBy === uid
+    && memberAfter != null
+    // The membership is looked up under the code's OWN familyId.
+    && memberAfter.familyId === before.familyId
+    && memberAfter.uid === uid
+    && memberAfter.pairingCode === 'code-under-test'
+    && memberAfter.role === before.role;
+}
+
+const FAMILY_A = 'family-a-owned-by-attacker';
+const FAMILY_B = 'family-b-the-victim';
+const attacker = 'attacker-uid';
+// The attacker's own code, freshly minted for their own family — the strongest
+// starting position they can legitimately reach.
+const attackerCode = {
+  familyId: FAMILY_A, role: 'child', active: true, createdAt: NOW, createdBy: attacker
+};
+const memberDoc = (familyId, role) => ({
+  familyId, uid: attacker, pairingCode: 'code-under-test', role
+});
+
+// 1. Repoint a code at the victim's family.
+assert.equal(
+  updateAllowed({
+    before: attackerCode,
+    after: { ...attackerCode, familyId: FAMILY_B, active: false, consumedAt: REQUEST_TIME, consumedBy: attacker },
+    uid: attacker,
+    memberAfter: memberDoc(FAMILY_B, 'child')
+  }),
+  false,
+  'a parent of family A must not be able to repoint a pairing code at family B'
+);
+// 2. Escalate the role the code grants.
+assert.equal(
+  updateAllowed({
+    before: attackerCode,
+    after: { ...attackerCode, role: 'parent', active: false, consumedAt: REQUEST_TIME, consumedBy: attacker },
+    uid: attacker,
+    memberAfter: memberDoc(FAMILY_A, 'parent')
+  }),
+  false,
+  'the granted role must be immutable'
+);
+// 3. Extend / reset the window.
+assert.equal(
+  updateAllowed({
+    before: attackerCode,
+    after: { ...attackerCode, createdAt: NOW + 60 * 60 * 1000, active: false, consumedAt: REQUEST_TIME, consumedBy: attacker },
+    uid: attacker,
+    memberAfter: memberDoc(FAMILY_A, 'child')
+  }),
+  false,
+  'createdAt must be immutable — no extending or resetting the window'
+);
+// 4. Reactivate a spent code.
+assert.equal(
+  updateAllowed({
+    before: { ...attackerCode, active: false, consumedAt: NOW + 1000, consumedBy: 'someone' },
+    after: { ...attackerCode, active: true, consumedAt: null, consumedBy: null },
+    uid: attacker,
+    memberAfter: memberDoc(FAMILY_A, 'child')
+  }),
+  false,
+  'a consumed code must not be revivable'
+);
+// 5. Burn a code without actually joining (no membership written).
+assert.equal(
+  updateAllowed({
+    before: attackerCode,
+    after: { ...attackerCode, active: false, consumedAt: REQUEST_TIME, consumedBy: attacker },
+    uid: attacker,
+    memberAfter: null
+  }),
+  false,
+  'a code cannot be spent without the membership it pays for'
+);
+// 6. Claim a different role than the code grants, while consuming it correctly.
+assert.equal(
+  updateAllowed({
+    before: attackerCode,
+    after: { ...attackerCode, active: false, consumedAt: REQUEST_TIME, consumedBy: attacker },
+    uid: attacker,
+    memberAfter: memberDoc(FAMILY_A, 'parent')
+  }),
+  false,
+  'the membership must take exactly the role the code grants'
+);
+// 7. The legitimate redemption still works — the fix must not break pairing.
+assert.equal(
+  updateAllowed({
+    before: attackerCode,
+    after: { ...attackerCode, active: false, consumedAt: REQUEST_TIME, consumedBy: attacker },
+    uid: attacker,
+    memberAfter: memberDoc(FAMILY_A, 'child')
+  }),
+  true,
+  'a genuine join must still be able to burn its own code'
 );
 
 // The TTL the rules enforce must be the TTL the client and its copy promise.

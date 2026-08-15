@@ -8,8 +8,9 @@
 //      can ask "give me every code". A code can only be fetched by knowing it.
 //   2. Short-lived — a code dies PAIRING_TTL_MINUTES after the server stamped
 //      createdAt. The rules do that arithmetic themselves (createdAt is a server
-//      timestamp), so a device with a wrong clock can neither mint a code that
-//      outlives the window nor kill one early.
+//      timestamp compared against request.time), so a device with a wrong clock
+//      can neither mint a code that outlives the window nor kill one early. That
+//      only holds if the CLIENT never judges expiry either — see pairingRejection.
 //   3. Single-use — redeeming a code consumes it in the same atomic write that
 //      creates the membership. A code that paired a device is dead.
 //
@@ -61,23 +62,31 @@ export function pairingExpiresAtMs(pairing) {
   return created == null ? null : created + PAIRING_TTL_MS;
 }
 
-// The client-side mirror of the rules' validPairing(). Used only to turn a
-// doomed redemption into a friendly message BEFORE writing; the authoritative
-// check is in firestore.rules, which re-derives all of this server-side.
-// Returns a reason string, or null when the code is good.
-export function pairingRejection(pairing, wantRole, nowMs = Date.now()) {
+// The client-side mirror of the rules' validPairing(). Used only to turn an
+// obviously-doomed redemption into a friendly message BEFORE writing; the
+// authoritative check is in firestore.rules, which re-derives all of this
+// server-side. Returns a reason string, or null when the code is good.
+//
+// `nowMs` is the clock to judge EXPIRY against, and it defaults to "don't".
+// Production passes no clock on purpose: the window is measured from a server
+// timestamp against server time, and a device whose clock runs fast would
+// otherwise reject a code the server would have accepted — locking pairing out
+// for exactly the clock-skew case the server-side TTL exists to survive. Tests
+// and tooling pass an explicit clock to exercise the window.
+export function pairingRejection(pairing, wantRole, nowMs = null) {
   if (!pairing) return 'missing';
   if (pairing.active !== true) return 'consumed';
   if (pairing.consumedAt != null) return 'consumed';
   if (typeof pairing.familyId !== 'string' || !pairing.familyId) return 'missing';
   if (pairing.role !== wantRole) return 'wrong-role';
+  if (nowMs == null) return null; // expiry is the server's call
   const expiresAt = pairingExpiresAtMs(pairing);
   if (expiresAt == null) return 'expired'; // legacy code with no readable stamp
   if (nowMs >= expiresAt) return 'expired';
   return null;
 }
 
-export function isPairingUsable(pairing, wantRole, nowMs = Date.now()) {
+export function isPairingUsable(pairing, wantRole, nowMs = null) {
   return pairingRejection(pairing, wantRole, nowMs) === null;
 }
 

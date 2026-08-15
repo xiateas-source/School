@@ -117,7 +117,15 @@ service cloud.firestore {
         && request.resource.data.active == true
         && request.resource.data.createdAt == request.time
         && request.resource.data.createdBy == request.auth.uid;
-      allow update: if (signedIn() && isParent(resource.data.familyId)) || consumesPairing();
+      // Redemption is the ONLY legal update. There is deliberately no parent
+      // branch here: a parent authorized by the PRE-write familyId could rewrite
+      // the POST-write document, and nothing on an update path re-checks the
+      // fields that `create` pins. A parent of family A could therefore mint a
+      // code for A, repoint it at victim family B (and reset role/createdAt at
+      // the same time), then redeem it to join B — breaking family isolation.
+      // Parents don't need this authority: minting is `create`, redemption is
+      // the tightly-constrained update below, and cleanup is `delete`.
+      allow update: if consumesPairing();
       allow delete: if signedIn() && isParent(resource.data.familyId);
     }
 
