@@ -124,6 +124,26 @@ const familyDate = (offsetDays = 0) => {
   }).format(d);
 };
 
+// Open one of the gate's sign-in screens and make sure it STAYS open.
+//
+// The deployed app can bounce back to the role gate: boot() resolves Firebase
+// auth a beat after page load, and (before the fix in this branch) reset to the
+// gate unconditionally when nobody was signed in — stealing the screen out from
+// under a fast tapper. Click, then confirm it settled; re-click if it didn't.
+async function openGateScreen(page, roleTestId, screenName) {
+  const screen = page.locator(`[data-screen="${screenName}"]`);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await page.getByTestId(roleTestId).click();
+    try {
+      await expect(screen).toBeVisible({ timeout: 10_000 });
+      // If the boot race is going to take it back, it happens immediately.
+      await page.waitForTimeout(2000);
+      if (await screen.isVisible()) return;
+    } catch { /* fall through and try again */ }
+  }
+  throw new Error(`the ${screenName} screen would not stay open after 3 attempts`);
+}
+
 // Blank every field that holds a secret, then screenshot. Used on failure only.
 // Artifacts from a public repo are world-readable, so this is not optional.
 async function redactedShot(page, name) {
@@ -152,10 +172,7 @@ test.beforeAll(async ({ browser }) => {
   parent = await ctx.newPage();
   await parent.goto('./');
 
-  await parent.getByTestId('role-parent').click();
-  // The app binds its gate handlers after an async Firebase boot, so the first
-  // click can land on nothing. Confirm the form is actually up before typing.
-  await expect(parent.locator('[data-screen="parent-signin"]')).toBeVisible({ timeout: 30_000 });
+  await openGateScreen(parent, 'role-parent', 'parent-signin');
   await parent.getByTestId('signin-email').fill(EMAIL);
   await parent.getByTestId('signin-password').fill(PASSWORD);
   await parent.getByTestId('signin-submit').click();
@@ -185,8 +202,7 @@ test.beforeAll(async ({ browser }) => {
     contexts.push(childCtx);
     const page = await childCtx.newPage();
     await page.goto('./');
-    await page.getByTestId('role-child').click();
-    await expect(page.locator('[data-screen="child-pair"]')).toBeVisible({ timeout: 30_000 });
+    await openGateScreen(page, 'role-child', 'child-pair');
     await page.getByTestId('pair-code').fill(code);
     await page.getByTestId('pair-submit').click();
     await expect(page.getByTestId('child-shell')).toBeVisible({ timeout: 45_000 });

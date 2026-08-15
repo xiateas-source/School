@@ -1,40 +1,40 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=b3b3c1a2';
+import { isConfigured } from './firebase.js?v=7b446727';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=b3b3c1a2';
-import * as store from './store.js?v=b3b3c1a2';
-import { CAT_DEFS } from './data/cats.js?v=b3b3c1a2';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=b3b3c1a2';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=b3b3c1a2';
+} from './auth.js?v=7b446727';
+import * as store from './store.js?v=7b446727';
+import { CAT_DEFS } from './data/cats.js?v=7b446727';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=7b446727';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=7b446727';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=b3b3c1a2';
+} from './cafe-interactions.js?v=7b446727';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=b3b3c1a2';
+} from './care.js?v=7b446727';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=b3b3c1a2';
+} from './shared/rewards.js?v=7b446727';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=b3b3c1a2';
+} from './shared/ledger.js?v=7b446727';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=b3b3c1a2';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=b3b3c1a2';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=b3b3c1a2';
+} from './shared/dates.js?v=7b446727';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=7b446727';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=7b446727';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questRecurrence, laterWindowFor,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=b3b3c1a2';
+} from './shared/routines.js?v=7b446727';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -2831,7 +2831,17 @@ async function boot() {
   bindEvents();
 
   await onAuth(async (user) => {
-    if (!user) { showGateScreen('gate'); return; }
+    if (!user) {
+      // Firebase resolves "signed out" a beat AFTER the page loads (it has to
+      // fetch the SDK first). By then the person may already have tapped a role
+      // and started typing, so resetting unconditionally yanks them back to the
+      // gate mid-sign-in — worst on the slow connections that need it least.
+      // Only reset when we're not already on a gate screen, which still covers
+      // the case this exists for: signing out from inside the app.
+      const active = document.querySelector('[data-screen].active');
+      if (!active || active.dataset.screen === 'gate') showGateScreen('gate');
+      return;
+    }
     if (user.isAnonymous) {
       const fid = deviceFamilyId();
       if (fid && deviceRole() === 'child') enterChild(fid, user.uid);
