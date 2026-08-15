@@ -1,0 +1,19 @@
+{
+  "name": "cat-trainer-qa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test tooling for Cat Trainer. The app itself stays a no-build static site — nothing in this file is served to a browser or required to run Cat Trainer.",
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:unit",
+    "test:unit": "for f in tools/test-*.mjs; do echo \"— $f\"; node \"$f\" || exit 1; done",
+    "test:acceptance": "playwright test",
+    "test:acceptance:list": "playwright test --list"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

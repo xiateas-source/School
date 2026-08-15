@@ -1,0 +1,4 @@
+# Test tooling only — the app itself ships as plain static files with no build.
+node_modules/
+test-results/
+playwright-report/

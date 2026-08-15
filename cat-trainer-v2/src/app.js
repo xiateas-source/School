@@ -1,40 +1,40 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=7ce7969f';
+import { isConfigured } from './firebase.js?v=b3b3c1a2';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=7ce7969f';
-import * as store from './store.js?v=7ce7969f';
-import { CAT_DEFS } from './data/cats.js?v=7ce7969f';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=7ce7969f';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=7ce7969f';
+} from './auth.js?v=b3b3c1a2';
+import * as store from './store.js?v=b3b3c1a2';
+import { CAT_DEFS } from './data/cats.js?v=b3b3c1a2';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=b3b3c1a2';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=b3b3c1a2';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=7ce7969f';
+} from './cafe-interactions.js?v=b3b3c1a2';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=7ce7969f';
+} from './care.js?v=b3b3c1a2';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=7ce7969f';
+} from './shared/rewards.js?v=b3b3c1a2';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=7ce7969f';
+} from './shared/ledger.js?v=b3b3c1a2';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=7ce7969f';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=7ce7969f';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=7ce7969f';
+} from './shared/dates.js?v=b3b3c1a2';
+import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=b3b3c1a2';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=b3b3c1a2';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questRecurrence, laterWindowFor,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=7ce7969f';
+} from './shared/routines.js?v=b3b3c1a2';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -865,7 +865,7 @@ function renderSirusToday() {
     const action = st === 'approved'
       ? '<span class="status-chip done">✓ Done</span>'
       : `<button class="pill-btn approve" data-sirus-done="${esc(q.id)}">${st === 'pending' ? '✓ Approve' : 'Mark done'}</button>`;
-    return `<div class="sirus-today-row"><div class="q-body"><strong>${esc(q.title)}</strong>
+    return `<div class="sirus-today-row" data-testid="sirus-today-row" data-quest-id="${esc(q.id)}"><div class="q-body"><strong>${esc(q.title)}</strong>
       <br><small>${tag}${esc(q.section)}${note}</small></div>${action}</div>`;
   }).join('') || '<div class="empty">Turn on a quest below and it\'ll show here.</div>';
 }
@@ -873,7 +873,7 @@ function parentQuestRow(q) {
   const on = q.enabled !== false;
   // Section is now the group header, so the row's small line drops it and just
   // shows the reward breakdown.
-  return `<div class="parent-quest-row ${on?'':'quest-off'}"><div class="q-body"><strong>${esc(q.title)}</strong>
+  return `<div class="parent-quest-row ${on?'':'quest-off'}" data-testid="parent-quest-row" data-quest-id="${esc(q.id)}"><div class="q-body"><strong>${esc(q.title)}</strong>
     <br><small>+${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''}</small></div>
     <button class="lock-toggle ${on?'on':'off'}" data-toggle-quest="${esc(q.id)}" role="switch" aria-checked="${on}" aria-label="${on?'On — tap to lock off':'Off — tap to turn on'}">${on?'On':'🔒 Off'}</button>
     <button class="icon-btn" data-edit-quest="${esc(q.id)}">✎</button>
@@ -957,7 +957,7 @@ function parentTodayQuestRow(q, phase) {
     : st === 'pending'
       ? '<span class="status-chip waiting">⏳ Waiting</span>'
       : '<span class="status-chip todo">To do</span>';
-  return `<div class="ptoday-row"><div class="q-body"><strong>${esc(q.title)}</strong>${todayFlagHtml(q)}</div>${chip}${todayActionsHtml(q, phase)}</div>`;
+  return `<div class="ptoday-row" data-testid="ptoday-row" data-quest-id="${esc(q.id)}"><div class="q-body"><strong>${esc(q.title)}</strong>${todayFlagHtml(q)}</div>${chip}${todayActionsHtml(q, phase)}</div>`;
 }
 // Inline marker for a quest carrying a today-only move/next (skips leave the
 // board entirely and are managed from the Today-is-different card instead).
@@ -1052,7 +1052,7 @@ function todayExceptionBarHtml() {
     const what = ov.action === 'skip' ? 'Skipped today'
       : ov.action === 'move' ? `Moved to ${WINDOW_LABEL[ov.window] || 'later'}`
       : 'Made next';
-    return `<div class="exception-row"><div class="q-body"><strong>${esc(title)}</strong><br><small>${esc(what)}</small></div>
+    return `<div class="exception-row" data-testid="exception-row" data-quest-id="${esc(qid)}"><div class="q-body"><strong>${esc(title)}</strong><br><small>${esc(what)}</small></div>
       <button class="pill-btn reject" data-today-clear="${esc(qid)}" aria-label="Undo change to ${esc(title)}">Undo</button></div>`;
   }).join('');
   return `<section class="card exception-card">

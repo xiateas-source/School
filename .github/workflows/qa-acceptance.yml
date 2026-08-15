@@ -1,0 +1,79 @@
+name: QA acceptance (browser)
+
+# SECURITY NOTES — this repository is PUBLIC.
+#
+#  * workflow_dispatch ONLY. There is deliberately no `pull_request`,
+#    `pull_request_target`, `push`, or `schedule` trigger. Only someone with
+#    write access can start this run, so a pull request from a fork can never
+#    reach the QA secrets.
+#  * The GITHUB_TOKEN is read-only (`permissions: contents: read`).
+#  * Secrets are passed as env to the single step that needs them, never to
+#    `run:` lines that echo, never into the workflow's own output.
+#  * Artifacts on a public repo are downloadable by anyone who can see the run,
+#    so Playwright traces/videos are disabled in playwright.config.js and the
+#    suite uploads only its own DOM-redacted screenshots.
+#  * `concurrency` keeps two runs from mutating the same QA family at once.
+#
+# Optional hardening, not required for a single-maintainer repo: pin the two
+# actions below to full commit SHAs instead of major-version tags, and move the
+# three secrets into a protected GitHub Environment with required reviewers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: 'App URL to test (leave blank for the deployed GitHub Pages app)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# One acceptance run at a time: every test drives the same QA family.
+concurrency:
+  group: qa-acceptance
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    name: Acceptance suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: cat-trainer-v2
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: cat-trainer-v2/package-lock.json
+
+      - name: Install test tooling
+        run: npm ci
+
+      - name: Unit suite (pure logic + rules invariants)
+        run: npm run test:unit
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Acceptance suite
+        env:
+          QA_PARENT_EMAIL: ${{ secrets.QA_PARENT_EMAIL }}
+          QA_PARENT_PASSWORD: ${{ secrets.QA_PARENT_PASSWORD }}
+          QA_FAMILY_ID: ${{ secrets.QA_FAMILY_ID }}
+          APP_URL: ${{ inputs.app_url }}
+        run: npm run test:acceptance
+
+      - name: Upload redacted failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-acceptance-screenshots
+          path: cat-trainer-v2/test-results/**/*.png
+          if-no-files-found: ignore
+          retention-days: 7
