@@ -5,7 +5,8 @@ import { dirname, join } from 'node:path';
 import {
   FEEDBACK_TYPE, DELIVERY, CLAIM_LEASE_MS,
   recognitionEventId, questReturnedEventId, toMillis,
-  isClaimable, partitionFeedback, bundleRecognitions
+  isClaimable, partitionFeedback, bundleRecognitions,
+  QUEST_RETURN_PRESETS, questReturnPreset, returnedQuestLine
 } from '../src/shared/feedback.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -64,6 +65,19 @@ assert.equal(many.count, 2);
 assert.equal(many.totalAmount, 2, 'bundle sums the recognized minutes');
 assert.equal(many.lines.length, 2);
 assert.equal(many.lines[0].actorName, 'Abba');
+
+// --- Quick return presets ---------------------------------------------------
+assert.deepEqual(QUEST_RETURN_PRESETS.map(p => p.code), ['try_again', 'fix_one', 'come_see_me']);
+assert.equal(questReturnPreset('fix_one').childLabel, 'Almost! Fix one thing and try again.');
+assert.equal(questReturnPreset('unknown').code, 'try_again', 'unknown legacy code degrades gently');
+assert.deepEqual(returnedQuestLine({
+  questTitle: 'Wash bowl', returnReasonCode: 'come_see_me', parentNote: 'Bring the bowl.'
+}), {
+  questTitle: 'Wash bowl',
+  message: 'Come see me and we’ll work out the next step.',
+  parentNote: 'Bring the bowl.'
+});
+assert.equal(returnedQuestLine({ reasonLabel: 'Legacy quest' }).questTitle, 'Legacy quest');
 
 // --- Static integration checks (no emulator) --------------------------------
 const store = readFileSync(join(ROOT, 'src/store.js'), 'utf8');

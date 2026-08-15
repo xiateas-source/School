@@ -8,8 +8,9 @@ rules_version = '2';
 //     definitions), members, pairing codes, apply point/cat rewards, and create
 //     point transactions (adjustments, redemptions, and approved quest earnings).
 //  3. The child role is limited to its legitimate actions: REQUESTING a quest
-//     completion (once per local day, always status 'pending'), receiving its one
-//     capped Care Charge, spending that charge through a paired catNeeds write,
+//     completion (once per local day, always status 'pending'), receiving at most
+//     one capped Care Charge per Quest/date via an immutable daily award marker,
+//     spending that charge through a paired catNeeds write,
 //     appending one parent-marked healthy Hero-care date, switching the active
 //     cat, and buying café items with coins. The child can never raise its own
 //     minutes/coins or long-term Brain/Energy/Bond stats.
@@ -223,18 +224,25 @@ service cloud.firestore {
           let itemId = purchase.get('itemId', '');
           return itemId is string && pairedCafePurchase(childId, itemId);
         }
-        // A child may gain exactly one charge only alongside the pending quest
-        // completion that created it. The completion id is persisted on the
-        // profile so a loose profile update cannot mint care by itself.
+        // A child may gain exactly one charge only alongside BOTH the pending
+        // completion and the first immutable daily award marker that created it.
+        // A returned/retried completion reuses the id but the marker survives,
+        // so it can never make a second increment eligible.
         function validCareEarn() {
           let completionId = request.resource.data.get('lastCareCompletionId', '');
           let completionPath = /databases/$(database)/documents/families/$(fid)/questCompletions/$(completionId);
+          let awardPath = /databases/$(database)/documents/families/$(fid)/questCareAwards/$(completionId);
           return storedCareCharges() >= 0
             && storedCareCharges() < 6
             && requestedCareCharges() == storedCareCharges() + 1
             && completionId is string
             && !exists(completionPath)
             && existsAfter(completionPath)
+            && !exists(awardPath)
+            && existsAfter(awardPath)
+            && getAfter(awardPath).data.award == 1
+            && getAfter(awardPath).data.careChargeGranted == true
+            && getAfter(awardPath).data.sourceCompletionId == completionId
             && getAfter(completionPath).data.childId == childId
             && getAfter(completionPath).data.status == 'pending'
             && getAfter(completionPath).data.careChargeGranted == true
@@ -456,15 +464,105 @@ service cloud.firestore {
         allow delete: if isParent(fid);
       }
 
-      // --- Quest completions (dedupe: one doc id per child+quest+day) -------
+      // --- Immutable daily Care awards -------------------------------------
+      // A completion may be deleted when returned/corrected so the Quest can be
+      // retried. This marker may never be changed or deleted, which preserves
+      // the one-Care maximum for that child + Quest + local date. Award 0 is
+      // persisted at the cap too, preventing a later retry from banking Care.
+      match /questCareAwards/{awardId} {
+        function validChildCareAward() {
+          let d = request.resource.data;
+          let completionPath = /databases/$(database)/documents/families/$(fid)/questCompletions/$(awardId);
+          let childPath = /databases/$(database)/documents/families/$(fid)/childProfiles/$(d.childId);
+          let childBefore = get(childPath).data;
+          let childAfter = getAfter(childPath).data;
+          return d.keys().hasOnly([
+              'childId', 'questId', 'localDate', 'sourceCompletionId',
+              'award', 'careChargeGranted', 'createdBy', 'createdAt'
+            ])
+            && d.keys().hasAll([
+              'childId', 'questId', 'localDate', 'sourceCompletionId',
+              'award', 'careChargeGranted', 'createdBy', 'createdAt'
+            ])
+            && d.childId == 'sirus'
+            && d.questId is string
+            && d.localDate is string
+            && d.localDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && awardId == d.childId + '_' + d.questId + '_' + d.localDate
+            && d.sourceCompletionId == awardId
+            && (d.award == 0 || d.award == 1)
+            && d.createdBy == request.auth.uid
+            && d.createdAt == request.time
+            && !exists(completionPath)
+            && existsAfter(completionPath)
+            && getAfter(completionPath).data.childId == d.childId
+            && getAfter(completionPath).data.questId == d.questId
+            && getAfter(completionPath).data.localDate == d.localDate
+            && getAfter(completionPath).data.status == 'pending'
+            && getAfter(completionPath).data.createdBy == request.auth.uid
+            && getAfter(completionPath).data.careChargeGranted == d.careChargeGranted
+            && (
+              (d.award == 1
+                && d.careChargeGranted == true
+                && childBefore.get('careCharges', 0) >= 0
+                && childBefore.get('careCharges', 0) < 6
+                && childAfter.get('careCharges', 0) == childBefore.get('careCharges', 0) + 1
+                && childAfter.get('lastCareCompletionId', '') == awardId)
+              || (d.award == 0
+                && d.careChargeGranted == false
+                && childAfter.get('careCharges', 0) == childBefore.get('careCharges', 0))
+            );
+        }
+
+        allow read: if isMember(fid);
+        allow create: if isParent(fid) || (isChild(fid) && validChildCareAward());
+        allow update, delete: if false;
+      }
+
+      // --- Quest completions (one live doc id per child+quest+day) ----------
       match /questCompletions/{completionId} {
+        function validChildQuestCompletion() {
+          let d = request.resource.data;
+          let questPath = /databases/$(database)/documents/families/$(fid)/quests/$(d.questId);
+          let awardPath = /databases/$(database)/documents/families/$(fid)/questCareAwards/$(completionId);
+          let firstAttempt = !exists(awardPath)
+            && existsAfter(awardPath)
+            && getAfter(awardPath).data.sourceCompletionId == completionId
+            && getAfter(awardPath).data.questId == d.questId
+            && getAfter(awardPath).data.localDate == d.localDate
+            && getAfter(awardPath).data.careChargeGranted == d.careChargeGranted;
+          let retry = exists(awardPath) && d.careChargeGranted == false;
+          return d.keys().hasAll([
+              'childId', 'questId', 'questTitle', 'localDate', 'status',
+              'activeCatId', 'rewards', 'careChargeGranted', 'attemptId',
+              'createdBy', 'createdAt'
+            ])
+            && d.childId == 'sirus'
+            && d.questId is string
+            && d.questTitle is string
+            && d.localDate is string
+            && d.localDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && completionId == d.childId + '_' + d.questId + '_' + d.localDate
+            && d.status == 'pending'
+            && d.activeCatId is string
+            && d.rewards is map
+            && d.careChargeGranted is bool
+            && d.attemptId is string
+            && d.createdBy == request.auth.uid
+            && d.createdAt == request.time
+            && exists(questPath)
+            && get(questPath).data.get('enabled', true) != false
+            && get(questPath).data.get('archived', false) != true
+            && (firstAttempt || retry);
+        }
+
         allow read: if isMember(fid);
         // The child may only FILE a pending request (status 'pending'); it grants
-        // nothing until approved. A parent may create/approve/reject freely.
-        // Create-only for the child: a second completion for the same id is an
-        // update -> denied.
+        // no points until approved. The first attempt must create its daily Care
+        // marker; a retry must find that marker and explicitly grant no Care.
+        // A parent may create/approve/reject through the trusted UI.
         allow create: if isParent(fid)
-          || (isChild(fid) && request.resource.data.status == 'pending');
+          || (isChild(fid) && validChildQuestCompletion());
         // Parent approves (update to 'approved') or rejects (delete).
         allow update, delete: if isParent(fid);
       }

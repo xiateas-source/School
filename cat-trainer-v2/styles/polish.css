@@ -48,6 +48,7 @@
 .icon-btn,
 .lock-toggle,
 .pill-btn,
+.quest-action,
 .nav-item,
 .ghost-btn,
 .shop-item button,
@@ -153,6 +154,14 @@ button[data-polish-busy="true"]::after {
   .approval-row .q-body,
   .sirus-today-row .q-body {
     flex: 1 1 calc(100% - 54px);
+  }
+
+  .quest-row-actions {
+    padding-left: 0;
+  }
+
+  .quest-row-actions .quest-action {
+    flex: 1 1 auto;
   }
 
   .card-head > h3 {

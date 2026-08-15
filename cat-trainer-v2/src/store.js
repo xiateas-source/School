@@ -2,31 +2,35 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=7b446727';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=7b446727';
-import { seededQuests } from './data/quests.js?v=7b446727';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=7b446727';
+import { initFirebase, db, dbSdk } from './firebase.js?v=27e48d14';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=27e48d14';
+import { seededQuests } from './data/quests.js?v=27e48d14';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=27e48d14';
 import {
-  CARE_NEEDS, areCareNeedsOkay, careCharges, freshCatNeeds, grantCareCharge,
-  needsAt, refillNeed
-} from './care.js?v=7b446727';
+  CARE_NEEDS, areCareNeedsOkay, freshCatNeeds,
+  dailyQuestCareAward, needsAt, questCareAwardId, refillNeed
+} from './care.js?v=27e48d14';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=7b446727';
+} from './shared/rewards.js?v=27e48d14';
 import {
   SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
   normalizeTransaction, summarizeDay
-} from './shared/ledger.js?v=7b446727';
+} from './shared/ledger.js?v=27e48d14';
 import {
-  FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable
-} from './shared/feedback.js?v=7b446727';
-import { localDate, localTimeLabel } from './shared/dates.js?v=7b446727';
+  FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable,
+  questReturnPreset
+} from './shared/feedback.js?v=27e48d14';
+import { localDate, localTimeLabel } from './shared/dates.js?v=27e48d14';
 import {
   generatePairingCode, isPairingCodeShape, isPairingUsable, pairingErrorMessage
-} from './shared/pairing.js?v=7b446727';
-import { presetTargets } from './shared/routines.js?v=7b446727';
+} from './shared/pairing.js?v=27e48d14';
+import { presetTargets } from './shared/routines.js?v=27e48d14';
+import {
+  bulkQuestPatch, duplicateQuestData
+} from './shared/quest-management.js?v=27e48d14';
 
 export const CHILD_ID = 'sirus';
 
@@ -75,6 +79,7 @@ function paths(sdk, database, fid) {
     txn: (id) => doc(database, ...famRoot, 'pointTransactions', id),
     completion: (id) => doc(database, ...famRoot, 'questCompletions', id),
     completions: () => collection(database, ...famRoot, 'questCompletions'),
+    careAward: (id) => doc(database, ...famRoot, 'questCareAwards', id),
     dayOverride: (id) => doc(database, ...famRoot, 'questDayOverrides', id),
     dayOverrides: () => collection(database, ...famRoot, 'questDayOverrides'),
     feedback: (id) => doc(database, ...famRoot, 'familyFeedback', id),
@@ -489,27 +494,32 @@ export async function adjustPoints(familyId, uid, { amount, reasonCode, reasonLa
 
 // Sirus taps a quest complete → this files a PENDING request and immediately
 // grants one capped Care Charge. Minutes, coins, and long-term cat stats still
-// wait for parent approval (see approveCompletion). One-per-day is enforced by
-// the deterministic completion id.
+// wait for parent approval (see approveCompletion). The completion document is
+// intentionally reusable after a return; the separate immutable daily award
+// marker is what makes Care one-per-Quest/date across every retry/correction.
 export async function completeQuest(familyId, uid, questId, { deviceId = 'tablet' } = {}) {
   const { database, sdk } = await fs();
   const { runTransaction, serverTimestamp } = sdk;
   const p = paths(sdk, database, familyId);
   const today = localDate();
   const completionId = `${CHILD_ID}_${questId}_${today}`;
+  const awardId = questCareAwardId(CHILD_ID, questId, today);
 
   return runTransaction(database, async (tx) => {
     const compSnap = await tx.get(p.completion(completionId));
     if (compSnap.exists()) throw new Error('already-completed');
 
+    const awardSnap = await tx.get(p.careAward(awardId));
+
     const questSnap = await tx.get(p.quest(questId));
     if (!questSnap.exists()) throw new Error('quest-missing');
     const quest = questSnap.data();
     if (quest.enabled === false) throw new Error('quest-disabled');
+    if (quest.archived === true) throw new Error('quest-archived');
 
     const childSnap = await tx.get(p.child());
     const child = childSnap.data();
-    const charge = grantCareCharge(child.careCharges);
+    const charge = dailyQuestCareAward(awardSnap.exists(), child.careCharges);
 
     const points = Math.max(0, Number(quest.points) || 0);
     const brain = Math.max(0, Number(quest.brain) || 0);
@@ -520,24 +530,36 @@ export async function completeQuest(familyId, uid, questId, { deviceId = 'tablet
     // fallback if the quest is later edited/deleted; the real credit is recomputed
     // from the live quest at approval time. activeCatId is snapshotted so approval
     // rewards the cat that was active when the quest was done.
-    if (charge.granted) {
+    if (charge.careChargeGranted) {
       tx.update(p.child(), {
         careCharges: charge.after,
         lastCareCompletionId: completionId
+      });
+    }
+    if (charge.createMarker) {
+      tx.set(p.careAward(awardId), {
+        childId: CHILD_ID,
+        questId,
+        localDate: today,
+        sourceCompletionId: completionId,
+        award: charge.award,
+        careChargeGranted: charge.careChargeGranted,
+        createdBy: uid,
+        createdAt: serverTimestamp()
       });
     }
     tx.set(p.completion(completionId), {
       childId: CHILD_ID, questId, questTitle: quest.title || 'Quest',
       localDate: today, status: 'pending', activeCatId: child.activeCatId,
       rewards: { points, brain, energy, coins, bond: QUEST_BOND },
-      careChargeGranted: charge.granted,
+      careChargeGranted: charge.careChargeGranted,
       // Unique per attempt (the document id is reusable on retry). Approval
       // copies this onto the ledger row so returned-quest feedback (Slice 2)
       // can never collide with a later retry.
       attemptId: newAttemptId(),
       createdBy: uid, createdAt: serverTimestamp()
     });
-    return { careChargeGranted: charge.granted, careCharges: charge.after };
+    return { careChargeGranted: charge.careChargeGranted, careCharges: charge.after };
   });
 }
 
@@ -561,6 +583,8 @@ export async function approveCompletion(familyId, uid, completion) {
     const comp = compSnap.data();
     if (comp.status && comp.status !== 'pending') return; // already resolved
 
+    const awardSnap = await tx.get(p.careAward(completionId));
+
     const snap = comp.rewards || {};
     const questSnap = await tx.get(p.quest(comp.questId));
     const quest = questSnap.exists() ? questSnap.data() : null;
@@ -576,9 +600,14 @@ export async function approveCompletion(familyId, uid, completion) {
     // Pending completions created before Care Charges shipped have no boolean
     // marker. Give those one migration-safe charge at approval; a recorded false
     // means the cap was already full at completion time and is not reconsidered.
-    const legacyCharge = typeof comp.careChargeGranted !== 'boolean'
-      ? grantCareCharge(child.careCharges)
-      : { granted: false, after: careCharges(child.careCharges) };
+    const legacyCharge = !awardSnap.exists() && typeof comp.careChargeGranted !== 'boolean'
+      ? dailyQuestCareAward(false, child.careCharges)
+      : dailyQuestCareAward(true, child.careCharges);
+    const markerAward = !awardSnap.exists()
+      ? (typeof comp.careChargeGranted === 'boolean'
+          ? (comp.careChargeGranted ? 1 : 0)
+          : legacyCharge.award)
+      : null;
     const catId = comp.activeCatId || child.activeCatId;
     const catRef = p.cat(catId);
     const catSnap = await tx.get(catRef);
@@ -607,15 +636,27 @@ export async function approveCompletion(familyId, uid, completion) {
       available: availableAfter,
       coins: (child.coins || 0) + coins
     };
-    if (legacyCharge.granted) {
+    if (legacyCharge.careChargeGranted) {
       childUpdate.careCharges = legacyCharge.after;
       childUpdate.lastCareCompletionId = completionId;
     }
     tx.update(p.child(), childUpdate);
+    if (!awardSnap.exists()) {
+      tx.set(p.careAward(completionId), {
+        childId: CHILD_ID,
+        questId: comp.questId,
+        localDate: comp.localDate || approvalDate,
+        sourceCompletionId: completionId,
+        award: markerAward,
+        careChargeGranted: markerAward === 1,
+        createdBy: comp.createdBy || uid,
+        createdAt: serverTimestamp()
+      });
+    }
     tx.update(p.completion(completionId), {
       status: 'approved',
       rewards: { points, brain, energy, coins, bond: QUEST_BOND },
-      careChargeGranted: comp.careChargeGranted === true || legacyCharge.granted,
+      careChargeGranted: comp.careChargeGranted === true || legacyCharge.careChargeGranted,
       approvedBy: uid, approvedAt: serverTimestamp()
     });
     // Ledger row is stamped at approval time — the moment the minutes actually
@@ -677,8 +718,14 @@ export async function parentCompleteQuest(familyId, uid, questId) {
     const existing = compSnap.exists() ? compSnap.data() : null;
     if (existing && existing.status === 'approved') return; // already done today
 
+    const awardSnap = await tx.get(p.careAward(completionId));
+
     const questSnap = await tx.get(p.quest(questId));
     const quest = questSnap.exists() ? questSnap.data() : null;
+    if (!existing && !quest) throw new Error('quest-missing');
+    if (!existing && quest && (quest.enabled === false || quest.archived === true)) {
+      throw new Error('quest-unavailable');
+    }
     const snap = (existing && existing.rewards) || {};
     const title = (quest && quest.title) || (existing && existing.questTitle) || 'Quest';
     const points = Math.max(0, Number(quest ? quest.points : snap.points) || 0);
@@ -689,10 +736,16 @@ export async function parentCompleteQuest(familyId, uid, questId) {
     const createdByName = await readMemberName(tx, p, uid);
     const childSnap = await tx.get(p.child());
     const child = childSnap.data();
-    const shouldGrantCare = !existing || typeof existing.careChargeGranted !== 'boolean';
+    const shouldGrantCare = !awardSnap.exists()
+      && (!existing || typeof existing.careChargeGranted !== 'boolean');
     const charge = shouldGrantCare
-      ? grantCareCharge(child.careCharges)
-      : { granted: false, after: careCharges(child.careCharges) };
+      ? dailyQuestCareAward(false, child.careCharges)
+      : dailyQuestCareAward(true, child.careCharges);
+    const markerAward = !awardSnap.exists()
+      ? (existing && typeof existing.careChargeGranted === 'boolean'
+          ? (existing.careChargeGranted ? 1 : 0)
+          : charge.award)
+      : null;
     const catId = (existing && existing.activeCatId) || child.activeCatId;
     const catRef = p.cat(catId);
     const catSnap = await tx.get(catRef);
@@ -721,11 +774,23 @@ export async function parentCompleteQuest(familyId, uid, questId) {
       available: availableAfter,
       coins: (child.coins || 0) + coins
     };
-    if (charge.granted) {
+    if (charge.careChargeGranted) {
       childUpdate.careCharges = charge.after;
       childUpdate.lastCareCompletionId = completionId;
     }
     tx.update(p.child(), childUpdate);
+    if (!awardSnap.exists()) {
+      tx.set(p.careAward(completionId), {
+        childId: CHILD_ID,
+        questId,
+        localDate: today,
+        sourceCompletionId: completionId,
+        award: markerAward,
+        careChargeGranted: markerAward === 1,
+        createdBy: (existing && existing.createdBy) || uid,
+        createdAt: serverTimestamp()
+      });
+    }
 
     // Reuse the pending attempt's id when Sirus already tapped; otherwise this
     // parent-initiated completion mints its own attempt identity.
@@ -734,14 +799,14 @@ export async function parentCompleteQuest(familyId, uid, questId) {
     if (existing) {
       tx.update(p.completion(completionId), {
         status: 'approved', rewards, attemptId,
-        careChargeGranted: existing.careChargeGranted === true || charge.granted,
+        careChargeGranted: existing.careChargeGranted === true || charge.careChargeGranted,
         approvedBy: uid, approvedAt: serverTimestamp()
       });
     } else {
       tx.set(p.completion(completionId), {
         childId: CHILD_ID, questId, questTitle: title,
         localDate: today, status: 'approved', activeCatId: catId, rewards,
-        careChargeGranted: charge.granted, attemptId,
+        careChargeGranted: charge.careChargeGranted, attemptId,
         createdBy: uid, createdAt: serverTimestamp(),
         approvedBy: uid, approvedAt: serverTimestamp()
       });
@@ -787,18 +852,21 @@ export async function parentCompleteQuest(familyId, uid, questId) {
 // id (the completion doc id is reusable on same-day retry), so a later retry of
 // the same quest can't collide with this return notice. No point/correction row
 // is written and the already-granted Care Charge is never clawed back.
-export async function rejectCompletion(familyId, uid, completion) {
+export async function rejectCompletion(familyId, uid, completion, { reasonCode = 'try_again', note = '' } = {}) {
   const completionId = completion && (completion.id || completion);
   if (!completionId) return;
   const { database, sdk } = await fs();
   const { runTransaction, serverTimestamp } = sdk;
   const p = paths(sdk, database, familyId);
+  const preset = questReturnPreset(reasonCode);
+  const parentNote = String(note || '').trim().slice(0, 120);
 
   await runTransaction(database, async (tx) => {
     const compSnap = await tx.get(p.completion(completionId));
     if (!compSnap.exists()) return; // already gone — nothing to return
     const comp = compSnap.data();
     if (comp.status && comp.status !== 'pending') return; // only a pending attempt is returned
+    const awardSnap = await tx.get(p.careAward(completionId));
     const createdByName = await readMemberName(tx, p, uid);
     // Fall back to a fresh attempt id only for a legacy completion filed before
     // attempt ids shipped, so the event still has a stable, unique identity.
@@ -814,7 +882,10 @@ export async function rejectCompletion(familyId, uid, completion) {
       actorName: createdByName,
       amount: 0,
       reasonLabel: comp.questTitle || 'Quest',
-      parentNote: '',
+      questTitle: comp.questTitle || 'Quest',
+      returnReasonCode: preset.code,
+      returnReasonLabel: preset.childLabel,
+      parentNote,
       activityDate: comp.localDate || localDate(),
       createdAt: serverTimestamp(),
       deliveryStatus: DELIVERY.PENDING,
@@ -822,6 +893,23 @@ export async function rejectCompletion(familyId, uid, completion) {
       claimedAt: null,
       seenAt: null
     });
+    // Migration safety: a pending completion from the pre-marker client may
+    // already have granted Care (or recorded a capped zero). Preserve that
+    // result before deleting the retryable completion. Unknown legacy attempts
+    // conservatively record zero rather than inventing a new Care award.
+    if (!awardSnap.exists()) {
+      const granted = comp.careChargeGranted === true;
+      tx.set(p.careAward(completionId), {
+        childId: comp.childId || CHILD_ID,
+        questId: comp.questId,
+        localDate: comp.localDate || localDate(),
+        sourceCompletionId: completionId,
+        award: granted ? 1 : 0,
+        careChargeGranted: granted,
+        createdBy: comp.createdBy || uid,
+        createdAt: serverTimestamp()
+      });
+    }
     tx.delete(p.completion(completionId));
   });
 }
@@ -970,6 +1058,11 @@ async function reverseEntry(tx, p, familyId, sdk, txn) {
     catRef = p.cat(txn.catId);
     catSnap = await tx.get(catRef);
   }
+  const completionId = txn.kind === 'quest' && txn.questId
+    ? (txn.questCompletionId || `${CHILD_ID}_${txn.questId}_${txn.activityDate || txn.localDate}`)
+    : null;
+  const completionSnap = completionId ? await tx.get(p.completion(completionId)) : null;
+  const awardSnap = completionId ? await tx.get(p.careAward(completionId)) : null;
   // ---- writes ----
   const availableBefore = child.available || 0;
   const availableAfter = Math.max(0, availableBefore - Number(txn.amount || 0));
@@ -987,8 +1080,22 @@ async function reverseEntry(tx, p, familyId, sdk, txn) {
     tx.update(catRef, next);
   }
   // If reversing a quest, clear its completion so it can be earned again today.
-  if (txn.kind === 'quest' && txn.questId) {
-    tx.delete(p.completion(txn.questCompletionId || `${CHILD_ID}_${txn.questId}_${txn.activityDate || txn.localDate}`));
+  if (completionId) {
+    if (awardSnap && !awardSnap.exists()) {
+      const completion = completionSnap && completionSnap.exists() ? completionSnap.data() : {};
+      const granted = completion.careChargeGranted === true;
+      tx.set(p.careAward(completionId), {
+        childId: completion.childId || CHILD_ID,
+        questId: completion.questId || txn.questId,
+        localDate: completion.localDate || txn.activityDate || txn.localDate || completionId.slice(-10),
+        sourceCompletionId: completionId,
+        award: granted ? 1 : 0,
+        careChargeGranted: granted,
+        createdBy: txn.createdBy || CHILD_ID,
+        createdAt: sdk.serverTimestamp()
+      });
+    }
+    tx.delete(p.completion(completionId));
   }
   return { availableBefore, availableAfter, effects };
 }
@@ -1206,14 +1313,68 @@ export async function saveQuest(familyId, quest) {
   const p = paths(sdk, database, familyId);
   await setDoc(p.quest(quest.id), quest, { merge: true });
 }
-// Lock/unlock a preset: flip a quest's `enabled` flag. A disabled quest is hidden
-// from Sirus's lists and refused server-side, without deleting its definition.
+// Pause/Resume flips only `enabled`. Archive is a separate lifecycle state and
+// is never inferred from this flag.
 export async function setQuestEnabled(familyId, questId, enabled) {
   const { database, sdk } = await fs();
   const { setDoc } = sdk;
   const p = paths(sdk, database, familyId);
   await setDoc(p.quest(questId), { id: questId, enabled: !!enabled }, { merge: true });
 }
+
+export async function setQuestArchived(familyId, uid, questId, archived) {
+  const { database, sdk } = await fs();
+  const { setDoc, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+  const lifecycle = archived
+    ? { archived: true, archivedAt: serverTimestamp(), archivedBy: uid }
+    : { archived: false, restoredAt: serverTimestamp(), restoredBy: uid };
+  await setDoc(p.quest(questId), { id: questId, ...lifecycle }, { merge: true });
+}
+
+export async function duplicateQuest(familyId, uid, source, nextOrder) {
+  const { database, sdk } = await fs();
+  const { doc, setDoc, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+  const ref = doc(p.quests());
+  const duplicate = duplicateQuestData(source, { id: ref.id, order: nextOrder });
+  await setDoc(ref, { ...duplicate, createdAt: serverTimestamp(), createdBy: uid });
+  return duplicate.id;
+}
+
+export async function bulkUpdateQuests(familyId, uid, questIds, action, value = null) {
+  const ids = [...new Set(questIds || [])].filter(Boolean);
+  if (!ids.length) return { updated: 0 };
+  if (ids.length > 100) throw new Error('too-many-quests');
+  const { database, sdk } = await fs();
+  const { writeBatch, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+  const patch = bulkQuestPatch(action, value);
+  if (action === 'archive') Object.assign(patch, { archivedAt: serverTimestamp(), archivedBy: uid });
+  if (action === 'restore') Object.assign(patch, { restoredAt: serverTimestamp(), restoredBy: uid });
+  const batch = writeBatch(database);
+  for (const id of ids) batch.set(p.quest(id), { id, ...patch }, { merge: true });
+  await batch.commit();
+  return { updated: ids.length };
+}
+
+export async function reorderQuests(familyId, updates) {
+  const changes = (updates || []).filter(change => change && change.id && Number.isFinite(Number(change.order)));
+  if (!changes.length) return { updated: 0 };
+  if (changes.length > 100) throw new Error('too-many-quests');
+  const { database, sdk } = await fs();
+  const { writeBatch } = sdk;
+  const p = paths(sdk, database, familyId);
+  const batch = writeBatch(database);
+  for (const change of changes) {
+    batch.set(p.quest(change.id), { id: change.id, order: Number(change.order) }, { merge: true });
+  }
+  await batch.commit();
+  return { updated: changes.length };
+}
+
+// Permanent deletion is retained for isolated QA cleanup only. Normal parent
+// management uses Archive/Restore so definitions and historical references stay.
 export async function deleteQuest(familyId, questId) {
   const { database, sdk } = await fs();
   const { deleteDoc } = sdk;

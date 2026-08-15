@@ -1,4 +1,4 @@
-// Cat Trainer browser acceptance suite — Slice 2 checks a machine can own.
+// Cat Trainer browser acceptance suite — Slice 2–3 checks a machine can own.
 //
 // Runs against the DEPLOYED app with a disposable QA family (QA-TESTING.md).
 // Primary runner is the manually-triggered GitHub Actions workflow.
@@ -109,10 +109,73 @@ async function deleteQuest(page, id) {
   await page.locator('[data-qtab="routines"]').click();
   const row = page.locator(`[data-testid="parent-quest-row"][data-quest-id="${id}"]`);
   if (!(await row.count())) { createdQuestIds.delete(id); return; }
+  // Archived QA rows remain in the DOM but sit in a collapsed recoverable
+  // group. Open it before using the deliberately QA-only permanent-delete hook.
+  if (!(await row.isVisible())) {
+    const archived = page.locator('details.archived-section');
+    if (await archived.count()) await archived.locator('summary').click();
+  }
   page.once('dialog', d => d.accept()); // deletion is confirm()-gated
   await row.locator('[data-del-quest]').click();
   await expect(row).toHaveCount(0);
   createdQuestIds.delete(id);
+}
+
+const parentQuestRow = (page, id) =>
+  page.locator(`[data-testid="parent-quest-row"][data-quest-id="${id}"]`);
+
+async function openRoutines(page) {
+  await parentGo(page, 'quests');
+  await page.locator('[data-qtab="routines"]').click();
+  await expect(page.locator('[data-qpanel="routines"]')).toBeVisible();
+}
+
+// Slice 3 is intentionally exercised only when APP_URL exposes its stable
+// toolbar hook. This lets the branch workflow run safely against the currently
+// deployed default build: new tests honestly SKIP before creating any QA data.
+async function requireSlice3(page) {
+  await openRoutines(page);
+  test.skip(
+    !(await page.getByTestId('quest-bulk-toolbar').count()),
+    'reduced Quest Slice 3 is not deployed at APP_URL yet'
+  );
+}
+
+async function selectQuestRows(page, ids) {
+  for (const id of ids) {
+    const checkbox = parentQuestRow(page, id).locator('[data-select-quest]');
+    // Archived is collapsed by default after any realtime rerender.
+    if (!(await checkbox.isVisible())) {
+      const archived = page.locator('details.archived-section');
+      if (await archived.count()) await archived.locator('summary').click();
+    }
+    await checkbox.check();
+  }
+  await expect(page.getByTestId('quest-bulk-edit')).toBeEnabled();
+}
+
+async function applyQuestBulk(page, ids, action, value) {
+  await selectQuestRows(page, ids);
+  await page.getByTestId('quest-bulk-edit').click();
+  const dialog = page.getByTestId('quest-bulk-dialog');
+  await expect(dialog).toBeVisible();
+  await page.getByTestId('quest-bulk-action').selectOption(action);
+  if (action === 'daypart') await page.locator('#quest-bulk-window').selectOption(value);
+  if (action === 'recurrence') await page.locator('#quest-bulk-recurrence').selectOption(value);
+  await page.getByTestId('quest-bulk-apply').click();
+  await expect(dialog).toBeHidden({ timeout: 30_000 });
+}
+
+async function reachableChildQuest(page, id) {
+  await childGo(page, 'quests');
+  const card = page.locator(`${CHILD_LIST} [data-testid="quest-card"][data-quest-id="${id}"]`);
+  await waitFor(
+    async () => (await card.count()) > 0 || (await page.locator(`${CHILD_LIST} [data-toggle-anytime]`).count()) > 0,
+    'the QA quest neither appeared nor exposed the Anytime expansion'
+  );
+  if (!(await card.count())) await page.locator(`${CHILD_LIST} [data-toggle-anytime]`).click();
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  return card;
 }
 
 // The local calendar date in the family's timezone — must match the app's own
@@ -525,4 +588,163 @@ test('12 · Feed/Rest/Play spends one charge and refills that need', async () =>
   );
   const after = await needValue(child, need);
   expect(after, `${need} must rise by the +20 refill (capped at 100)`).toBe(Math.min(100, before + 20));
+});
+
+test('13 · Routine rows duplicate, pause, reorder, archive, and restore independently', async () => {
+  await requireSlice3(parent); // feature gate before the first mutation
+
+  const firstTitle = `${RUN}-manage-a`;
+  const secondTitle = `${RUN}-manage-b`;
+  const firstId = await createQuest(parent, { title: firstTitle, window: 'anytime' });
+  const secondId = await createQuest(parent, { title: secondTitle, window: 'anytime' });
+
+  // A duplicate is a recoverable draft: distinct id, same reusable config,
+  // paused until Mom explicitly reviews and resumes it.
+  await parentQuestRow(parent, firstId).locator('[data-duplicate-quest]').click();
+  const copy = parent.locator(`[data-testid="parent-quest-row"]:has(strong:text-is("${firstTitle} copy"))`);
+  await expect(copy).toHaveCount(1, { timeout: 30_000 });
+  const copyId = await copy.getAttribute('data-quest-id');
+  expect(copyId).not.toBe(firstId);
+  createdQuestIds.add(copyId);
+  await expect(copy.locator('[data-toggle-quest]')).toHaveText('Resume');
+
+  await copy.locator('[data-toggle-quest]').click();
+  await expect(parentQuestRow(parent, copyId).locator('[data-toggle-quest]')).toHaveText('Pause');
+  await parentQuestRow(parent, copyId).locator('[data-toggle-quest]').click();
+  await expect(parentQuestRow(parent, copyId).locator('[data-toggle-quest]')).toHaveText('Resume');
+
+  // Reorder is deliberately one-row-at-a-time and constrained to a daypart.
+  const anytimeRows = parent.locator('details[data-window="anytime"] [data-testid="parent-quest-row"]');
+  const beforeOrder = await anytimeRows.evaluateAll(rows => rows.map(row => row.dataset.questId));
+  const beforeSecond = beforeOrder.indexOf(secondId);
+  expect(beforeSecond).toBeGreaterThan(0);
+  await parentQuestRow(parent, secondId).locator('[data-move-quest][data-direction="up"]').click();
+  await waitFor(async () => {
+    const ids = await anytimeRows.evaluateAll(rows => rows.map(row => row.dataset.questId));
+    return ids.indexOf(secondId) === beforeSecond - 1;
+  }, 'the accessible Up action did not move exactly one row');
+
+  // Archive never aliases Pause: restore keeps the copy paused.
+  parent.once('dialog', dialog => dialog.accept());
+  await parentQuestRow(parent, copyId).locator('[data-archive-quest]').click();
+  const archived = parent.locator('details.archived-section');
+  await expect(archived.locator(`[data-quest-id="${copyId}"] [data-restore-quest]`)).toHaveCount(1, { timeout: 30_000 });
+  await archived.locator('summary').click();
+  await archived.locator(`[data-quest-id="${copyId}"] [data-restore-quest]`).click();
+  await expect(parentQuestRow(parent, copyId).locator('[data-toggle-quest]')).toHaveText('Resume', { timeout: 30_000 });
+
+  await deleteQuest(parent, copyId);
+  await deleteQuest(parent, secondId);
+  await deleteQuest(parent, firstId);
+});
+
+test('14 · Bulk routine edits are conservative and never expose bulk reorder', async () => {
+  await requireSlice3(parent); // feature gate before the first mutation
+
+  const firstId = await createQuest(parent, { title: `${RUN}-bulk-a`, window: 'anytime' });
+  const secondId = await createQuest(parent, { title: `${RUN}-bulk-b`, window: 'anytime' });
+  const ids = [firstId, secondId];
+
+  await selectQuestRows(parent, ids);
+  await parent.getByTestId('quest-bulk-edit').click();
+  const actions = await parent.getByTestId('quest-bulk-action').locator('option')
+    .evaluateAll(options => options.map(option => option.value));
+  expect(actions).toEqual(['pause', 'resume', 'archive', 'restore', 'daypart', 'recurrence', 'essential', 'bonus']);
+  expect(actions).not.toContain('reorder');
+  await parent.getByTestId('quest-bulk-dialog').locator('button[value="cancel"]').click();
+  await parent.locator('#quest-clear-selection').click();
+
+  await applyQuestBulk(parent, ids, 'daypart', 'evening');
+  for (const id of ids) {
+    await expect(parent.locator(`details[data-window="evening"] [data-quest-id="${id}"]`)).toHaveCount(1, { timeout: 30_000 });
+  }
+
+  await applyQuestBulk(parent, ids, 'recurrence', 'weekends');
+  for (const id of ids) await expect(parentQuestRow(parent, id)).toContainText('Weekends', { timeout: 30_000 });
+
+  await applyQuestBulk(parent, ids, 'essential');
+  for (const id of ids) await expect(parentQuestRow(parent, id)).toContainText('Essential', { timeout: 30_000 });
+
+  await applyQuestBulk(parent, ids, 'pause');
+  for (const id of ids) await expect(parentQuestRow(parent, id).locator('[data-toggle-quest]')).toHaveText('Resume', { timeout: 30_000 });
+
+  await applyQuestBulk(parent, ids, 'resume');
+  for (const id of ids) await expect(parentQuestRow(parent, id).locator('[data-toggle-quest]')).toHaveText('Pause', { timeout: 30_000 });
+
+  await applyQuestBulk(parent, ids, 'archive');
+  for (const id of ids) {
+    await expect(parent.locator(`details.archived-section [data-quest-id="${id}"] [data-restore-quest]`)).toHaveCount(1, { timeout: 30_000 });
+  }
+
+  await applyQuestBulk(parent, ids, 'restore');
+  for (const id of ids) {
+    await expect(parent.locator(`details[data-window="evening"] [data-quest-id="${id}"] [data-toggle-quest]`)).toHaveText('Pause', { timeout: 30_000 });
+  }
+
+  await deleteQuest(parent, secondId);
+  await deleteQuest(parent, firstId);
+});
+
+test('15 · Return and retry grants at most one Care Charge and points only on approval', async () => {
+  test.skip(!child, childUnavailable || 'no child session');
+  await requireSlice3(parent); // feature gate before the first mutation
+
+  const title = `${RUN}-return-retry`;
+  const id = await createQuest(parent, { title, window: 'anytime' });
+  const card = await reachableChildQuest(child, id);
+  const points = num((await card.locator('.q-reward').textContent() || '').match(/\+(\d+)m/)?.[1]);
+  expect(Number.isFinite(points), 'the QA quest must expose a numeric minute reward').toBe(true);
+
+  await childGo(child, 'cafe');
+  const careBefore = num(await child.getByTestId('child-care-charges').textContent());
+  await childGo(child, 'quests');
+  await card.locator('[data-complete]').click();
+
+  await parentGo(parent, 'dash');
+  const firstPending = parent.locator(`[data-testid="approval-row"][data-quest-id="${id}"]`);
+  await expect(firstPending).toHaveCount(1, { timeout: 30_000 });
+  await firstPending.locator('[data-reject]').click();
+  await expect(parent.getByTestId('quest-return-dialog')).toBeVisible();
+  await parent.locator('input[name="quest-return-reason"][value="fix_one"]').check();
+  await parent.getByTestId('quest-return-note').fill('One small fix.');
+  await parent.getByTestId('quest-return-submit').click();
+  await expect(firstPending).toHaveCount(0, { timeout: 30_000 });
+
+  const returned = child.getByTestId('returned-feedback');
+  await expect(returned).toContainText('Almost! Fix one thing and try again.', { timeout: 30_000 });
+  await expect(returned).toContainText('One small fix.');
+  await returned.locator('[data-fb-dismiss]').last().click();
+
+  await childGo(child, 'cafe');
+  await waitFor(
+    async () => num(await child.getByTestId('child-care-charges').textContent()) === Math.min(6, careBefore + 1),
+    'the first daily attempt did not apply the single allowed Care result'
+  );
+  const careAfterFirst = num(await child.getByTestId('child-care-charges').textContent());
+
+  const retry = await reachableChildQuest(child, id);
+  await expect(retry).toHaveAttribute('data-quest-status', 'todo');
+  await retry.locator('[data-complete]').click();
+  await expect(retry).toHaveAttribute('data-quest-status', 'pending', { timeout: 30_000 });
+
+  await parentGo(parent, 'dash');
+  const retryPending = parent.locator(`[data-testid="approval-row"][data-quest-id="${id}"]`);
+  await expect(retryPending).toHaveCount(1, { timeout: 30_000 });
+  // Waiting for both the child pending state and parent queue proves the retry
+  // transaction settled before checking that Care stayed unchanged.
+  await childGo(child, 'cafe');
+  expect(num(await child.getByTestId('child-care-charges').textContent())).toBe(careAfterFirst);
+
+  await parentGo(parent, 'dash');
+  const availableBefore = num(await parent.getByTestId('parent-available').textContent());
+  await retryPending.locator('[data-approve]').click();
+  await expect(retryPending).toHaveCount(0, { timeout: 30_000 });
+  await waitFor(
+    async () => num(await parent.getByTestId('parent-available').textContent()) === availableBefore + points,
+    'the approved retry did not grant exactly one set of quest minutes'
+  );
+
+  await childGo(child, 'cafe');
+  expect(num(await child.getByTestId('child-care-charges').textContent())).toBe(careAfterFirst);
+  await deleteQuest(parent, id);
 });

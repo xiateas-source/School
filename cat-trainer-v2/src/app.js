@@ -1,40 +1,46 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=7b446727';
+import { isConfigured } from './firebase.js?v=27e48d14';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=7b446727';
-import * as store from './store.js?v=7b446727';
-import { CAT_DEFS } from './data/cats.js?v=7b446727';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=7b446727';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=7b446727';
+} from './auth.js?v=27e48d14';
+import * as store from './store.js?v=27e48d14';
+import { CAT_DEFS } from './data/cats.js?v=27e48d14';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=27e48d14';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=27e48d14';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=7b446727';
+} from './cafe-interactions.js?v=27e48d14';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=7b446727';
+} from './care.js?v=27e48d14';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=7b446727';
+} from './shared/rewards.js?v=27e48d14';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=7b446727';
+} from './shared/ledger.js?v=27e48d14';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=7b446727';
-import { partitionFeedback, bundleRecognitions } from './shared/feedback.js?v=7b446727';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=7b446727';
+} from './shared/dates.js?v=27e48d14';
+import {
+  partitionFeedback, bundleRecognitions, QUEST_RETURN_PRESETS, returnedQuestLine
+} from './shared/feedback.js?v=27e48d14';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=27e48d14';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
-  questTimeWindow, questIsDailyEssential, questRecurrence, laterWindowFor,
+  questTimeWindow, questIsDailyEssential, questIsAvailable, questIsArchived,
+  questRecurrence, laterWindowFor,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=7b446727';
+} from './shared/routines.js?v=27e48d14';
+import {
+  questManagementGroups, recurrenceLabel, reorderQuestUpdates
+} from './shared/quest-management.js?v=27e48d14';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -61,6 +67,7 @@ const state = {
   dayOverrides: {},               // today's per-quest overrides (skip/move/next) by questId
   questTab: 'today',              // parent Quest portal sub-tab: today | routines | log
   approveSel: new Set(),          // parent Today: batch-approval selection (completion ids)
+  questSelection: new Set(),      // parent Routines: conservative bulk edit selection
   feedbackEvents: [],             // unseen family-feedback events (child only)
   clientId: null                  // stable per-install id for the claim lease
 };
@@ -75,6 +82,7 @@ let todaySubUnsub = null, todaySubDate = null, todaySubToken = 0, dayWatchTimer 
 // Family-feedback delivery: one shared subscription + a re-entrancy guard so only
 // one card shows at a time (§7.0).
 let feedbackUnsub = null, feedbackShowing = false;
+let returningCompletionId = null;
 
 // Reduced-motion is honored everywhere the celebration animates (§7.4).
 const prefersReducedMotion = () =>
@@ -429,10 +437,15 @@ function buildRecognitionCard(model) {
 function buildReturnedCard(events) {
   const card = document.createElement('div');
   card.className = 'feedback-card returned';
+  card.setAttribute('data-testid', 'returned-feedback');
   card.setAttribute('role', 'status');
   const many = events.length > 1;
   const heading = many ? 'A few quests came back' : 'A quest came back';
-  const lines = events.map(e => `<li>${esc(e.reasonLabel || 'Quest')}</li>`).join('');
+  const lines = events.map(e => {
+    const line = returnedQuestLine(e);
+    const note = line.parentNote ? `<span class="fb-note">“${esc(line.parentNote)}”</span>` : '';
+    return `<li><strong>${esc(line.questTitle)}</strong><span>${esc(line.message)}</span>${note}</li>`;
+  }).join('');
   // Gentle and non-celebratory: no points move, nothing is taken away (§7.3).
   card.innerHTML = `
     <button class="fb-close" data-fb-dismiss aria-label="Close">✕</button>
@@ -843,7 +856,7 @@ function renderSirusToday() {
   // scheduled today, or skipped for today, is not "on his screen now" and must not
   // appear here. planDay also carries move/next flags, but this flat list only
   // needs the membership + order.
-  const active = planDay(state.quests.filter(q => q.enabled !== false), { ymd: localDate(), overrides: state.dayOverrides })
+  const active = planDay(state.quests.filter(questIsAvailable), { ymd: localDate(), overrides: state.dayOverrides })
     .slice()
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const done = active.filter(q => completionStatus(q.id) === 'approved').length;
@@ -869,35 +882,159 @@ function renderSirusToday() {
       <br><small>${tag}${esc(q.section)}${note}</small></div>${action}</div>`;
   }).join('') || '<div class="empty">Turn on a quest below and it\'ll show here.</div>';
 }
-function parentQuestRow(q) {
+function parentQuestRow(q, { index = 0, total = 1, archived = false } = {}) {
   const on = q.enabled !== false;
-  // Section is now the group header, so the row's small line drops it and just
-  // shows the reward breakdown.
-  return `<div class="parent-quest-row ${on?'':'quest-off'}" data-testid="parent-quest-row" data-quest-id="${esc(q.id)}"><div class="q-body"><strong>${esc(q.title)}</strong>
-    <br><small>+${q.points}m ${q.brain?'· ★'+q.brain:''} ${q.energy?'· ⚡'+q.energy:''} · ♥${QUEST_BOND} ${q.coins?'· 🪙'+q.coins:''}</small></div>
-    <button class="lock-toggle ${on?'on':'off'}" data-toggle-quest="${esc(q.id)}" role="switch" aria-checked="${on}" aria-label="${on?'On — tap to lock off':'Off — tap to turn on'}">${on?'On':'🔒 Off'}</button>
-    <button class="icon-btn" data-edit-quest="${esc(q.id)}">✎</button>
-    <button class="icon-btn" data-del-quest="${esc(q.id)}">×</button></div>`;
+  const selected = state.questSelection.has(q.id);
+  const section = SECTION_META[q.section] || { glyph: '•' };
+  const requirement = questIsDailyEssential(q) ? 'Essential' : 'Bonus';
+  const status = archived ? 'Archived' : on ? 'Active' : 'Paused';
+  const reward = `+${q.points}m${q.brain ? ' · ★' + q.brain : ''}${q.energy ? ' · ⚡' + q.energy : ''} · ♥${QUEST_BOND}${q.coins ? ' · 🪙' + q.coins : ''}`;
+  const qaDelete = /^QA-/i.test(q.title || '')
+    ? `<button class="quest-action danger" data-del-quest="${esc(q.id)}">Delete QA</button>`
+    : '';
+  const actions = archived
+    ? `<button class="quest-action" data-duplicate-quest="${esc(q.id)}">Duplicate</button>
+       <button class="quest-action primary" data-restore-quest="${esc(q.id)}">Restore</button>${qaDelete}`
+    : `<button class="quest-action order" data-move-quest="${esc(q.id)}" data-direction="up" ${index === 0 ? 'disabled' : ''} aria-label="Move ${esc(q.title)} up in ${esc(WINDOW_LABEL[questTimeWindow(q)] || questTimeWindow(q))}">↑</button>
+       <button class="quest-action order" data-move-quest="${esc(q.id)}" data-direction="down" ${index === total - 1 ? 'disabled' : ''} aria-label="Move ${esc(q.title)} down in ${esc(WINDOW_LABEL[questTimeWindow(q)] || questTimeWindow(q))}">↓</button>
+       <button class="quest-action" data-edit-quest="${esc(q.id)}">Edit</button>
+       <button class="quest-action" data-duplicate-quest="${esc(q.id)}">Duplicate</button>
+       <button class="quest-action" data-toggle-quest="${esc(q.id)}">${on ? 'Pause' : 'Resume'}</button>
+       <button class="quest-action" data-archive-quest="${esc(q.id)}">Archive</button>${qaDelete}`;
+  return `<div class="parent-quest-row ${on ? '' : 'quest-off'} ${archived ? 'quest-archived' : ''}" data-testid="parent-quest-row" data-quest-id="${esc(q.id)}">
+    <label class="quest-select" aria-label="Select ${esc(q.title)}"><input type="checkbox" data-testid="quest-selection" data-select-quest="${esc(q.id)}" ${selected ? 'checked' : ''}></label>
+    <div class="q-body"><strong>${esc(q.title)}</strong>
+      <div class="quest-meta"><span>${esc(section.glyph || '•')} ${esc(q.section || 'General')}</span><span>${esc(requirement)}</span><span>${esc(recurrenceLabel(q))}</span><span>${esc(status)}</span></div>
+      <small>${reward}</small></div>
+    <div class="quest-row-actions">${actions}</div></div>`;
 }
+
+function renderQuestBulkToolbar() {
+  const live = new Set(state.quests.map(q => q.id));
+  for (const id of [...state.questSelection]) if (!live.has(id)) state.questSelection.delete(id);
+  const count = state.questSelection.size;
+  el('quest-selection-count').textContent = count ? `${count} selected` : 'Select quests to change together';
+  el('quest-bulk-edit').disabled = count === 0;
+  el('quest-clear-selection').hidden = count === 0;
+}
+
 function renderParentQuests() {
-  const quests = state.quests.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  // Group the management list under collapsible section headers so Mom can scan
-  // (and collapse) Morning / Tidy / etc. instead of reading the section tag on
-  // every flat row. Known sections keep their canonical order; any custom
-  // section falls in after them.
-  const known = SECTIONS.filter(s => quests.some(q => q.section === s));
-  const custom = [...new Set(quests.map(q => q.section))].filter(s => !SECTIONS.includes(s));
-  const html = [...known, ...custom].map(section => {
-    const qs = quests.filter(q => q.section === section);
-    const meta = SECTION_META[section] || { glyph: '•' };
-    const icon = meta.icon ? `<img src="${meta.icon}" alt="">` : `<span class="section-glyph">${meta.glyph}</span>`;
-    const onCount = qs.filter(q => q.enabled !== false).length;
-    return `<details class="quest-section" open><summary>
-      <span class="qs-head">${icon}${esc(section)}</span>
-      <span class="qs-count">${onCount}/${qs.length} on</span></summary>
-      <div class="qs-body">${qs.map(parentQuestRow).join('')}</div></details>`;
+  const { groups, archived } = questManagementGroups(state.quests);
+  const activeHtml = groups.map(group => {
+    const activeCount = group.quests.filter(q => q.enabled !== false).length;
+    const paused = group.quests.length - activeCount;
+    const requirementGroup = (label, quests, kind) => quests.length
+      ? `<section class="quest-requirement-group" data-requirement="${kind}">
+          <h4>${label} <span>${quests.length}</span></h4>
+          ${quests.map((q, index) => parentQuestRow(q, { index, total: quests.length })).join('')}
+        </section>`
+      : '';
+    return `<details class="quest-section" open data-window="${esc(group.window)}"><summary>
+      <span class="qs-head"><span class="section-glyph">${esc(WINDOW_GLYPH[group.window] || '•')}</span>${esc(group.label)}</span>
+      <span class="qs-count">${activeCount} active${paused ? ` · ${paused} paused` : ''}</span></summary>
+      <div class="qs-body">
+        ${requirementGroup('Daily Essentials', group.essentialQuests, 'essential')}
+        ${requirementGroup('Bonus quests', group.bonusQuests, 'bonus')}
+      </div></details>`;
   }).join('');
-  el('parent-quests').innerHTML = html || '<div class="empty">No quests yet.</div>';
+  const archivedHtml = archived.length
+    ? `<details class="quest-section archived-section"><summary><span class="qs-head"><span class="section-glyph">▣</span>Archived</span><span class="qs-count">${archived.length} recoverable</span></summary>
+       <div class="qs-body">${archived.map(q => parentQuestRow(q, { archived: true })).join('')}</div></details>`
+    : '';
+  el('parent-quests').innerHTML = activeHtml + archivedHtml || '<div class="empty">No quests yet.</div>';
+  renderQuestBulkToolbar();
+}
+
+function syncQuestBulkDialog() {
+  const action = el('quest-bulk-action').value;
+  const recurrence = el('quest-bulk-recurrence').value;
+  el('quest-bulk-window-row').hidden = action !== 'daypart';
+  el('quest-bulk-recurrence-row').hidden = action !== 'recurrence';
+  el('quest-bulk-days-row').hidden = action !== 'recurrence' || recurrence !== 'selected_days';
+  el('quest-bulk-once-row').hidden = action !== 'recurrence' || recurrence !== 'one_time';
+}
+
+function openQuestBulkDialog() {
+  if (!state.questSelection.size) return;
+  el('quest-bulk-summary').textContent = `${state.questSelection.size} quest${state.questSelection.size === 1 ? '' : 's'} selected. Rewards and today-only changes will not be touched.`;
+  el('quest-bulk-action').value = 'pause';
+  el('quest-bulk-window').value = 'morning';
+  el('quest-bulk-recurrence').value = 'everyday';
+  document.querySelectorAll('.quest-bulk-day').forEach(cb => { cb.checked = false; });
+  el('quest-bulk-once-date').value = localDate();
+  el('quest-bulk-error').hidden = true;
+  syncQuestBulkDialog();
+  el('quest-bulk-dialog').showModal();
+}
+
+function questBulkValue(action) {
+  if (action === 'daypart') return el('quest-bulk-window').value;
+  if (action === 'essential') return true;
+  if (action === 'bonus') return false;
+  if (action !== 'recurrence') return null;
+  const type = el('quest-bulk-recurrence').value;
+  if (type === 'selected_days') {
+    return { type, days: [...document.querySelectorAll('.quest-bulk-day')].filter(cb => cb.checked).map(cb => cb.value) };
+  }
+  if (type === 'one_time') return { type, date: el('quest-bulk-once-date').value };
+  return { type };
+}
+
+async function applyQuestBulk() {
+  const ids = [...state.questSelection];
+  if (!ids.length) return;
+  let action = el('quest-bulk-action').value;
+  const value = questBulkValue(action);
+  if (action === 'bonus') action = 'essential';
+  const error = el('quest-bulk-error');
+  error.hidden = true;
+  try {
+    const result = await store.bulkUpdateQuests(state.familyId, state.uid, ids, action, value);
+    state.questSelection.clear();
+    el('quest-bulk-dialog').close();
+    renderParentQuests();
+    toast(`Updated ${result.updated} quest${result.updated === 1 ? '' : 's'}.`);
+  } catch (err) {
+    error.textContent = err.message === 'recurrence-days-required'
+      ? 'Choose at least one day.'
+      : err.message === 'recurrence-date-required'
+        ? 'Choose a date.'
+        : 'Could not update these quests — try again.';
+    error.hidden = false;
+  }
+}
+
+function openQuestReturnDialog(completion) {
+  returningCompletionId = completion && completion.id;
+  if (!returningCompletionId) return;
+  el('quest-return-title').textContent = completion.questTitle || 'Quest';
+  const first = QUEST_RETURN_PRESETS[0];
+  const choice = document.querySelector(`input[name="quest-return-reason"][value="${first.code}"]`);
+  if (choice) choice.checked = true;
+  el('quest-return-note').value = '';
+  el('quest-return-dialog').showModal();
+}
+
+async function applyQuestReturn() {
+  const completion = state.pendingApprovals.find(c => c.id === returningCompletionId);
+  if (!completion) {
+    el('quest-return-dialog').close();
+    returningCompletionId = null;
+    toast('That quest was already handled.');
+    return;
+  }
+  const reason = document.querySelector('input[name="quest-return-reason"]:checked');
+  try {
+    await store.rejectCompletion(state.familyId, state.uid, completion, {
+      reasonCode: reason ? reason.value : QUEST_RETURN_PRESETS[0].code,
+      note: el('quest-return-note').value
+    });
+    el('quest-return-dialog').close();
+    returningCompletionId = null;
+    toast('Returned gently — no points removed.');
+  } catch (err) {
+    toast('Could not return — try again.');
+  }
 }
 
 // ===== Parent Today portal (§17.2) ==========================================
@@ -990,7 +1127,7 @@ function todayActionsHtml(q, phase) {
 function renderParentToday() {
   const box = el('p-today');
   if (!box) return;
-  const active = state.quests.filter(q => q.enabled !== false);
+  const active = state.quests.filter(questIsAvailable);
   const doneIds = new Set(active.filter(q => completionStatus(q.id)).map(q => q.id));
   // Recurrence + today-only overrides decide what is actually on today; the same
   // organizer the child uses then groups it into Now / Next / Later / Anytime.
@@ -1174,7 +1311,7 @@ function renderChildHome() {
   // today-only Skip/Move/Next overrides are applied through planDay before taking
   // the first few unfinished quests (same source of truth as the Quests screen and
   // the parent Today view), so a skipped or off-schedule quest never leaks here.
-  const planned = planDay(state.quests.filter(q => q.enabled !== false), { ymd: localDate(), overrides: state.dayOverrides });
+  const planned = planDay(state.quests.filter(questIsAvailable), { ymd: localDate(), overrides: state.dayOverrides });
   const next = planned.filter(q => !completionStatus(q.id)).slice(0, 3);
   el('c-next-quests').innerHTML = next.length ? next.map(childQuestCard).join('') : '<div class="empty">All done — great job!</div>';
 }
@@ -1212,7 +1349,7 @@ function childMissionCard(q, { focus = false } = {}) {
 // Reward economics are untouched — this only changes how the same quests and the
 // same completion actions are organized on screen.
 function renderChildQuests() {
-  const active = state.quests.filter(q => q.enabled !== false);
+  const active = state.quests.filter(questIsAvailable);
   // A quest with any completion (pending = waiting for Mom, or approved) is not
   // actionable again today; both count as "handled".
   const doneIds = new Set(active.filter(q => completionStatus(q.id)).map(q => q.id));
@@ -2367,6 +2504,28 @@ function bindEvents() {
     const cgo = e.target.closest('[data-cgo]'); if (cgo) return navChild(cgo.dataset.cgo);
     const qtab = e.target.closest('[data-qtab]'); if (qtab) return navQuestTab(qtab.dataset.qtab);
 
+    if (e.target.closest('#quest-bulk-edit')) { openQuestBulkDialog(); return; }
+    if (e.target.closest('#quest-select-active')) {
+      state.questSelection = new Set(state.quests.filter(q => !questIsArchived(q)).map(q => q.id));
+      renderParentQuests();
+      return;
+    }
+    if (e.target.closest('#quest-clear-selection')) {
+      state.questSelection.clear();
+      renderParentQuests();
+      return;
+    }
+    if (e.target.closest('#quest-bulk-apply')) {
+      e.preventDefault();
+      await applyQuestBulk();
+      return;
+    }
+    if (e.target.closest('#quest-return-submit')) {
+      e.preventDefault();
+      await applyQuestReturn();
+      return;
+    }
+
     // Needs You batch review: approve every currently-selected completion. Each
     // still routes through the idempotent approveCompletion, so a row already
     // resolved elsewhere is a safe no-op and per-Quest integrity is preserved.
@@ -2530,16 +2689,57 @@ function bindEvents() {
       return;
     }
 
+    const moveQuest = e.target.closest('[data-move-quest]');
+    if (moveQuest) {
+      const updates = reorderQuestUpdates(state.quests, moveQuest.dataset.moveQuest, moveQuest.dataset.direction);
+      if (!updates.length) return;
+      try { await store.reorderQuests(state.familyId, updates); toast('Quest order updated.'); }
+      catch (err) { toast('Could not reorder — try again.'); }
+      return;
+    }
+
+    const duplicate = e.target.closest('[data-duplicate-quest]');
+    if (duplicate) {
+      const q = state.quests.find(x => x.id === duplicate.dataset.duplicateQuest);
+      if (!q) return;
+      const nextOrder = Math.max(-1, ...state.quests.map(item => Number(item.order) || 0)) + 1;
+      try {
+        await store.duplicateQuest(state.familyId, state.uid, q, nextOrder);
+        toast('Copy created and paused for review.');
+      } catch (err) { toast('Could not duplicate — try again.'); }
+      return;
+    }
+
+    const archive = e.target.closest('[data-archive-quest]');
+    if (archive) {
+      const q = state.quests.find(x => x.id === archive.dataset.archiveQuest);
+      if (!q || !confirm(`Archive “${q.title}”? You can restore it later.`)) return;
+      try { await store.setQuestArchived(state.familyId, state.uid, q.id, true); toast('Quest archived.'); }
+      catch (err) { toast('Could not archive — try again.'); }
+      return;
+    }
+
+    const restore = e.target.closest('[data-restore-quest]');
+    if (restore) {
+      const q = state.quests.find(x => x.id === restore.dataset.restoreQuest);
+      if (!q) return;
+      try {
+        await store.setQuestArchived(state.familyId, state.uid, q.id, false);
+        toast(q.enabled === false ? 'Quest restored — still paused.' : 'Quest restored.');
+      } catch (err) { toast('Could not restore — try again.'); }
+      return;
+    }
+
     const edit = e.target.closest('[data-edit-quest]'); if (edit) return openQuestDialog(edit.dataset.editQuest);
     const del = e.target.closest('[data-del-quest]');
-    if (del) { if (confirm('Delete this quest?')) { await store.deleteQuest(state.familyId, del.dataset.delQuest); toast('Quest deleted.'); } return; }
+    if (del) { if (confirm('Permanently delete this QA quest?')) { await store.deleteQuest(state.familyId, del.dataset.delQuest); toast('QA quest deleted.'); } return; }
 
     const toggleQ = e.target.closest('[data-toggle-quest]');
     if (toggleQ) {
       const q = state.quests.find(x => x.id === toggleQ.dataset.toggleQuest);
       if (!q) return;
-      const next = q.enabled === false; // currently off → turn on; currently on → lock off
-      try { await store.setQuestEnabled(state.familyId, q.id, next); toast(next ? 'Task on for Sirus.' : '🔒 Task locked off.'); }
+      const next = q.enabled === false;
+      try { await store.setQuestEnabled(state.familyId, q.id, next); toast(next ? 'Quest resumed.' : 'Quest paused.'); }
       catch (err) { toast('Could not update — try again.'); }
       return;
     }
@@ -2556,11 +2756,7 @@ function bindEvents() {
     if (reject) {
       const c = state.pendingApprovals.find(x => x.id === reject.dataset.reject);
       if (!c) return;
-      const title = (c && c.questTitle) || 'this quest';
-      if (confirm(`Reject “${title}”? The points disappear and the quest is given back to Sirus to do again.`)) {
-        try { await store.rejectCompletion(state.familyId, state.uid, c); toast('Sent back to Sirus.'); }
-        catch (err) { toast('Could not reject — try again.'); }
-      }
+      openQuestReturnDialog(c);
       return;
     }
 
@@ -2593,6 +2789,19 @@ function bindEvents() {
   document.addEventListener('change', (e) => {
     const cal = e.target.closest('.day-calendar');
     if (cal && cal.value) setSelectedDate(cal.value);
+
+    const questChoice = e.target.closest('[data-select-quest]');
+    if (questChoice) {
+      if (questChoice.checked) state.questSelection.add(questChoice.dataset.selectQuest);
+      else state.questSelection.delete(questChoice.dataset.selectQuest);
+      renderQuestBulkToolbar();
+      return;
+    }
+
+    if (e.target.closest('#quest-bulk-action') || e.target.closest('#quest-bulk-recurrence')) {
+      syncQuestBulkDialog();
+      return;
+    }
 
     // Needs You batch selection. A single row toggle updates the set; "Select
     // all" checks/unchecks every pending row. Re-render so the "Approve N

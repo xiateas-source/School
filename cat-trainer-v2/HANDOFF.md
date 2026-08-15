@@ -1,7 +1,11 @@
 # Cat Trainer v2 — Handoff & Context
 
-_Last updated: 2026-08-09. This is the durable source of truth for the rebuild.
+_Last updated: 2026-08-15. This is the durable source of truth for the rebuild.
 If you're a fresh session picking this up, read this file first._
+
+**Quest checkpoint:** Quest Slices 1–2 are accepted. Reduced Quest Slice 3 is
+implemented on its review branch and remains pending PR/device acceptance; it
+must not be described as accepted until that review finishes.
 
 ---
 
@@ -102,13 +106,17 @@ families/{familyId}                 familyId == parent's auth uid
                                     (x/y = saved room position %; placed=false = tucked
                                      away in the shop. Absent x/y → a default slot;
                                      absent placed → shown. Child may edit these.)
-  quests/{questId}                  { title, section, enabled, order, points, brain, energy, coins }
+  quests/{questId}                  { title, section, timeWindow, routineId,
+                                      isDailyEssential, recurrence, enabled,
+                                      archived?, order, points, brain, energy, coins }
   pointTransactions/{txnId}         { childId, amount, kind, reasonCode, reasonLabel, note?,
                                       bond, coins, brain, energy, catId, questId?,
                                       createdBy, deviceId, createdAt, localDate, timeLabel }
                                     (note = optional free-text Mom/Abba attach to an
                                      add/subtract; shown as a second line in the ledger)
-  questCompletions/{childId_questId_localDate}   deterministic id = dedupe key
+  questCompletions/{childId_questId_localDate}   retryable live attempt/status
+  questCareAwards/{childId_questId_localDate}    immutable award 0|1 eligibility marker
+  questDayOverrides/{questId_localDate}          today-only skip/move/next; never template state
 pairings/{code}                     top-level { familyId, role:'child'|'parent', active, createdAt }
                                     (role:'child' = tablet pairing; role:'parent' = co-parent invite)
 ```
@@ -125,7 +133,8 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
 - **Parent-only** — settings, quests, members, pairing codes, arbitrary point
   adjustments/redemptions, and **deleting ledger entries**.
 - **Child** — may complete a quest once/day (amount validated against the stored
-  quest), earn its rewards (monotonic, capped), buy café items, and **rearrange /
+  quest), create exactly one immutable Quest/date Care marker (award 0 or 1),
+  earn its rewards (monotonic, capped), buy café items, and **rearrange /
   put away its own café décor** (update `x/y/placed` on an owned item). That last
   update is guarded so the purchase record stays immutable — `price` +
   `purchasedAt` can't change and only a parent can delete an item. Café items
@@ -184,6 +193,15 @@ Rules live in `firestore.rules` and **must be published in the Firebase console*
 >   Already-paired devices are unaffected: they never re-join. Anyone who has not
 >   paired yet needs a fresh code from Settings. Delete the old `pairings`
 >   documents in the console once published.
+> - **Reduced Quest Slice 3 (pending merge/publish):** `questCareAwards` makes
+>   Care eligibility survive return, retry, correction, and reopen. The marker
+>   is immutable even to normal parent clients; a child completion must create
+>   its first marker atomically, and retries must explicitly grant no Care.
+>   This rules/client pair needs a coordinated rollout: after merge, wait for
+>   the Pages deployment to finish, publish the new `firestore.rules`, then
+>   force-close/reopen both devices. Child/parent Quest completion can be
+>   temporarily denied between those two deploys; no data is corrupted. No
+>   Firestore composite index is required.
 > - Earlier changes (co-parent login, ledger-delete) were already published on
 >   2026-08-07; the café one is a *new* change on top.
 >
@@ -232,6 +250,13 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - [x] Undo last action (compensating correction)
 - [x] Per-entry delete from the ledger (trashcan; reverses + removes)
 - [x] Quest completion once/day with points + Brain/Energy/Bond + coins
+- [x] Quest Slices 1–2 accepted: low-overwhelm child routine hierarchy, Parent
+      Today/Needs You, recurrence, and today-only exceptions with unchanged
+      Café/points/My Progress economics
+- [ ] **Reduced Quest Slice 3 pending acceptance:** daypart + Essential/Bonus
+      routine management; one-row reorder; duplicate; distinct Pause/Archive;
+      conservative bulk edit; quick return presets; immutable daily Care award;
+      and the read-only Activities routine cue
 - [x] Cats: independent progress, active-cat selection, Hero Form + celebration
 - [x] Cat Café: buy items with coins, decorate the room
 - [x] **Interactive Cat Café**: drag décor to arrange (positions saved per item +
@@ -320,10 +345,10 @@ evolution won't feel special. Candidate for a fresher Drive asset.
   single household; move quest completion into a Cloud Function (Blaze plan) if
   stronger guarantees are ever needed.
 - **Ember hero art** is weak (§7).
-- **Family feedback is not yet surfaced on the child device.** Positive manual
-  points need a one-time exciting Mom/Abba-attributed cat message; rejected quests
-  currently reappear without explaining what happened. Build both with the same
-  durable notification queue and deterministic speech bubble.
+- **Family feedback is now surfaced once on the child device.** Positive manual
+  recognition and returned Quests share the durable queue. Reduced Slice 3 adds
+  three gentle return presets plus an optional short parent note; acceptance
+  still needs a real phone/tablet pass for tone, touch size, and reading load.
 - **Advanced pet health is deliberately post-MVP.** Sirus wants recoverable
   sickness, balanced too-much/too-little care, purchasable medicine, and visible
   consequences. `CAFE-GOAL.md` §5.6 preserves the request with no-death, no-loss,
@@ -333,8 +358,8 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 
 - "Add to Home Screen" art polish — **done 2026-08-07** (maskable `icon-192/512`
   + `apple-touch-icon` from Drive's `app-icon-nova`). Service worker + offline: done.
-- Quest reordering UI + enable/disable toggles in the parent Quests screen
-  (data already supports `order` and `enabled`).
+- Deferred Quest management: drag reorder, dependency authoring, Quest Library,
+  and the full date/filter expansion of Quest Log. None blocks Activities.
 - Daily screen-time cap (setting exists as `dailyCap`, not yet enforced/surfaced).
 - "Guided sequence" option for morning/night routines (unlock one at a time).
 - Movement-only "cardio cat" / school-only "scholar cat" variants.

@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import {
   DAY_PHASES, TIME_WINDOWS,
   migrationDisposition, questTimeWindow, questIsDailyEssential, questDependsOn,
+  questIsArchived, questIsAvailable,
   phaseForHour, isEligible, nextMissions, minutesAvailable, progressCounts, organizeDay,
-  questRecurrence, isScheduledOn, planDay, laterWindowFor, presetTargets
+  questRecurrence, isScheduledOn, planDay, laterWindowFor, presetTargets, routineCue
 } from '../src/shared/routines.js';
 
 // --- Read-time defaults from legacy shape (no backfill) ----------------------
@@ -32,6 +33,10 @@ assert.equal(questIsDailyEssential({ id: 'v-move', section: 'Move' }), false,
   'an activities_pending item is never treated as a Daily Essential');
 assert.equal(migrationDisposition({ id: 'm-teeth', section: 'Morning' }), 'quest');
 assert.equal(migrationDisposition({ id: 'v-move', migrationDisposition: 'quest' }), 'quest', 'explicit override wins');
+assert.equal(questIsArchived({ archived: true, enabled: true }), true);
+assert.equal(questIsAvailable({ archived: true, enabled: true }), false, 'archive excludes independently of Pause');
+assert.equal(questIsAvailable({ archived: false, enabled: false }), false, 'Pause excludes independently of archive');
+assert.equal(questIsAvailable({ archived: false, enabled: true }), true);
 
 assert.deepEqual(questDependsOn({ dependsOnQuestIds: ['a', 'b'] }), ['a', 'b']);
 assert.deepEqual(questDependsOn({}), [], 'missing deps default to []');
@@ -246,7 +251,8 @@ const presetRecur = [
   { id: 'wkday-school', section: 'Brain', points: 1, recurrence: { type: 'weekdays' } }, // school window, weekdays
   { id: 'wkend-tidy', section: 'Tidy', points: 1, recurrence: { type: 'weekends' } },    // anytime, weekends
   { id: 'once-mon', section: 'Morning', timeWindow: 'morning', points: 1, recurrence: { type: 'one_time', date: '2026-08-10' }, isDailyEssential: false }, // morning window, one-time Monday, non-essential
-  { id: 'off', section: 'Morning', points: 1, enabled: false }                       // disabled → never a target
+  { id: 'off', section: 'Morning', points: 1, enabled: false },                      // disabled → never a target
+  { id: 'archived', section: 'Morning', points: 1, enabled: true, archived: true }   // archived → never a target
 ];
 // Sick day on MONDAY skips only Monday's scheduled quests (weekend quest excluded,
 // disabled quest excluded).
@@ -267,4 +273,29 @@ assert.deepEqual(presetTargets(presetRecur, 'easy_morning', '2026-08-10').map(q 
 assert.deepEqual(presetTargets(presetRecur, 'custom', '2026-08-10'), []);
 assert.deepEqual(presetTargets(presetRecur, 'bogus', '2026-08-10'), []);
 
-console.log('Routine organization + recurrence/overrides (Quest Slice 1–2): all checks passed.');
+// --- Reduced Slice 3: Activities-facing non-blocking routine cue -----------
+const cueQuests = [
+  { id: 'first', title: 'Brush teeth', section: 'Morning', order: 0 },
+  { id: 'then', title: 'Get dressed', section: 'Morning', order: 1, dependsOnQuestIds: ['first'] },
+  { id: 'tidy', title: 'Tidy table', section: 'Tidy', order: 2 }, // essential + Anytime
+  { id: 'later', title: 'Night teeth', section: 'Night', order: 3 }
+];
+let cue = routineCue(cueQuests, { ymd: '2026-08-10', phase: 'morning', completedIds: [] });
+assert.equal(cue.blocking, false, 'Activities are never locked behind the cue');
+assert.equal(cue.routineId, 'morning');
+assert.equal(cue.remainingEssentialCount, 4, 'future and Anytime essentials remain classified');
+assert.deepEqual(cue.first, { questId: 'first', label: 'Brush teeth' });
+assert.equal(cue.then, null, 'a dependency-blocked quest is not falsely offered as Then');
+cue = routineCue(cueQuests, { ymd: '2026-08-10', phase: 'morning', completedIds: ['first'] });
+assert.deepEqual(cue.first, { questId: 'then', label: 'Get dressed' });
+assert.equal(cue.then, null, 'First/Then stays inside one routine instead of jumping to Anytime');
+cue = routineCue(cueQuests, { ymd: '2026-08-10', phase: 'morning', completedIds: ['first', 'then'] });
+assert.deepEqual(cue.first, { questId: 'tidy', label: 'Tidy table' },
+  'essential + Anytime remains eligible after the current routine without becoming optional');
+cue = routineCue([...cueQuests, { id: 'gone', title: 'Old', section: 'Morning', archived: true }], {
+  ymd: '2026-08-10', phase: 'morning', completedIds: ['first', 'then', 'tidy']
+});
+assert.equal(cue.remainingEssentialCount, 1, 'archived quests never enter the routine contract');
+assert.equal(cue.first, null, 'future Night work is counted but never pulled forward');
+
+console.log('Routine organization + recurrence/overrides + Activities cue: all checks passed.');

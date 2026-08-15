@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {
   CARE_CONFIG, areCareNeedsOkay, careCharges, displayNeedValue, freshCatNeeds,
-  grantCareCharge, hungerAt, isNeedFull, lowestCareNeed, needAt, needsAt,
+  dailyQuestCareAward, grantCareCharge, hungerAt, isNeedFull, lowestCareNeed, needAt, needsAt,
+  questCareAwardId,
   refillHunger, refillNeed
 } from '../src/care.js';
 import { CAFE_ITEMS } from '../src/data/cafe-items.js';
@@ -39,6 +40,17 @@ assert.equal(careCharges(3.8), 3);
 assert.equal(careCharges(99), CARE_CONFIG.chargeCap);
 assert.deepEqual(grantCareCharge(5), { before: 5, after: 6, granted: true });
 assert.deepEqual(grantCareCharge(6), { before: 6, after: 6, granted: false });
+assert.equal(questCareAwardId('sirus', 'm-teeth', '2026-08-15'), 'sirus_m-teeth_2026-08-15');
+assert.throws(() => questCareAwardId('sirus', 'm-teeth', 'tomorrow'), /bad-quest-care-award-id/);
+assert.deepEqual(dailyQuestCareAward(false, 5), {
+  createMarker: true, careChargeGranted: true, award: 1, before: 5, after: 6
+});
+assert.deepEqual(dailyQuestCareAward(false, 6), {
+  createMarker: true, careChargeGranted: false, award: 0, before: 6, after: 6
+}, 'a capped first attempt still consumes the immutable daily eligibility');
+assert.deepEqual(dailyQuestCareAward(true, 2), {
+  createMarker: false, careChargeGranted: false, award: 0, before: 2, after: 2
+}, 'a retry cannot grant Care even after earlier Care was spent');
 assert.equal(displayNeedValue(99.9), 100);
 assert.equal(isNeedFull(99.9), true, 'a need displayed as 100 is full to care actions');
 assert.equal(isNeedFull(99.4), false, 'a need displayed as 99 can receive care');

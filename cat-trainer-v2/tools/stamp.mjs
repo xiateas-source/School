@@ -55,6 +55,7 @@ const FILES = [
   'src/shared/feedback.js',
   'src/shared/dates.js',
   'src/shared/routines.js',
+  'src/shared/quest-management.js',
   'src/shared/pairing.js'
 ];
 

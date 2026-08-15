@@ -2,16 +2,16 @@
 // Ordinary mistakes become immutable linked corrections. Permanent deletion is
 // an intentionally rare parent cleanup path for test/junk/duplicate data only.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=7b446727';
-import { QUICK_ACTION_BY_CODE, CAPS, clamp } from './shared/rewards.js?v=7b446727';
-import { amountIntegrity, normalizeTransaction } from './shared/ledger.js?v=7b446727';
-import { FEEDBACK_TYPE, DELIVERY, recognitionEventId } from './shared/feedback.js?v=7b446727';
-import { localDate, localTimeLabel } from './shared/dates.js?v=7b446727';
+import { initFirebase, db, dbSdk } from './firebase.js?v=27e48d14';
+import { QUICK_ACTION_BY_CODE, CAPS, clamp } from './shared/rewards.js?v=27e48d14';
+import { amountIntegrity, normalizeTransaction } from './shared/ledger.js?v=27e48d14';
+import { FEEDBACK_TYPE, DELIVERY, recognitionEventId } from './shared/feedback.js?v=27e48d14';
+import { localDate, localTimeLabel } from './shared/dates.js?v=27e48d14';
 import {
   correctionTransactionId, correctionAmountIntegrity, reversibleRewardEffects,
   permanentDeleteEligibility, permanentDeletePlanEligibility,
   findHeroResetTarget, isCorrectionTransaction
-} from './shared/corrections.js?v=7b446727';
+} from './shared/corrections.js?v=27e48d14';
 
 const CHILD_ID = 'sirus';
 const ZERO_REWARD = { bond: 0, brain: 0, energy: 0, coins: 0 };
@@ -31,8 +31,15 @@ function paths(sdk, database, fid) {
     txn: id => doc(database, ...root, 'pointTransactions', id),
     txns: () => collection(database, ...root, 'pointTransactions'),
     completion: id => doc(database, ...root, 'questCompletions', id),
+    careAward: id => doc(database, ...root, 'questCareAwards', id),
     feedback: id => doc(database, ...root, 'familyFeedback', id)
   };
+}
+
+function completionIdFor(original) {
+  if (!original || original.kind !== 'quest' || !original.questId) return null;
+  return original.questCompletionId
+    || `${CHILD_ID}_${original.questId}_${original.activityDate || original.localDate}`;
 }
 
 async function memberName(tx, p, uid) {
@@ -55,7 +62,10 @@ async function readReversalState(tx, p, original) {
   if (original.catId && (effects.brain || effects.energy || effects.bond)) {
     catSnap = await tx.get(p.cat(original.catId));
   }
-  return { child, effects, catSnap };
+  const completionId = completionIdFor(original);
+  const completionSnap = completionId ? await tx.get(p.completion(completionId)) : null;
+  const careAwardSnap = completionId ? await tx.get(p.careAward(completionId)) : null;
+  return { child, effects, catSnap, completionId, completionSnap, careAwardSnap };
 }
 
 function reversalPlan(original, { child, effects, catSnap }) {
@@ -106,7 +116,7 @@ function reversalPlan(original, { child, effects, catSnap }) {
   };
 }
 
-function applyReversalWrites(tx, p, original, plan) {
+function applyReversalWrites(tx, p, original, plan, state, { uid, serverTimestamp }) {
   const childUpdate = { available: plan.balance.balanceAfter };
   if (plan.coinsAfter !== plan.coinsBefore) childUpdate.coins = plan.coinsAfter;
   tx.update(p.child(), childUpdate);
@@ -118,10 +128,29 @@ function applyReversalWrites(tx, p, original, plan) {
 
   // Correcting an approved quest makes that quest available again, but never
   // claws back its already-granted/spent Care Charge or any care it enabled.
-  if (original.kind === 'quest' && original.questId) {
-    const completionId = original.questCompletionId
-      || `${CHILD_ID}_${original.questId}_${original.activityDate || original.localDate}`;
-    if (completionId) tx.delete(p.completion(completionId));
+  if (state.completionId) {
+    // Approved completions created before immutable Care markers shipped need
+    // a conservative backfill before they are reopened. Use the historical
+    // boolean when present; unknown legacy rows record zero, never new Care.
+    if (state.careAwardSnap && !state.careAwardSnap.exists()) {
+      const completion = state.completionSnap && state.completionSnap.exists()
+        ? state.completionSnap.data()
+        : {};
+      const granted = completion.careChargeGranted === true;
+      const date = completion.localDate || original.activityDate || original.localDate
+        || state.completionId.slice(-10);
+      tx.set(p.careAward(state.completionId), {
+        childId: completion.childId || CHILD_ID,
+        questId: completion.questId || original.questId,
+        localDate: date,
+        sourceCompletionId: state.completionId,
+        award: granted ? 1 : 0,
+        careChargeGranted: granted,
+        createdBy: uid,
+        createdAt: serverTimestamp()
+      });
+    }
+    tx.delete(p.completion(state.completionId));
   }
 
   // A corrected/deleted positive recognition must never pop up later. Deleting a
@@ -173,7 +202,7 @@ export async function correctTransaction(familyId, uid, txnId, { note = '' } = {
     const state = await readReversalState(tx, p, original);
     const plan = reversalPlan(original, state);
 
-    applyReversalWrites(tx, p, original, plan);
+    applyReversalWrites(tx, p, original, plan, state, { uid, serverTimestamp });
     tx.set(p.txn(correctionId), {
       schemaVersion: 2,
       childId: CHILD_ID,
@@ -214,7 +243,7 @@ export async function correctTransaction(familyId, uid, txnId, { note = '' } = {
 export async function permanentDeleteTransaction(familyId, uid, txnId) {
   if (!txnId) throw new Error('entry-missing');
   const { database, sdk } = await fs();
-  const { runTransaction } = sdk;
+  const { runTransaction, serverTimestamp } = sdk;
   const p = paths(sdk, database, familyId);
   const links = await linkedCorrections(database, sdk, p, txnId);
   if (links.length) throw new Error('already-corrected');
@@ -238,7 +267,7 @@ export async function permanentDeleteTransaction(familyId, uid, txnId) {
     const planEligibility = permanentDeletePlanEligibility(plan);
     if (!planEligibility.ok) throw new Error(planEligibility.reason);
 
-    applyReversalWrites(tx, p, original, plan);
+    applyReversalWrites(tx, p, original, plan, state, { uid, serverTimestamp });
     tx.delete(p.txn(original.id));
     return { deleted: true };
   });

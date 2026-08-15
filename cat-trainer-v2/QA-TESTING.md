@@ -3,7 +3,7 @@
 How a Claude/GPT browser agent signs into Cat Trainer and exercises real
 workflows — **without ever touching our family's data**.
 
-This is the Slice 0–1 runbook: an isolated QA family, and the stable hooks an
+This is the Slice 0–3 runbook: an isolated QA family, and the stable hooks an
 agent needs to drive the app. There is deliberately **no** reset button, no
 scenario seeder, and no fake clock yet — the point of this stage is to run real
 agent sessions and find out which of those we actually need.
@@ -183,7 +183,11 @@ fails if one disappears).
 | `ptoday-row` | A quest row on the Today board; carries `data-quest-id`. Its actions are `[data-today-skip]`, `[data-today-move]` (Later), `[data-today-next]`, `[data-today-clear]` (Undo) |
 | `exception-row` | A one-day exception in the Today-is-different card; carries `data-quest-id`. The **only** place a skip can be undone |
 | `sirus-today-row` | The parent's mirror of the child's screen; carries `data-quest-id` |
-| `parent-quest-row` | A row in the quest management list; carries `data-quest-id`, plus `[data-edit-quest]` / `[data-del-quest]` / `[data-toggle-quest]` |
+| `parent-quest-row` | A row in the reusable Quest manager; carries `data-quest-id`, plus move, edit, duplicate, Pause/Resume, and Archive/Restore actions. Permanent `[data-del-quest]` is rendered only for isolated `QA-*` cleanup quests |
+| `quest-selection` | One row's bulk-selection checkbox |
+| `quest-bulk-toolbar`, `quest-bulk-edit` | Selection count and launcher for conservative reusable-routine bulk changes |
+| `quest-bulk-dialog`, `quest-bulk-action`, `quest-bulk-apply` | Bulk Pause/Resume, Archive/Restore, daypart, recurrence, or Essential/Bonus controls. There is no bulk reorder |
+| `quest-return-dialog`, `quest-return-note`, `quest-return-submit` | Gentle quick-return preset and optional-note flow |
 | `make-pair-code`, `pair-code-display`, `pair-code-value` | Child pairing code |
 | `make-coparent-code`, `coparent-code-display`, `coparent-code-value` | Co-parent invite code |
 | `settings-email`, `settings-family-id`, `signout` | Account card |
@@ -196,6 +200,7 @@ fails if one disappears).
 | `child-available`, `child-coins`, `child-care-charges` | The three wallets |
 | `child-next-quests`, `child-quest-list` | Home's short list, and the full Quests screen |
 | `quest-card` | One quest; carries `data-quest-id` and `data-quest-status` (`todo` \| `pending` \| `approved`) |
+| `returned-feedback` | Gentle returned-Quest card, including the preset guidance and optional parent note |
 | `care-need-cue` | The prompt to care for a low need; `data-need` names which |
 | `care-hunger-value`, `care-rest-value`, `care-happiness-value` | Need readouts, `n/100` |
 | `care-hunger-band`, `care-rest-band`, `care-happiness-band` | Their labels (Thriving / Okay / …) |
@@ -268,13 +273,20 @@ rather than absolute totals, and deletes what it created. If a run dies
 mid-flight it may leave a `QA-*` quest behind — safe to delete by hand from
 Quests → Routines.
 
+Reduced Slice 3 adds tests 13–15 for the single-row management lifecycle,
+the exact conservative bulk-action allowlist, and return → retry Care/points
+accounting. Each checks for `quest-bulk-toolbar` **before its first mutation**;
+when a branch workflow targets the older deployed app, those tests report an
+honest feature-not-deployed SKIP and create no QA records.
+
 ## 7. What agents should and shouldn't test
 
 **Good for agents:** Parent/Child plan agreement, Skip/Undo, Later/Next,
 recurrence, Needs-You and batch approval, completion and retry, Care Charge
-accounting, Feed/Rest/Play outcomes, café purchases and coin math, ledger
-correctness, and the denial paths (a child must never be able to raise their own
-coins or minutes).
+accounting, routine duplicate/Pause/Archive/Restore, one-row reorder,
+conservative bulk edits, quick-return data/copy, Feed/Rest/Play outcomes, café
+purchases and coin math, ledger correctness, and the denial paths (a child must
+never be able to raise their own coins or minutes).
 
 **Keep on a real device, with a human:** PWA install and service-worker updates,
 offline behaviour and reconnect, café décor dragging, art and animation,
