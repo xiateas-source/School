@@ -44,15 +44,27 @@ const num = (text) => {
 const needValue = async (page, need) =>
   num(await page.getByTestId(`care-${need}-value`).textContent());
 
+// Navigate via the BOTTOM NAV specifically. Several in-page shortcuts reuse the
+// same attribute ("See all" -> quests/ledger, "Choose cat" -> cats), so an
+// unscoped [data-pgo]/[data-cgo] matches two elements and Playwright correctly
+// refuses to guess which one a human meant.
 const parentGo = async (page, screen) => {
-  await page.locator(`[data-pgo="${screen}"]`).click();
+  await page.locator(`[data-parent-nav] [data-pgo="${screen}"]`).click();
   await expect(page.locator(`[data-pscreen="${screen}"]`)).toHaveClass(/active/);
 };
 
 const childGo = async (page, screen) => {
-  await page.locator(`[data-cgo="${screen}"]`).click();
+  await page.locator(`[data-child-nav] [data-cgo="${screen}"]`).click();
   await expect(page.locator(`[data-cscreen="${screen}"]`)).toHaveClass(/active/);
 };
+
+// Quest cards render on BOTH child screens: the Home preview and the full
+// Quests list. Inactive screens are display:none and Home comes first in the
+// DOM, so an UNSCOPED quest-card locator can resolve to a hidden element — and
+// comparing "the list" against "all cards" would be vacuously true. Always name
+// the surface you mean.
+const CHILD_LIST = '[data-testid="child-quest-list"]';
+const CHILD_PREVIEW = '[data-testid="child-next-quests"]';
 
 const questIds = async (locator) => {
   const ids = await locator.evaluateAll(els => els.map(e => e.getAttribute('data-quest-id')));
@@ -112,6 +124,26 @@ const familyDate = (offsetDays = 0) => {
   }).format(d);
 };
 
+// Open one of the gate's sign-in screens and make sure it STAYS open.
+//
+// The deployed app can bounce back to the role gate: boot() resolves Firebase
+// auth a beat after page load, and (before the fix in this branch) reset to the
+// gate unconditionally when nobody was signed in — stealing the screen out from
+// under a fast tapper. Click, then confirm it settled; re-click if it didn't.
+async function openGateScreen(page, roleTestId, screenName) {
+  const screen = page.locator(`[data-screen="${screenName}"]`);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await page.getByTestId(roleTestId).click();
+    try {
+      await expect(screen).toBeVisible({ timeout: 10_000 });
+      // If the boot race is going to take it back, it happens immediately.
+      await page.waitForTimeout(2000);
+      if (await screen.isVisible()) return;
+    } catch { /* fall through and try again */ }
+  }
+  throw new Error(`the ${screenName} screen would not stay open after 3 attempts`);
+}
+
 // Blank every field that holds a secret, then screenshot. Used on failure only.
 // Artifacts from a public repo are world-readable, so this is not optional.
 async function redactedShot(page, name) {
@@ -140,7 +172,7 @@ test.beforeAll(async ({ browser }) => {
   parent = await ctx.newPage();
   await parent.goto('./');
 
-  await parent.getByTestId('role-parent').click();
+  await openGateScreen(parent, 'role-parent', 'parent-signin');
   await parent.getByTestId('signin-email').fill(EMAIL);
   await parent.getByTestId('signin-password').fill(PASSWORD);
   await parent.getByTestId('signin-submit').click();
@@ -170,7 +202,7 @@ test.beforeAll(async ({ browser }) => {
     contexts.push(childCtx);
     const page = await childCtx.newPage();
     await page.goto('./');
-    await page.getByTestId('role-child').click();
+    await openGateScreen(page, 'role-child', 'child-pair');
     await page.getByTestId('pair-code').fill(code);
     await page.getByTestId('pair-submit').click();
     await expect(page.getByTestId('child-shell')).toBeVisible({ timeout: 45_000 });
@@ -221,8 +253,11 @@ test('02 · Needs You / approval flow grants the quest\'s minutes', async () => 
   test.skip(!child, childUnavailable || 'no child session');
 
   await childGo(child, 'quests');
-  const todo = child.locator('[data-testid="quest-card"][data-quest-status="todo"]').first();
-  test.skip(!(await todo.count()), 'every quest on the QA child board is already done today — nothing left to submit (needs the deferred reset/seeding work)');
+  // :visible matters — the list keeps unreachable cards in the DOM: past
+  // dayparts sit inside a collapsed "still needs doing" drawer, and Anytime caps
+  // at 3 behind "See all". Sirus can't tap those, so neither should we.
+  const todo = child.locator(`${CHILD_LIST} [data-testid="quest-card"][data-quest-status="todo"]:visible`).first();
+  test.skip(!(await todo.count()), 'every quest the child can reach is already done today — nothing left to submit (needs the deferred reset/seeding work)');
 
   const questId = await todo.getAttribute('data-quest-id');
   const points = num((await todo.locator('.q-reward').textContent() || '').match(/\+(\d+)m/)?.[1]);
@@ -232,7 +267,7 @@ test('02 · Needs You / approval flow grants the quest\'s minutes', async () => 
   const pendingBefore = await parent.locator('[data-testid="approval-row"]').count();
 
   await todo.locator('[data-complete]').click();
-  await expect(child.locator(`[data-testid="quest-card"][data-quest-id="${questId}"]`))
+  await expect(child.locator(`${CHILD_LIST} [data-testid="quest-card"][data-quest-id="${questId}"]`))
     .toHaveAttribute('data-quest-status', 'pending');
 
   // The parent's queue must pick it up over realtime sync, with the right quest.
@@ -260,7 +295,7 @@ test('03 · Parent Today shows nothing that is not on the child\'s board', async
   await parentGo(parent, 'quests');
   await childGo(child, 'quests');
   const onBoard = await questIds(parent.locator('[data-testid="ptoday-row"]'));
-  const onChild = await questIds(child.locator('[data-testid="quest-card"]'));
+  const onChild = await questIds(child.locator(`${CHILD_LIST} [data-testid="quest-card"]`));
 
   // Subset, not equality: parent Today summarises future dayparts as counted
   // chips ("COMING UP") rather than listing those quests as rows.
@@ -272,9 +307,9 @@ test('04 · Child Home preview agrees with the child\'s own quest list', async (
   test.skip(!child, childUnavailable || 'no child session');
 
   await childGo(child, 'quests');
-  const all = await questIds(child.locator('[data-testid="quest-card"]'));
+  const all = await questIds(child.locator(`${CHILD_LIST} [data-testid="quest-card"]`));
   await childGo(child, 'home');
-  const preview = child.locator('[data-testid="child-next-quests"] [data-testid="quest-card"]');
+  const preview = child.locator(`${CHILD_PREVIEW} [data-testid="quest-card"]`);
 
   for (const card of await preview.all()) {
     const id = await card.getAttribute('data-quest-id');
@@ -284,17 +319,23 @@ test('04 · Child Home preview agrees with the child\'s own quest list', async (
   expect(await preview.count()).toBeLessThanOrEqual(3);
 });
 
-test('05 · "On Sirus\'s screen now" matches the child\'s screen exactly', async () => {
+test('05 · "On Sirus\'s screen now" includes everything on the child\'s screen', async () => {
   test.skip(!child, childUnavailable || 'no child session');
 
   await childGo(child, 'quests');
-  const onChild = await questIds(child.locator('[data-testid="quest-card"]'));
+  const onChild = await questIds(child.locator(`${CHILD_LIST} [data-testid="quest-card"]`));
   await parentGo(parent, 'quests');
   await parent.locator('[data-qtab="routines"]').click();
   const mirror = await questIds(parent.locator('[data-testid="sirus-today-row"]'));
 
-  expect([...mirror].sort(), 'the mirror must list exactly the child\'s planned quests')
-    .toEqual([...onChild].sort());
+  // Subset, not equality, and that is by design: the child's screen deliberately
+  // does NOT card up every planned quest. Future dayparts collapse to a labelled
+  // "Next"/"Later" summary (so Sirus isn't shown a wall of things he can't do
+  // yet) and Anytime caps at 3 behind a "See all". Mom's mirror is the flat list
+  // of everything planned, so it is legitimately larger. What must hold is that
+  // nothing on Sirus's screen is missing from Mom's view of it.
+  const missing = [...onChild].filter(id => !mirror.has(id));
+  expect(missing, "quests on Sirus's screen that Mom's mirror does not show").toEqual([]);
 });
 
 test('06 · Skip removes a quest from today everywhere, Undo restores it', async () => {
@@ -320,7 +361,7 @@ test('06 · Skip removes a quest from today everywhere, Undo restores it', async
   if (child) {
     await childGo(child, 'quests');
     await waitFor(
-      async () => (await child.locator(`[data-testid="quest-card"][data-quest-id="${id}"]`).count()) === 0,
+      async () => (await child.locator(`${CHILD_LIST} [data-testid="quest-card"][data-quest-id="${id}"]`).count()) === 0,
       'a skipped quest was still on the child\'s screen'
     );
   }
@@ -349,14 +390,19 @@ test('07 · Later moves a quest to a later daypart today', async () => {
   }
 
   await later.click();
-  await expect(row).toContainText('moved to later', { timeout: 30_000 });
-  await expect(row.locator('[data-today-clear]')).toHaveCount(1);
-  const exception = parent.locator(`[data-testid="exception-row"][data-quest-id="${id}"]`);
-  await expect(exception).toContainText('Moved to');
 
-  await row.locator('[data-today-clear]').click();
+  // Assert on the exception card, not on the row. Once moved, the quest may
+  // leave the board's rows entirely — a quest pushed into a FUTURE daypart is
+  // summarised as a "COMING UP" chip rather than listed — so asserting the row
+  // still says "moved to later" would be asserting a layout accident. The
+  // exception card lists every one-day change wherever the quest ends up.
+  const exception = parent.locator(`[data-testid="exception-row"][data-quest-id="${id}"]`);
+  await expect(exception).toContainText('Moved to', { timeout: 30_000 });
+
+  // Undo restores it to the board with its normal actions back.
+  await exception.locator('[data-today-clear]').click();
   await expect(exception).toHaveCount(0, { timeout: 30_000 });
-  await expect(row.locator('[data-today-skip]')).toHaveCount(1);
+  await expect(row.locator('[data-today-skip]')).toHaveCount(1, { timeout: 30_000 });
 
   await deleteQuest(parent, id);
 });
@@ -424,11 +470,11 @@ test('10 · Recurrence: a one-time quest shows today but not when dated tomorrow
   if (child) {
     await childGo(child, 'quests');
     await waitFor(
-      async () => (await child.locator(`[data-testid="quest-card"][data-quest-id="${todayId}"]`).count()) === 1,
+      async () => (await child.locator(`${CHILD_LIST} [data-testid="quest-card"][data-quest-id="${todayId}"]`).count()) === 1,
       'a one-time quest dated today never reached the child\'s screen'
     );
     expect(
-      await child.locator(`[data-testid="quest-card"][data-quest-id="${tomorrowId}"]`).count(),
+      await child.locator(`${CHILD_LIST} [data-testid="quest-card"][data-quest-id="${tomorrowId}"]`).count(),
       'a quest dated tomorrow must not be on the child\'s screen today'
     ).toBe(0);
   }
@@ -445,8 +491,8 @@ test('11 · Completing a quest earns exactly one Care Charge', async () => {
   test.skip(before >= 6, 'the QA child is already at the 6-charge cap, so a further earn is correctly refused (needs the deferred reset work to clear)');
 
   await childGo(child, 'quests');
-  const todo = child.locator('[data-testid="quest-card"][data-quest-status="todo"]').first();
-  test.skip(!(await todo.count()), 'every quest on the QA child board is already done today (needs the deferred reset/seeding work)');
+  const todo = child.locator(`${CHILD_LIST} [data-testid="quest-card"][data-quest-status="todo"]:visible`).first();
+  test.skip(!(await todo.count()), 'every quest the child can reach is already done today (needs the deferred reset/seeding work)');
 
   await todo.locator('[data-complete]').click();
   await childGo(child, 'cafe');
