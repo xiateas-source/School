@@ -27,6 +27,9 @@ const STATIC_IDS = [
   // Parent shell: which shell, the balance, the approval queue.
   'parent-shell', 'parent-available',
   'approvals-card', 'approvals-count', 'approvals-list',
+  'quest-bulk-toolbar', 'quest-bulk-edit',
+  'quest-bulk-dialog', 'quest-bulk-action', 'quest-bulk-apply',
+  'quest-return-dialog', 'quest-return-note', 'quest-return-submit',
   // Parent settings: pairing handoff + the family this session is in.
   'make-pair-code', 'pair-code-display', 'make-coparent-code', 'coparent-code-display',
   'settings-email', 'settings-family-id', 'signout',
@@ -50,7 +53,9 @@ const DYNAMIC_IDS = [
   'ptoday-row',         // a quest row on the parent's Today board
   'exception-row',      // a today-only exception in the Today-is-different card
   'sirus-today-row',    // the parent's mirror of the child's screen
-  'parent-quest-row'    // a row in the quest management list
+  'parent-quest-row',   // a row in the quest management list
+  'quest-selection',    // a management-row bulk-selection checkbox
+  'returned-feedback'   // gentle child card after a parent return
 ];
 
 for (const id of STATIC_IDS) {
@@ -59,7 +64,7 @@ for (const id of STATIC_IDS) {
 }
 for (const id of DYNAMIC_IDS) {
   assert.ok(
-    app.includes(`data-testid="${id}"`),
+    app.includes(`data-testid="${id}"`) || app.includes(`setAttribute('data-testid', '${id}')`),
     `src/app.js must render data-testid="${id}"`
   );
 }

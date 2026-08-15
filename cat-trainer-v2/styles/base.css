@@ -198,11 +198,22 @@ main { padding: 0 16px; }
   font-size: 1.4rem; font-weight: 800; background: var(--green); color: #fff; flex-shrink: 0;
 }
 .quest-complete:disabled { background: #cfe3c7; }
-.parent-quest-row { display: flex; align-items: center; gap: 10px; background: var(--paper); border-radius: 12px; box-shadow: var(--shadow); padding: 12px; margin-bottom: 8px; }
+.parent-quest-row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; background: var(--paper); border-radius: 12px; box-shadow: var(--shadow); padding: 12px; margin-bottom: 8px; }
 .parent-quest-row.quest-off { opacity: .6; }
-.parent-quest-row .q-body { flex: 1; }
+.parent-quest-row.quest-archived { background: var(--cream); }
+.parent-quest-row .q-body { flex: 1 1 220px; min-width: 0; }
 .parent-quest-row small { color: var(--muted); }
 .icon-btn { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--muted); padding: 6px; }
+.quest-select { flex: 0 0 auto; padding-top: 2px; }
+.quest-select input { width: 22px; height: 22px; accent-color: var(--purple); }
+.quest-meta { display: flex; gap: 5px; flex-wrap: wrap; margin: 4px 0; }
+.quest-meta span { background: var(--cream); color: var(--muted); border-radius: 999px; padding: 2px 7px; font-size: .7rem; font-weight: 700; }
+.quest-row-actions { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 6px; padding-left: 32px; }
+.quest-action { border: 2px solid var(--line); border-radius: 10px; background: #fff; color: var(--muted); padding: 6px 9px; font: inherit; font-size: .76rem; font-weight: 700; cursor: pointer; }
+.quest-action.primary { background: var(--green); border-color: var(--green); color: #fff; }
+.quest-action.danger { color: #a94a32; }
+.quest-action.order { min-width: 42px; font-size: 1rem; }
+.quest-action:disabled { opacity: .35; }
 
 /* Per-task lock toggle (surfaces the quest `enabled` flag) */
 .lock-toggle {
@@ -263,8 +274,21 @@ main { padding: 0 16px; }
 .quest-section > summary::after { content: '▾'; color: var(--muted); transition: transform .2s ease; }
 .quest-section[open] > summary::after { transform: rotate(180deg); }
 .qs-body { padding-top: 2px; }
+.quest-requirement-group + .quest-requirement-group { margin-top: 14px; }
+.quest-requirement-group h4 {
+  display: flex; align-items: center; gap: 7px; margin: 4px 0 7px; padding: 0 4px;
+  color: var(--muted); font-size: .76rem; letter-spacing: .04em; text-transform: uppercase;
+}
+.quest-requirement-group h4 span {
+  min-width: 20px; border-radius: 999px; background: var(--cream); padding: 1px 6px;
+  color: var(--muted); text-align: center; font-size: .68rem;
+}
 
 #add-quest-btn { margin-bottom: 14px; }
+.quest-bulk-toolbar { display: flex; flex-direction: column; gap: 10px; }
+.quest-bulk-toolbar p { margin: 3px 0 0; }
+.quest-bulk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.archived-section { margin-top: 18px; border-top: 2px solid var(--line); padding-top: 8px; }
 
 /* Parent "On Sirus's screen now" status list */
 .section-label { margin: 20px 0 8px; color: var(--muted); }
@@ -451,6 +475,12 @@ main { padding: 0 16px; }
 .modal-card { padding: 22px; display: flex; flex-direction: column; gap: 12px; }
 .modal-card label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: .9rem; }
 .reward-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.return-presets { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.return-presets legend { font-weight: 700; font-size: .9rem; margin-bottom: 4px; }
+.return-presets label { flex-direction: row; align-items: flex-start; border: 2px solid var(--line); border-radius: 12px; padding: 10px; cursor: pointer; }
+.return-presets input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--purple); flex-shrink: 0; }
+.return-presets span { display: flex; flex-direction: column; gap: 2px; }
+.return-presets small { color: var(--muted); font-weight: 400; }
 .evo-art { width: 200px; height: 200px; object-fit: contain; margin: 0 auto; position: relative; z-index: 1; }
 .evolution .modal-card .fx-sprite { z-index: 0; }
 .evolution .modal-card { text-align: center; align-items: center; position: relative; overflow: hidden; }
@@ -581,6 +611,9 @@ main { padding: 0 16px; }
 .fb-title { margin: 2px 0 8px; font-size: 1.1rem; }
 .fb-lines { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .fb-lines li { font-size: .9rem; color: var(--ink); }
+.feedback-card.returned .fb-lines li { display: flex; flex-direction: column; gap: 2px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.feedback-card.returned .fb-lines li:last-child { border-bottom: 0; }
+.feedback-card.returned .fb-lines li > span { color: var(--muted); }
 .fb-note { color: var(--muted); font-style: italic; }
 .fb-min { margin: 0 0 12px; font-family: var(--font-display); font-size: 1rem; color: var(--gold); }
 .fb-min.soft { font-family: var(--font-body); font-size: .88rem; color: var(--muted); font-weight: 600; }

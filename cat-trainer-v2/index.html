@@ -8,8 +8,8 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=7b446727">
-  <link rel="stylesheet" href="styles/polish.css?v=7b446727">
+  <link rel="stylesheet" href="styles/base.css?v=27e48d14">
+  <link rel="stylesheet" href="styles/polish.css?v=27e48d14">
 </head>
 <body>
   <div id="app">
@@ -144,6 +144,17 @@
           <!-- Routines — configuration, one level deeper (§17.1) -->
           <div class="qpanel" data-qpanel="routines" hidden>
             <button class="primary-button wide" id="add-quest-btn">+ Add a quest</button>
+            <section class="card quest-bulk-toolbar" data-testid="quest-bulk-toolbar">
+              <div>
+                <strong id="quest-selection-count">Select quests to change together</strong>
+                <p class="muted">Routine changes apply going forward. Today-only changes stay on Today.</p>
+              </div>
+              <div class="quest-bulk-actions">
+                <button class="text-button" id="quest-select-active" type="button">Select current quests</button>
+                <button class="text-button" id="quest-clear-selection" type="button" hidden>Clear</button>
+                <button class="primary-button" id="quest-bulk-edit" data-testid="quest-bulk-edit" type="button" disabled>Change selected</button>
+              </div>
+            </section>
             <section class="card">
               <div class="card-head"><h3>On Sirus's screen now</h3></div>
               <p class="muted" id="sirus-today-summary"></p>
@@ -369,6 +380,69 @@
     </div>
   </form></dialog>
 
+  <!-- Conservative reusable-routine bulk edits. No reorder or reward editing. -->
+  <dialog id="quest-bulk-dialog" class="modal" data-testid="quest-bulk-dialog"><form method="dialog" class="modal-card">
+    <h2>Change selected quests</h2>
+    <p class="muted" id="quest-bulk-summary"></p>
+    <label>Change<select id="quest-bulk-action" data-testid="quest-bulk-action">
+      <option value="pause">Pause</option>
+      <option value="resume">Resume</option>
+      <option value="archive">Archive</option>
+      <option value="restore">Restore</option>
+      <option value="daypart">Daypart…</option>
+      <option value="recurrence">Recurrence…</option>
+      <option value="essential">Mark Essential</option>
+      <option value="bonus">Mark Bonus</option>
+    </select></label>
+    <label id="quest-bulk-window-row" hidden>Daypart<select id="quest-bulk-window">
+      <option value="morning">Morning</option>
+      <option value="school">School</option>
+      <option value="evening">Evening</option>
+      <option value="night">Night</option>
+      <option value="anytime">Anytime</option>
+    </select></label>
+    <label id="quest-bulk-recurrence-row" hidden>Repeats<select id="quest-bulk-recurrence">
+      <option value="everyday">Every day</option>
+      <option value="weekdays">Weekdays (Mon–Fri)</option>
+      <option value="weekends">Weekends (Sat–Sun)</option>
+      <option value="selected_days">Chosen days…</option>
+      <option value="one_time">Just once…</option>
+    </select></label>
+    <div class="weekday-row" id="quest-bulk-days-row" hidden>
+      <label><input type="checkbox" class="quest-bulk-day" value="SU">Su</label>
+      <label><input type="checkbox" class="quest-bulk-day" value="MO">Mo</label>
+      <label><input type="checkbox" class="quest-bulk-day" value="TU">Tu</label>
+      <label><input type="checkbox" class="quest-bulk-day" value="WE">We</label>
+      <label><input type="checkbox" class="quest-bulk-day" value="TH">Th</label>
+      <label><input type="checkbox" class="quest-bulk-day" value="FR">Fr</label>
+      <label><input type="checkbox" class="quest-bulk-day" value="SA">Sa</label>
+    </div>
+    <label id="quest-bulk-once-row" hidden>On<input id="quest-bulk-once-date" type="date"></label>
+    <p class="field-error" id="quest-bulk-error" hidden></p>
+    <div class="btn-row">
+      <button class="text-button" value="cancel">Cancel</button>
+      <button class="primary-button" id="quest-bulk-apply" data-testid="quest-bulk-apply" value="default">Apply</button>
+    </div>
+  </form></dialog>
+
+  <!-- One returned attempt, one gentle reason, optional parent note. -->
+  <dialog id="quest-return-dialog" class="modal" data-testid="quest-return-dialog"><form method="dialog" class="modal-card">
+    <h2>Return this quest</h2>
+    <p class="muted" id="quest-return-title"></p>
+    <fieldset class="return-presets">
+      <legend>What should Sirus know?</legend>
+      <label><input type="radio" name="quest-return-reason" value="try_again" checked><span><strong>Try again</strong><small>Simple do-over</small></span></label>
+      <label><input type="radio" name="quest-return-reason" value="fix_one"><span><strong>Almost — fix one thing</strong><small>Keep what worked and adjust one part</small></span></label>
+      <label><input type="radio" name="quest-return-reason" value="come_see_me"><span><strong>Come see me</strong><small>Talk through the next step together</small></span></label>
+    </fieldset>
+    <label>Optional note<input id="quest-return-note" data-testid="quest-return-note" maxlength="120" placeholder="Short and encouraging"></label>
+    <p class="muted">No points are removed. The quest returns so he can try again.</p>
+    <div class="btn-row">
+      <button class="text-button" value="cancel">Cancel</button>
+      <button class="primary-button" id="quest-return-submit" data-testid="quest-return-submit" value="default">Return quest</button>
+    </div>
+  </form></dialog>
+
   <!-- Today Is Different — one-day exception presets (§17.6) -->
   <dialog id="today-different-dialog" class="modal"><form method="dialog" class="modal-card">
     <h2>Today is different</h2>
@@ -393,10 +467,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=7b446727"></script>
-  <script type="module" src="src/ledger-actions.js?v=7b446727"></script>
+  <script type="module" src="src/app.js?v=27e48d14"></script>
+  <script type="module" src="src/ledger-actions.js?v=27e48d14"></script>
   <!-- Presentation-only device/accessibility layer; no store writes or game state. -->
-  <script type="module" src="src/polish.js?v=7b446727"></script>
+  <script type="module" src="src/polish.js?v=27e48d14"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.
