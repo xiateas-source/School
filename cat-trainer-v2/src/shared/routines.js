@@ -12,7 +12,7 @@
 // without an emulator, and the child screen and any later parent view can never
 // disagree about them.
 
-import { FAMILY_TIMEZONE, weekday } from './dates.js?v=7b446727';
+import { FAMILY_TIMEZONE, weekday } from './dates.js?v=27e48d14';
 
 // Day-phase windows, in chronological order. 'anytime' is intentionally NOT a
 // day phase — it's a flexible bucket shown alongside Now/Next/Later (§6).
@@ -65,6 +65,18 @@ export function questIsDailyEssential(quest) {
   // Items pending Activities migration are never routine responsibilities.
   if (migrationDisposition(quest) === 'activities_pending') return false;
   return !!(quest && ESSENTIAL_SECTIONS.has(quest.section));
+}
+
+// Archive is a lifecycle state of its own. It must never be inferred from
+// `enabled`: a paused quest is still part of the reusable routine, while an
+// archived quest is retained only for recovery/history and is excluded from
+// every daily plan. Legacy quests have no field and remain unarchived.
+export function questIsArchived(quest) {
+  return !!(quest && quest.archived === true);
+}
+
+export function questIsAvailable(quest) {
+  return !!quest && quest.enabled !== false && !questIsArchived(quest);
 }
 
 export function questDependsOn(quest) {
@@ -144,7 +156,7 @@ export function laterWindowFor(currentWindow, phase) {
 // controls); the store validates the preset name separately.
 export const TODAY_PRESETS = ['sick', 'out', 'school_off', 'easy_morning', 'custom'];
 export function presetTargets(quests, preset, ymd) {
-  const scheduled = (quests || []).filter(q => q && q.enabled !== false && isScheduledOn(q, ymd));
+  const scheduled = (quests || []).filter(q => questIsAvailable(q) && isScheduledOn(q, ymd));
   switch (preset) {
     case 'sick':
     case 'out':          return scheduled;
@@ -240,4 +252,42 @@ export function organizeDay(quests, { phase, completedIds } = {}) {
   const stillNeedsDoing = past.filter(g => g.quests.some(q => !done.has(q.id)));
 
   return { currentPhase, now, next, later, anytime: byWindow.get('anytime'), stillNeedsDoing };
+}
+
+// Minimal read-only bridge for Activities (§26.1). It deliberately derives from
+// the same planDay()/organizeDay() contract as both Quest screens: no second
+// recurrence engine, no writes, and no lock. Future routine quests are counted
+// but never pulled forward into First/Then before their daypart.
+export function routineCue(quests, { ymd, overrides = {}, phase, completedIds = [] } = {}) {
+  const done = asSet(completedIds);
+  const planned = planDay((quests || []).filter(questIsAvailable), { ymd, overrides });
+  const day = organizeDay(planned, { phase, completedIds: done });
+  const remainingEssentials = planned.filter(q => questIsDailyEssential(q) && !done.has(q.id));
+
+  // Keep First/Then inside one small routine cohort. Do not jump from an
+  // unfinished Morning sequence to an unrelated Anytime tidy in the same cue.
+  let candidates = day.now
+    ? day.now.quests.filter(q => questIsDailyEssential(q) && !done.has(q.id))
+    : [];
+  if (!candidates.length) {
+    const past = day.stillNeedsDoing
+      .map(group => group.quests.filter(q => questIsDailyEssential(q) && !done.has(q.id)))
+      .find(group => group.length);
+    candidates = past || [];
+  }
+  if (!candidates.length) {
+    candidates = day.anytime.filter(q => questIsDailyEssential(q) && !done.has(q.id));
+  }
+
+  const [first, then] = nextMissions(candidates, done, 2);
+  const cueWindow = first ? questTimeWindow(first) : day.currentPhase;
+  const item = q => q ? { questId: q.id, label: q.title || 'Quest' } : null;
+  return {
+    routineId: cueWindow,
+    routineLabel: WINDOW_LABEL[cueWindow] || cueWindow,
+    remainingEssentialCount: remainingEssentials.length,
+    first: item(first),
+    then: item(then),
+    blocking: false
+  };
 }

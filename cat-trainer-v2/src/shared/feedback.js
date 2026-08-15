@@ -14,6 +14,18 @@ export const FEEDBACK_TYPE = {
 
 export const DELIVERY = { PENDING: 'pending', CLAIMED: 'claimed', SEEN: 'seen' };
 
+// Fast, gentle parent return choices. Codes are stable data; labels are child-
+// facing copy and may be polished later without changing stored meaning.
+export const QUEST_RETURN_PRESETS = Object.freeze([
+  Object.freeze({ code: 'try_again', parentLabel: 'Try again', childLabel: 'Try it one more time.' }),
+  Object.freeze({ code: 'fix_one', parentLabel: 'Almost — fix one thing', childLabel: 'Almost! Fix one thing and try again.' }),
+  Object.freeze({ code: 'come_see_me', parentLabel: 'Come see me', childLabel: 'Come see me and we’ll work out the next step.' })
+]);
+
+export function questReturnPreset(code) {
+  return QUEST_RETURN_PRESETS.find(preset => preset.code === code) || QUEST_RETURN_PRESETS[0];
+}
+
 // Once a device claims an event for display, other devices leave it alone — but
 // if that device crashes before marking it seen, the claim goes stale after the
 // lease and the event becomes eligible again, so a message is never permanently
@@ -84,5 +96,14 @@ export function bundleRecognitions(recognitions) {
     bundled: list.length > 1,
     lines,
     ids: list.map(e => e.id)
+  };
+}
+
+export function returnedQuestLine(event) {
+  const preset = questReturnPreset(event && event.returnReasonCode);
+  return {
+    questTitle: (event && (event.questTitle || event.reasonLabel)) || 'Quest',
+    message: (event && event.returnReasonLabel) || preset.childLabel,
+    parentNote: (event && event.parentNote) || ''
   };
 }

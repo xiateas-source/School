@@ -119,6 +119,31 @@ export function grantCareCharge(current) {
   return { before, after, granted: after > before };
 }
 
+// One immutable processing key per daily Quest instance. The marker is created
+// even when Care is already full (award 0), so return/retry cannot bank that
+// completion and collect a charge later after spending one.
+export function questCareAwardId(childId, questId, date) {
+  if (!childId || !questId || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
+    throw new Error('bad-quest-care-award-id');
+  }
+  return `${childId}_${questId}_${date}`;
+}
+
+export function dailyQuestCareAward(alreadyProcessed, currentCharges) {
+  const before = careCharges(currentCharges);
+  if (alreadyProcessed) {
+    return { createMarker: false, careChargeGranted: false, award: 0, before, after: before };
+  }
+  const charge = grantCareCharge(before);
+  return {
+    createMarker: true,
+    careChargeGranted: charge.granted,
+    award: charge.granted ? 1 : 0,
+    before: charge.before,
+    after: charge.after
+  };
+}
+
 export function refillNeed(catNeeds, need, currentCharges, nowMs = Date.now()) {
   if (!CARE_NEEDS.includes(need)) throw new Error('unknown-care-need');
   const needsBefore = needsAt(catNeeds, nowMs);
