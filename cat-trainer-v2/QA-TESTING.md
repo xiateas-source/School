@@ -75,6 +75,11 @@ storage for the origin, so **one profile holds one role**. Two ways to work:
 - **Sequential (simplest):** test as Parent, hit **Sign out**, come back as Child.
   Firestore is the source of truth, so state carries across the switch. This covers
   almost every acceptance flow.
+  **Note the asymmetry:** `signout` exists only in the parent shell. The child
+  shell has no sign-out or role-switch control by design — Sirus must not be able
+  to unpair his own tablet. So Parent → Child is a click, but Child → Parent
+  requires clearing the origin's browser storage (or a fresh browser context).
+  Script the child leg last, or drive it in its own context.
 - **Two browser contexts:** needed only to watch one role update *live* while the
   other acts — e.g. proving the child's screen reflects an approval without a
   refresh.
@@ -182,7 +187,7 @@ fails if one disappears).
 | `approval-row` | One pending completion; carries `data-quest-id` |
 | `ptoday-row` | A quest row on the Today board; carries `data-quest-id`. Its actions are `[data-today-skip]`, `[data-today-move]` (Later), `[data-today-next]`, `[data-today-clear]` (Undo) |
 | `exception-row` | A one-day exception in the Today-is-different card; carries `data-quest-id`. The **only** place a skip can be undone |
-| `sirus-today-row` | The parent's mirror of the child's screen; carries `data-quest-id` |
+| `sirus-today-row` | The parent's mirror of the child's screen, on the **Today** screen beside `sirus-today-summary` — not on the Quests screen. Rendered only for quests currently turned on, so a paused or archived quest is legitimately absent. Carries `data-quest-id` |
 | `parent-quest-row` | A row in the reusable Quest manager; carries `data-quest-id`, plus move, edit, duplicate, Pause/Resume, and Archive/Restore actions. Permanent `[data-del-quest]` is rendered only for isolated `QA-*` cleanup quests |
 | `quest-selection` | One row's bulk-selection checkbox |
 | `quest-bulk-toolbar`, `quest-bulk-edit` | Selection count and launcher for conservative reusable-routine bulk changes |
@@ -190,6 +195,7 @@ fails if one disappears).
 | `quest-return-dialog`, `quest-return-note`, `quest-return-submit` | Gentle quick-return preset and optional-note flow |
 | `make-pair-code`, `pair-code-display`, `pair-code-value` | Child pairing code |
 | `make-coparent-code`, `coparent-code-display`, `coparent-code-value` | Co-parent invite code |
+| `parent-cafe-row` | One owned café item in the parent's Café card; carries `data-item-id` and a `[data-return-item]` Return button that refunds the recorded purchase price and frees the item to be bought again |
 | `settings-email`, `settings-family-id`, `signout` | Account card |
 
 **Child**
@@ -201,7 +207,7 @@ fails if one disappears).
 | `child-next-quests`, `child-quest-list` | Home's short list, and the full Quests screen |
 | `quest-card` | One quest; carries `data-quest-id` and `data-quest-status` (`todo` \| `pending` \| `approved`) |
 | `returned-feedback` | Gentle returned-Quest card, including the preset guidance and optional parent note |
-| `care-need-cue` | The prompt to care for a low need; `data-need` names which |
+| `care-need-cue` | The prompt to care for a low need; `data-need` names which. **It is deliberately hidden unless a need is below 40 _and_ the café is in Play mode** — being merely the lowest of the three is not enough. It is an icon-only button, so there is no text to read even when shown. An empty cue beside a Thriving/Okay cat is correct behaviour, not a missing prompt |
 | `care-hunger-value`, `care-rest-value`, `care-happiness-value` | Need readouts, `n/100` |
 | `care-hunger-band`, `care-rest-band`, `care-happiness-band` | Their labels (Thriving / Okay / …) |
 
@@ -302,6 +308,14 @@ Not yet solved, on purpose. Note which ones actually hurt during real runs:
 
 - **No reset.** QA state accumulates run over run. Ledger rows are permanent by
   design, so an old QA family drifts from any clean baseline.
+  _Partly addressed:_ a parent can now **Return** an owned café item from the
+  parent Café card (`parent-cafe-row` → `[data-return-item]`), which refunds the
+  exact price paid and puts the item back in the shop. That unblocks the café
+  purchase and insufficient-coins tests on a family that already owns the whole
+  catalog — buy, assert, return, and the books balance. It is parent-only and
+  server-enforced (the rules already allowed a parent to delete an owned item
+  and write the child's coins), so it needed no rules change and gives the child
+  no new power. Nothing else resets.
 - **No seeded scenarios.** Setting up "three pending approvals" or "a hungry cat"
   means clicking through it every time.
 - **No time control.** Anything phrased "overdue this morning" can only be tested

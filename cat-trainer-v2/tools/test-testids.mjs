@@ -55,7 +55,9 @@ const DYNAMIC_IDS = [
   'sirus-today-row',    // the parent's mirror of the child's screen
   'parent-quest-row',   // a row in the quest management list
   'quest-selection',    // a management-row bulk-selection checkbox
-  'returned-feedback'   // gentle child card after a parent return
+  'returned-feedback',  // gentle child card after a parent return
+  'parent-cafe-row'     // an owned cafe item in the parent Cafe card; carries
+                        // data-item-id and the QA-unblocking Return control
 ];
 
 for (const id of STATIC_IDS) {
@@ -68,6 +70,15 @@ for (const id of DYNAMIC_IDS) {
     `src/app.js must render data-testid="${id}"`
   );
 }
+
+assert.match(
+  app, /data-testid="parent-cafe-row" data-item-id=/,
+  'a parent cafe row must identify its item'
+);
+assert.ok(
+  app.includes('data-return-item='),
+  'a parent cafe row must expose the Return control the cafe purchase test needs'
+);
 
 // A testid alone isn't enough for the rows an agent has to tell apart: it must be
 // able to say WHICH quest a row is about, and for a quest card, where it stands.

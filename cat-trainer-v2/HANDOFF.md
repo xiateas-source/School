@@ -253,10 +253,18 @@ evolution won't feel special. Candidate for a fresher Drive asset.
 - [x] Quest Slices 1–2 accepted: low-overwhelm child routine hierarchy, Parent
       Today/Needs You, recurrence, and today-only exceptions with unchanged
       Café/points/My Progress economics
-- [ ] **Reduced Quest Slice 3 pending acceptance:** daypart + Essential/Bonus
+- [x] **Reduced Quest Slice 3 accepted (2026-09-10):** daypart + Essential/Bonus
       routine management; one-row reorder; duplicate; distinct Pause/Archive;
       conservative bulk edit; quick return presets; immutable daily Care award;
-      and the read-only Activities routine cue
+      and the read-only Activities routine cue.
+      _Accepted on a browser-agent run against the QA family: core loop, no
+      double-dipping, return→retry accounting, Today board Skip/Undo/Later/Next,
+      routine lifecycle, the bulk-action allowlist, the three-need care loop,
+      child denial paths, and ledger correctness all passed. The café purchase
+      test was blocked — not failed — because the long-lived QA family already
+      owns every catalog item (§8 of QA-TESTING.md); a QA-only return control
+      now unblocks it. Still owed a real phone/tablet pass for return-preset
+      tone, touch size, and reading load._
 - [x] Cats: independent progress, active-cat selection, Hero Form + celebration
 - [x] Cat Café: buy items with coins, decorate the room
 - [x] **Interactive Cat Café**: drag décor to arrange (positions saved per item +

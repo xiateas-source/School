@@ -2,35 +2,35 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=27e48d14';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=27e48d14';
-import { seededQuests } from './data/quests.js?v=27e48d14';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=27e48d14';
+import { initFirebase, db, dbSdk } from './firebase.js?v=efa6a9e2';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=efa6a9e2';
+import { seededQuests } from './data/quests.js?v=efa6a9e2';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=efa6a9e2';
 import {
   CARE_NEEDS, areCareNeedsOkay, freshCatNeeds,
   dailyQuestCareAward, needsAt, questCareAwardId, refillNeed
-} from './care.js?v=27e48d14';
+} from './care.js?v=efa6a9e2';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=27e48d14';
+} from './shared/rewards.js?v=efa6a9e2';
 import {
   SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
   normalizeTransaction, summarizeDay
-} from './shared/ledger.js?v=27e48d14';
+} from './shared/ledger.js?v=efa6a9e2';
 import {
   FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable,
   questReturnPreset
-} from './shared/feedback.js?v=27e48d14';
-import { localDate, localTimeLabel } from './shared/dates.js?v=27e48d14';
+} from './shared/feedback.js?v=efa6a9e2';
+import { localDate, localTimeLabel } from './shared/dates.js?v=efa6a9e2';
 import {
   generatePairingCode, isPairingCodeShape, isPairingUsable, pairingErrorMessage
-} from './shared/pairing.js?v=27e48d14';
-import { presetTargets } from './shared/routines.js?v=27e48d14';
+} from './shared/pairing.js?v=efa6a9e2';
+import { presetTargets } from './shared/routines.js?v=efa6a9e2';
 import {
   bulkQuestPatch, duplicateQuestData
-} from './shared/quest-management.js?v=27e48d14';
+} from './shared/quest-management.js?v=efa6a9e2';
 
 export const CHILD_ID = 'sirus';
 
@@ -1265,6 +1265,39 @@ export async function purchaseCafeItem(familyId, uid, itemId) {
     tx.set(p.ownedItem(itemId), {
       purchasedAt: serverTimestamp(), price: item.price, placed: true
     });
+  });
+}
+
+// Return an owned café item to the shop and refund its coins. PARENT-ONLY, and
+// only ever inside the parent's own family — both are enforced server-side by
+// the existing rules (`allow delete: if isParent(fid)` on ownedCafeItems, and
+// the parent's full write on the child profile), so no rules change was needed
+// and hiding the button is not what makes this safe.
+//
+// This exists for QA: the long-lived QA family eventually owns every catalog
+// item, which leaves no `[data-buy]` control and blocks any purchase or
+// insufficient-coins test (QA-TESTING.md §8). Refunding the recorded purchase
+// price — not the current catalog price — keeps the child's coin total exactly
+// where it was before the purchase, so a return followed by a re-buy is a
+// no-op on the books.
+export async function returnCafeItem(familyId, itemId) {
+  const { database, sdk } = await fs();
+  const { runTransaction, serverTimestamp } = sdk;
+  const p = paths(sdk, database, familyId);
+
+  await runTransaction(database, async (tx) => {
+    const ownedSnap = await tx.get(p.ownedItem(itemId));
+    if (!ownedSnap.exists()) throw new Error('not-owned');
+    const childSnap = await tx.get(p.child());
+    const coins = childSnap.data().coins || 0;
+    // Fall back to the catalog price only for legacy records written before
+    // `price` was stored; a missing price must never silently refund 0.
+    const refund = ownedSnap.data().price ?? CAFE_ITEMS[itemId]?.price ?? 0;
+    tx.update(p.child(), {
+      coins: coins + refund,
+      lastCafeReturn: { itemId, refund, at: serverTimestamp() }
+    });
+    tx.delete(p.ownedItem(itemId));
   });
 }
 
