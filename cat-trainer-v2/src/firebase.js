@@ -2,7 +2,7 @@
 // needed — this works directly on GitHub Pages) and enables offline persistence
 // so a tablet with flaky wifi queues actions and replays them on reconnect.
 
-import { firebaseConfig, FIREBASE_SDK_VERSION, isConfigured } from '../firebase-config.js?v=27e48d14';
+import { firebaseConfig, FIREBASE_SDK_VERSION, isConfigured } from '../firebase-config.js?v=efa6a9e2';
 
 const V = FIREBASE_SDK_VERSION;
 const CDN = `https://www.gstatic.com/firebasejs/${V}`;
