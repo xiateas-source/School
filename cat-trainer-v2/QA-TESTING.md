@@ -188,13 +188,14 @@ fails if one disappears).
 | `ptoday-row` | A quest row on the Today board; carries `data-quest-id`. Its actions are `[data-today-skip]`, `[data-today-move]` (Later), `[data-today-next]`, `[data-today-clear]` (Undo) |
 | `exception-row` | A one-day exception in the Today-is-different card; carries `data-quest-id`. The **only** place a skip can be undone |
 | `sirus-today-row` | The parent's mirror of the child's screen, on the **Today** screen beside `sirus-today-summary` — not on the Quests screen. Rendered only for quests currently turned on, so a paused or archived quest is legitimately absent. Carries `data-quest-id` |
-| `parent-quest-row` | A row in the reusable Quest manager; carries `data-quest-id`, plus move, edit, duplicate, Pause/Resume, and Archive/Restore actions. Permanent `[data-del-quest]` is rendered only for isolated `QA-*` cleanup quests |
+| `parent-quest-row` | A row in the reusable Quest manager; carries `data-quest-id`, plus move, edit, duplicate, Pause/Resume, and Archive/Restore actions. `[data-del-quest]` permanently deletes **any** routine (it is no longer restricted to `QA-*` quests) behind a confirm; Archive is the reversible option beside it. Deleting removes the routine only — completions and ledger rows snapshot the title and rewards, so history and any pending approval survive |
 | `quest-selection` | One row's bulk-selection checkbox |
 | `quest-bulk-toolbar`, `quest-bulk-edit` | Selection count and launcher for conservative reusable-routine bulk changes |
 | `quest-bulk-dialog`, `quest-bulk-action`, `quest-bulk-apply` | Bulk Pause/Resume, Archive/Restore, daypart, recurrence, or Essential/Bonus controls. There is no bulk reorder |
 | `quest-return-dialog`, `quest-return-note`, `quest-return-submit` | Gentle quick-return preset and optional-note flow |
 | `make-pair-code`, `pair-code-display`, `pair-code-value` | Child pairing code |
 | `make-coparent-code`, `coparent-code-display`, `coparent-code-value` | Co-parent invite code |
+| `school-import-card`, `school-import` | Adds Sirus's real courses (from the Journal repo's course plan) to the School daypart, each with its own weekday recurrence. Additive and idempotent — the card names only the lessons that are missing and hides itself once they are all present, so an agent can assert on the count it reports before and after |
 | `parent-cafe-link` | The **Cat Café** link on the parent's Cats screen — the only route to the parent Café screen. That screen renders on every parent update but has no bottom-nav tab, so this link is how an agent (or Mom) reaches the Return controls |
 | `parent-cafe-row` | One owned café item in the parent's Café card; carries `data-item-id` and a `[data-return-item]` Return button that refunds the recorded purchase price and frees the item to be bought again |
 | `settings-email`, `settings-family-id`, `signout` | Account card |
