@@ -185,7 +185,7 @@ fails if one disappears).
 | `parent-available` | Available minutes |
 | `approvals-card`, `approvals-count`, `approvals-list` | The Needs-approval queue |
 | `approval-row` | One pending completion; carries `data-quest-id` |
-| `ptoday-row` | A quest row on the Today board; carries `data-quest-id`. Its actions are `[data-today-skip]`, `[data-today-move]` (Later), `[data-today-next]`, `[data-today-clear]` (Undo) |
+| `ptoday-row` | A quest row on the Today board; carries `data-quest-id`. Its primary action is `[data-sirus-done]` — **Mark done** for an untouched quest (confirmed, since it credits minutes Sirus did not request) or **✓ Approve** for one he has already tapped; an approved quest shows only a chip. Its today-only scheduling actions are `[data-today-skip]`, `[data-today-move]` (Later), `[data-today-next]`, `[data-today-clear]` (Undo) |
 | `exception-row` | A one-day exception in the Today-is-different card; carries `data-quest-id`. The **only** place a skip can be undone |
 | `sirus-today-row` | The parent's mirror of the child's screen, on the **Today** screen beside `sirus-today-summary` — not on the Quests screen. Rendered only for quests currently turned on, so a paused or archived quest is legitimately absent. Carries `data-quest-id` |
 | `parent-quest-row` | A row in the reusable Quest manager; carries `data-quest-id`, plus move, edit, duplicate, Pause/Resume, and Archive/Restore actions. `[data-del-quest]` permanently deletes **any** routine (it is no longer restricted to `QA-*` quests) behind a confirm; Archive is the reversible option beside it. Deleting removes the routine only — completions and ledger rows snapshot the title and rewards, so history and any pending approval survive |
