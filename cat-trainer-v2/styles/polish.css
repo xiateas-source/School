@@ -667,6 +667,16 @@ button[data-polish-busy="true"]::after {
    coordinates around, which is Sirus's data. The tablet keeps its existing
    680px landscape treatment. */
 @media (min-width: 1024px) {
+  /* MUST come with the display rule below. `hidden` works through the user
+     agent's `[hidden] { display: none }`, which any more specific display
+     declaration silently defeats — so a shell told to hide would still paint,
+     and Mom's dashboard would appear stacked above Sirus's screen on a wide
+     window. Restore it at higher specificity than the grid rule.
+     (Same trap as .qpanel[hidden] and #c-decorate-actions[hidden] above.) */
+  .app-shell[data-role-shell="parent"][hidden] {
+    display: none;
+  }
+
   .app-shell[data-role-shell="parent"] {
     max-width: 1140px;
     padding-bottom: 0;
