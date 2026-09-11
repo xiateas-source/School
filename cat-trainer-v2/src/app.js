@@ -1,47 +1,47 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=9a674416';
+import { isConfigured } from './firebase.js?v=ea6d9ec7';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=9a674416';
-import * as store from './store.js?v=9a674416';
-import { CAT_DEFS } from './data/cats.js?v=9a674416';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=9a674416';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=9a674416';
-import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=9a674416';
+} from './auth.js?v=ea6d9ec7';
+import * as store from './store.js?v=ea6d9ec7';
+import { CAT_DEFS } from './data/cats.js?v=ea6d9ec7';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=ea6d9ec7';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=ea6d9ec7';
+import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=ea6d9ec7';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=9a674416';
+} from './cafe-interactions.js?v=ea6d9ec7';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=9a674416';
+} from './care.js?v=ea6d9ec7';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=9a674416';
+} from './shared/rewards.js?v=ea6d9ec7';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=9a674416';
+} from './shared/ledger.js?v=ea6d9ec7';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=9a674416';
+} from './shared/dates.js?v=ea6d9ec7';
 import {
   partitionFeedback, bundleRecognitions, QUEST_RETURN_PRESETS, returnedQuestLine
-} from './shared/feedback.js?v=9a674416';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=9a674416';
+} from './shared/feedback.js?v=ea6d9ec7';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=ea6d9ec7';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questIsAvailable, questIsArchived,
   questRecurrence, laterWindowFor, isScheduledOn,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=9a674416';
+} from './shared/routines.js?v=ea6d9ec7';
 import {
   questManagementGroups, recurrenceLabel, reorderQuestUpdates
-} from './shared/quest-management.js?v=9a674416';
+} from './shared/quest-management.js?v=ea6d9ec7';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -1375,23 +1375,35 @@ function catCardHtml(id, canTrain) {
 }
 function renderParentCats() { el('parent-cats').innerHTML = Object.keys(CAT_DEFS).map(id => catCardHtml(id, false)).join(''); }
 function renderParentCafe() {
-  // Owned items are listed with a Return control so a parent can refund a
-  // purchase. This is mainly a QA affordance: the QA family eventually owns the
-  // whole catalog, which leaves no Buy button and blocks every purchase test.
-  // It is safe for the real family too — refunding restores the exact coins
-  // paid — but it is a parent-only control and the rules, not this markup,
-  // are what enforce that.
-  const rows = state.ownedItems.map(o => {
+  // Owned items, each with a Return that refunds the coins paid. Parent-only;
+  // the rules, not this markup, are what enforce that.
+  const items = state.ownedItems.slice().sort((a, b) => {
+    const an = CAFE_ITEMS[a.id]?.name || '';
+    const bn = CAFE_ITEMS[b.id]?.name || '';
+    return an.localeCompare(bn);
+  });
+  const coins = items.reduce((sum, o) => sum + (o.price ?? CAFE_ITEMS[o.id]?.price ?? 0), 0);
+
+  const rows = items.map(o => {
     const item = CAFE_ITEMS[o.id];
     if (!item) return '';
     const refund = o.price ?? item.price ?? 0;
+    const stored = o.placed === false;
     return `<div class="parent-cafe-row" data-testid="parent-cafe-row" data-item-id="${esc(o.id)}">
-      <div class="q-body"><strong>${esc(item.name)}</strong><br><small>🪙${refund}${o.placed === false ? ' · put away' : ''}</small></div>
-      <button class="quest-action danger" data-return-item="${esc(o.id)}">Return</button>
+      <img class="pc-art" src="${esc(item.art)}" alt="">
+      <div class="q-body"><strong>${esc(item.name)}</strong>
+        <small>🪙${refund}${stored ? ' · put away' : ' · in the café'}</small></div>
+      <button class="pill-btn reject" data-return-item="${esc(o.id)}">Return</button>
     </div>`;
   }).join('');
-  el('parent-cafe').innerHTML = `<p class="muted">Sirus decorates the café with Cat Coins. Owned: ${state.ownedItems.length} item(s).</p>`
-    + (rows || '<div class="empty">Nothing bought yet.</div>');
+
+  el('parent-cafe').innerHTML = `<section class="card">
+      <div class="card-head"><h3>Sirus's café</h3></div>
+      <p class="muted">He buys and arranges these with Cat Coins. Returning an item refunds exactly what he paid and puts it back in the shop.</p>
+      ${items.length
+        ? `<p class="ptoday-progress">${items.length} item${items.length === 1 ? '' : 's'} · 🪙${coins} spent</p>${rows}`
+        : '<div class="empty">Nothing bought yet.</div>'}
+    </section>`;
 }
 
 // ----- Child -----

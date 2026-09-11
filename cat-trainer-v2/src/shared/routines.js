@@ -12,7 +12,7 @@
 // without an emulator, and the child screen and any later parent view can never
 // disagree about them.
 
-import { FAMILY_TIMEZONE, weekday } from './dates.js?v=9a674416';
+import { FAMILY_TIMEZONE, weekday } from './dates.js?v=ea6d9ec7';
 
 // Day-phase windows, in chronological order. 'anytime' is intentionally NOT a
 // day phase — it's a flexible bucket shown alongside Now/Next/Later (§6).

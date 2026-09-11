@@ -954,3 +954,25 @@ button[data-polish-busy="true"]::after {
 .ptoday-head .phase-eyebrow { margin: 0; }
 .text-button.block-done { white-space: nowrap; font-size: .82rem; }
 .text-button.block-done:disabled { opacity: .5; cursor: default; }
+
+/* Parent view of Sirus's café. Matches the approval/quest row conventions —
+   a cream row, art thumbnail, body, action — rather than the unstyled stack of
+   divs this shipped as. */
+.parent-cafe-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--cream);
+  border-radius: 12px;
+  padding: 8px 12px;
+  margin-top: 8px;
+}
+.parent-cafe-row .pc-art {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.parent-cafe-row .q-body { flex: 1; min-width: 0; }
+.parent-cafe-row strong { display: block; }
+.parent-cafe-row small { display: block; color: var(--muted); font-size: .76rem; }
