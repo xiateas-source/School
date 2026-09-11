@@ -195,6 +195,7 @@ fails if one disappears).
 | `quest-return-dialog`, `quest-return-note`, `quest-return-submit` | Gentle quick-return preset and optional-note flow |
 | `make-pair-code`, `pair-code-display`, `pair-code-value` | Child pairing code |
 | `make-coparent-code`, `coparent-code-display`, `coparent-code-value` | Co-parent invite code |
+| `parent-cafe-link` | The **Cat Café** link on the parent's Cats screen — the only route to the parent Café screen. That screen renders on every parent update but has no bottom-nav tab, so this link is how an agent (or Mom) reaches the Return controls |
 | `parent-cafe-row` | One owned café item in the parent's Café card; carries `data-item-id` and a `[data-return-item]` Return button that refunds the recorded purchase price and frees the item to be bought again |
 | `settings-email`, `settings-family-id`, `signout` | Account card |
 
