@@ -44,10 +44,17 @@ assert.deepEqual(questDependsOn({}), [], 'missing deps default to []');
 // --- Phase of day (night wraps midnight) -------------------------------------
 assert.equal(phaseForHour(2), 'night');
 assert.equal(phaseForHour(5), 'morning');
-assert.equal(phaseForHour(10), 'morning');
+assert.equal(phaseForHour(7), 'morning', 'before school opening');
+// Boundaries track the real weekday schedule: first academic block 8:45,
+// formal dismissal 3:30 p.m.
+assert.equal(phaseForHour(8), 'school', 'Math C block is school time, not morning');
+assert.equal(phaseForHour(10), 'school');
 assert.equal(phaseForHour(11), 'school');
 assert.equal(phaseForHour(14), 'school');
-assert.equal(phaseForHour(15), 'evening');
+assert.equal(phaseForHour(15, 0), 'school', 'still school until 3:30 dismissal');
+assert.equal(phaseForHour(15, 29), 'school');
+assert.equal(phaseForHour(15, 30), 'evening', 'dismissal at 3:30 ends school');
+assert.equal(phaseForHour(15), 'school', 'no minute argument means the top of the hour, still before dismissal');
 assert.equal(phaseForHour(19), 'evening');
 assert.equal(phaseForHour(20), 'night');
 assert.equal(phaseForHour(23), 'night');

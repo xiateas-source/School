@@ -32,6 +32,8 @@ const STATIC_IDS = [
   'quest-return-dialog', 'quest-return-note', 'quest-return-submit',
   // One-tap import of Sirus's real course list into the School daypart.
   'school-import-card', 'school-import',
+  // Quest manager: select mode, its pinned bar, and the per-row action sheet.
+  'quest-select-mode', 'quest-actions-dialog',
   // Parent settings: pairing handoff + the family this session is in.
   'make-pair-code', 'pair-code-display', 'make-coparent-code', 'coparent-code-display',
   'settings-email', 'settings-family-id', 'signout',
