@@ -64,6 +64,17 @@ const childGo = async (page, screen) => {
 // comparing "the list" against "all cards" would be vacuously true. Always name
 // the surface you mean.
 const CHILD_LIST = '[data-testid="child-quest-list"]';
+
+// The child's Anytime group caps at 3 cards behind a "See all" expander, so a
+// quest can be legitimately planned and simply not carded yet. Any assertion
+// about what is on his screen has to expand that first, or it is really
+// asserting "there are at most three Anytime quests in this family".
+async function expandChildAnytime(page) {
+  const toggle = page.locator('[data-toggle-anytime]');
+  if (await toggle.count() && /See all/.test((await toggle.textContent()) || '')) {
+    await toggle.click();
+  }
+}
 const CHILD_PREVIEW = '[data-testid="child-next-quests"]';
 
 const questIds = async (locator) => {
@@ -102,6 +113,37 @@ async function createQuest(page, { title, window = 'anytime', recurrence = 'ever
   const id = await row.getAttribute('data-quest-id');
   createdQuestIds.add(id);
   return id;
+}
+
+async function sweepStaleQaQuests(page) {
+  await openRoutines(page);
+  // Reveal archived rows too — a stale fixture may have been archived by the
+  // test that died.
+  const archived = page.locator('details.archived-section');
+  if (await archived.count()) await archived.locator('summary').click();
+
+  const stale = [];
+  for (const row of await page.locator('[data-testid="parent-quest-row"]').all()) {
+    const title = (await row.locator('strong').first().textContent() || '').trim();
+    if (title.startsWith('QA-') && !title.startsWith(RUN)) {
+      const id = await row.getAttribute('data-quest-id');
+      if (id) stale.push({ id, title });
+    }
+  }
+  if (!stale.length) return;
+
+  let removed = 0;
+  for (const { id } of stale) {
+    try {
+      page.once('dialog', d => d.accept());
+      await questRowAction(page, id, '[data-del-quest]');
+      removed++;
+    } catch {
+      // A leftover we cannot remove is not worth failing the run over; the
+      // count below is the signal that manual cleanup is needed.
+    }
+  }
+  console.log(`swept ${removed}/${stale.length} stale QA quest(s) from earlier runs`);
 }
 
 async function deleteQuest(page, id) {
@@ -294,6 +336,21 @@ test.beforeAll(async ({ browser }) => {
     );
   }
 
+  // ---- Sweep quests left behind by earlier runs ---------------------------
+  // AFTER the family gate, never before: this deletes real documents, so it
+  // must not run until the signed-in family has been proven to be the QA one.
+  //
+  // The QA family has no reset, so a run that dies mid-flight leaves its
+  // QA-<runid>-* quests behind. Those are not merely clutter: enough leftover
+  // Anytime quests push the child's Anytime group past its 3-card cap, and
+  // tests that assert "this quest reached his screen" then fail for a reason
+  // that has nothing to do with the behaviour under test. That is exactly what
+  // broke tests 03 and 10.
+  //
+  // Only titles starting with QA- are touched, and only ones from a DIFFERENT
+  // run than this one, so a concurrent run's fixtures are never deleted.
+  await sweepStaleQaQuests(parent);
+
   // Child session: paired inside this run, because codes are single-use and
   // expire in 15 minutes. Non-fatal — child-dependent tests skip with a reason
   // so the parent-only checks still report.
@@ -398,6 +455,7 @@ test('03 · Parent Today shows nothing that is not on the child\'s board', async
 
   await parentGo(parent, 'quests');
   await childGo(child, 'quests');
+  await expandChildAnytime(child);
   const onBoard = await questIds(parent.locator('[data-testid="ptoday-row"]'));
   const onChild = await questIds(child.locator(`${CHILD_LIST} [data-testid="quest-card"]`));
 
@@ -573,6 +631,7 @@ test('10 · Recurrence: a one-time quest shows today but not when dated tomorrow
 
   if (child) {
     await childGo(child, 'quests');
+    await expandChildAnytime(child);
     await waitFor(
       async () => (await child.locator(`${CHILD_LIST} [data-testid="quest-card"][data-quest-id="${todayId}"]`).count()) === 1,
       'a one-time quest dated today never reached the child\'s screen'
@@ -622,7 +681,10 @@ test('12 · Feed/Rest/Play spends one charge and refills that need', async () =>
   const need = await cue.getAttribute('data-need');
   const before = await needValue(child, need);
 
-  await cue.click();
+  // The cue is anchored to the café cat, which idles and walks, so its box is
+  // never still and Playwright's stability check can never pass. Sirus taps a
+  // moving cat too — force the click rather than waiting for it to stop.
+  await cue.click({ force: true });
   await waitFor(
     async () => num(await child.getByTestId('child-care-charges').textContent()) === charges - 1,
     'care did not spend exactly one charge'

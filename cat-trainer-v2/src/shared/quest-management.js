@@ -7,7 +7,7 @@
 import {
   RECURRENCE_TYPES, TIME_WINDOWS, WEEKDAY_CODES, WINDOW_LABEL,
   questIsArchived, questIsDailyEssential, questRecurrence, questTimeWindow
-} from './routines.js?v=5a6ad005';
+} from './routines.js?v=ed6984a4';
 
 const byOrder = (a, b) => {
   const ao = Number.isFinite(Number(a && a.order)) ? Number(a.order) : Number.MAX_SAFE_INTEGER;

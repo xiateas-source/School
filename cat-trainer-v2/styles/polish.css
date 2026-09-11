@@ -851,6 +851,12 @@ button[data-polish-busy="true"]::after {
   height: 26px;
   margin: 0;
   cursor: pointer;
+  /* The track is painted after the input in DOM order, so without this it sits
+     on top and swallows the pointer. A person is unaffected — the label
+     forwards the click — but the input is then not the hit target, which broke
+     every automated click on the switch and is fragile for anything else that
+     targets it directly. */
+  z-index: 1;
 }
 .quest-switch-track {
   width: 44px;
