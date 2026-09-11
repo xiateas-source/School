@@ -12,7 +12,7 @@
 // without an emulator, and the child screen and any later parent view can never
 // disagree about them.
 
-import { FAMILY_TIMEZONE, weekday } from './dates.js?v=2744110b';
+import { FAMILY_TIMEZONE, weekday } from './dates.js?v=a6cb40f2';
 
 // Day-phase windows, in chronological order. 'anytime' is intentionally NOT a
 // day phase — it's a flexible bucket shown alongside Now/Next/Later (§6).
@@ -169,19 +169,33 @@ export function presetTargets(quests, preset, ymd) {
 // --- Time of day ------------------------------------------------------------
 // The active day phase for a local hour (0-23). Bedtime/night wraps past
 // midnight so a late-evening or after-midnight view still reads 'night'.
-export function phaseForHour(hour) {
+// Boundaries follow Sirus's actual weekday schedule (Journal repo,
+// current/weekday-schedule.md), not generic guesses: family start at 5:00,
+// school opening 7:30 with the first academic block at 8:45, and formal
+// dismissal at 3:30 p.m. after which routine academics never resume.
+//
+// The previous 11:00 start meant the whole 8:45-11:00 stretch of real
+// schoolwork — Math C and Language Arts D — showed as 'Next' rather than
+// 'Now', and the 15:00 end dropped unfinished lessons out of the board half an
+// hour before he is actually dismissed. School is expressed in half hours, so
+// this returns on minutes rather than whole hours.
+export function phaseForHour(hour, minute = 0) {
   const h = Number(hour);
+  const m = Number.isFinite(Number(minute)) ? Number(minute) : 0;
   if (!Number.isFinite(h) || h < 5 || h >= 20) return 'night';
-  if (h < 11) return 'morning';
-  if (h < 15) return 'school';
+  if (h < 8) return 'morning';
+  if (h < 15 || (h === 15 && m < 30)) return 'school';
   return 'evening';
 }
 
 // DOM convenience: current phase in the family timezone. Kept here so the render
 // layer never has to repeat the Intl dance or import the timezone itself.
 export function phaseNow(date = new Date(), timeZone = FAMILY_TIMEZONE) {
-  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hour12: false }).format(date));
-  return phaseForHour(hour % 24); // some engines format midnight as "24"
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: 'numeric', hour12: false })
+    .formatToParts(date);
+  const get = type => Number(parts.find(x => x.type === type)?.value);
+  const hour = get('hour');
+  return phaseForHour(hour % 24, get('minute') || 0); // some engines format midnight as "24"
 }
 
 // --- Eligibility / Routine Mode ---------------------------------------------

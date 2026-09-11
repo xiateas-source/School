@@ -189,7 +189,9 @@ fails if one disappears).
 | `exception-row` | A one-day exception in the Today-is-different card; carries `data-quest-id`. The **only** place a skip can be undone |
 | `sirus-today-row` | The parent's mirror of the child's screen, on the **Today** screen beside `sirus-today-summary` — not on the Quests screen. Rendered only for quests currently turned on, so a paused or archived quest is legitimately absent. Carries `data-quest-id` |
 | `parent-quest-row` | A row in the reusable Quest manager; carries `data-quest-id`, plus move, edit, duplicate, Pause/Resume, and Archive/Restore actions. `[data-del-quest]` permanently deletes **any** routine (it is no longer restricted to `QA-*` quests) behind a confirm; Archive is the reversible option beside it. Deleting removes the routine only — completions and ledger rows snapshot the title and rewards, so history and any pending approval survive |
-| `quest-selection` | One row's bulk-selection checkbox |
+| `quest-select-mode` | Toggles selection mode. **Row checkboxes (`quest-selection`) only exist while it is on**, and the bulk bar (`quest-bulk-toolbar`) is hidden otherwise — a run that ticks rows must press this first |
+| `quest-actions-dialog` | One row's action sheet, opened from that row's `[data-quest-menu]`. Holds Edit, Duplicate, Move up/down, Archive/Restore and Delete, which used to be buttons on every row |
+| `quest-selection` | One row's bulk-selection checkbox; present only in select mode |
 | `quest-bulk-toolbar`, `quest-bulk-edit` | Selection count and launcher for conservative reusable-routine bulk changes |
 | `quest-bulk-dialog`, `quest-bulk-action`, `quest-bulk-apply` | Bulk Pause/Resume, Archive/Restore, daypart, recurrence, or Essential/Bonus controls. There is no bulk reorder |
 | `quest-return-dialog`, `quest-return-note`, `quest-return-submit` | Gentle quick-return preset and optional-note flow |

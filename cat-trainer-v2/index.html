@@ -8,8 +8,8 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=2744110b">
-  <link rel="stylesheet" href="styles/polish.css?v=2744110b">
+  <link rel="stylesheet" href="styles/base.css?v=a6cb40f2">
+  <link rel="stylesheet" href="styles/polish.css?v=a6cb40f2">
 </head>
 <body>
   <div id="app">
@@ -149,24 +149,26 @@
               <p class="muted" id="school-import-note"></p>
               <button class="primary-button wide" id="school-import-btn" data-testid="school-import" type="button">Add school lessons</button>
             </section>
-            <section class="card quest-bulk-toolbar" data-testid="quest-bulk-toolbar">
-              <div>
-                <strong id="quest-selection-count">Select quests to change together</strong>
-                <p class="muted">Routine changes apply going forward. Today-only changes stay on Today.</p>
-              </div>
-              <div class="quest-bulk-actions">
-                <button class="text-button" id="quest-select-active" type="button">Select current quests</button>
-                <button class="text-button" id="quest-clear-selection" type="button" hidden>Clear</button>
-                <button class="primary-button" id="quest-bulk-edit" data-testid="quest-bulk-edit" type="button" disabled>Change selected</button>
-              </div>
-            </section>
-            <section class="card">
-              <div class="card-head"><h3>On Sirus's screen now</h3></div>
-              <p class="muted" id="sirus-today-summary"></p>
-              <div id="sirus-today"></div>
-            </section>
-            <h3 class="section-label">Manage quests</h3>
+            <!-- Filters first: with two dozen routines, narrowing the list is
+                 the fastest way to reach one. -->
+            <div class="quest-filter-bar" role="group" aria-label="Filter quests">
+              <button class="filter-chip active" data-qfilter="all" type="button">All</button>
+              <button class="filter-chip" data-qfilter="today" type="button">Today</button>
+              <button class="filter-chip" data-qfilter="school" type="button">School</button>
+              <button class="filter-chip" data-qfilter="paused" type="button">Paused</button>
+            </div>
+            <div class="quest-list-head">
+              <span class="muted" id="quest-list-summary"></span>
+              <button class="text-button" id="quest-select-mode" data-testid="quest-select-mode" type="button">Select</button>
+            </div>
             <div id="parent-quests"></div>
+
+            <!-- Sirus's mirror sits AFTER the list now. It is reference, not
+                 the thing you came here to change. -->
+            <details class="card sirus-mirror">
+              <summary><strong>On Sirus's screen now</strong> <span class="muted" id="sirus-today-summary"></span></summary>
+              <div id="sirus-today"></div>
+            </details>
           </div>
 
           <!-- Log — what happened with responsibilities (§17.11) -->
@@ -210,6 +212,17 @@
           </section>
         </section>
       </main>
+      <div class="quest-bulk-toolbar" id="quest-bulk-bar" data-testid="quest-bulk-toolbar" hidden>
+        <div>
+          <strong id="quest-selection-count">0 selected</strong>
+          <small class="muted">Changes apply going forward.</small>
+        </div>
+        <div class="quest-bulk-actions">
+          <button class="text-button" id="quest-select-active" type="button">All shown</button>
+          <button class="text-button" id="quest-clear-selection" type="button" hidden>Clear</button>
+          <button class="primary-button" id="quest-bulk-edit" data-testid="quest-bulk-edit" type="button" disabled>Change</button>
+        </div>
+      </div>
       <nav class="bottom-nav" data-parent-nav>
         <button class="nav-item active" data-pgo="dash"><span>★</span><small>Points</small></button>
         <button class="nav-item" data-pgo="ledger"><span>≣</span><small>Ledger</small></button>
@@ -385,6 +398,22 @@
     </div>
   </form></dialog>
 
+  <!-- One row's secondary actions. These used to be five buttons on every row;
+       at two dozen routines that was a wall of controls to read past. -->
+  <dialog id="quest-actions-dialog" class="modal" data-testid="quest-actions-dialog"><form method="dialog" class="modal-card">
+    <h2 id="quest-actions-title">Quest</h2>
+    <p class="muted" id="quest-actions-meta"></p>
+    <div class="action-stack">
+      <button class="wide-button" id="qa-edit" type="button" value="cancel">Edit details</button>
+      <button class="wide-button" id="qa-duplicate" type="button" value="cancel">Duplicate</button>
+      <button class="wide-button" id="qa-up" type="button" value="cancel">Move up</button>
+      <button class="wide-button" id="qa-down" type="button" value="cancel">Move down</button>
+      <button class="wide-button" id="qa-archive" type="button" value="cancel">Archive</button>
+      <button class="wide-button danger" id="qa-delete" type="button" value="cancel">Delete permanently</button>
+    </div>
+    <div class="btn-row"><button class="text-button" value="cancel">Close</button></div>
+  </form></dialog>
+
   <!-- Conservative reusable-routine bulk edits. No reorder or reward editing. -->
   <dialog id="quest-bulk-dialog" class="modal" data-testid="quest-bulk-dialog"><form method="dialog" class="modal-card">
     <h2>Change selected quests</h2>
@@ -472,10 +501,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=2744110b"></script>
-  <script type="module" src="src/ledger-actions.js?v=2744110b"></script>
+  <script type="module" src="src/app.js?v=a6cb40f2"></script>
+  <script type="module" src="src/ledger-actions.js?v=a6cb40f2"></script>
   <!-- Presentation-only device/accessibility layer; no store writes or game state. -->
-  <script type="module" src="src/polish.js?v=2744110b"></script>
+  <script type="module" src="src/polish.js?v=a6cb40f2"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.

@@ -764,3 +764,166 @@ button[data-polish-busy="true"]::after {
   gap: 16px;
   align-items: baseline;
 }
+
+/* ---------- Quest manager rework -------------------------------------------
+   The row used to carry seven buttons; with two dozen routines that was a wall
+   of controls to read past. It now has three: an inline on/off switch (by far
+   the most common action), a tappable body that opens the editor, and a ⋯
+   sheet for everything else. */
+.quest-filter-bar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 10px;
+  -webkit-overflow-scrolling: touch;
+}
+.filter-chip {
+  flex: 0 0 auto;
+  border: 2px solid var(--line);
+  background: var(--paper);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 7px 15px;
+  font: inherit;
+  font-weight: 700;
+  font-size: .85rem;
+  cursor: pointer;
+}
+.filter-chip.active {
+  border-color: var(--purple);
+  color: var(--purple);
+  background: var(--cream);
+}
+
+.quest-list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.parent-quest-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Tap target is the whole row body, not a small "Edit" button. */
+.quest-row-body {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 12px 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+}
+.quest-row-body strong { display: block; }
+.quest-row-body small {
+  display: block;
+  color: var(--muted);
+  font-size: .78rem;
+  margin-top: 2px;
+}
+
+.quest-row-menu {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 10px 8px;
+  border-radius: 10px;
+}
+.quest-row-menu:hover { background: var(--cream); color: var(--ink); }
+
+/* On/off as a switch: state is readable at a glance down a long list, which a
+   Pause/Resume button's changing label is not. */
+.quest-switch { flex: 0 0 auto; display: inline-flex; cursor: pointer; }
+.quest-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  cursor: pointer;
+}
+.quest-switch-track {
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--line);
+  position: relative;
+  transition: background .18s ease;
+}
+.quest-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  transition: transform .18s ease;
+}
+.quest-switch input:checked + .quest-switch-track { background: var(--green); }
+.quest-switch input:checked + .quest-switch-track::after { transform: translateX(18px); }
+.quest-switch input:focus-visible + .quest-switch-track { outline: 3px solid var(--purple); outline-offset: 2px; }
+
+.quest-state-chip.archived {
+  flex: 0 0 auto;
+  font-size: .7rem;
+  font-weight: 800;
+  color: var(--muted);
+  background: var(--cream);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+/* The selection bar is pinned above the nav so the count stays on screen while
+   rows further down the list are being ticked. */
+.quest-bulk-toolbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 84px;
+  max-width: 560px;
+  margin: 0 auto;
+  z-index: 19;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--paper);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+.quest-bulk-toolbar small { display: block; font-size: .72rem; }
+.quest-bulk-toolbar[hidden] { display: none; }
+
+.sirus-mirror { margin-top: 18px; }
+.sirus-mirror summary { cursor: pointer; }
+
+.action-stack { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.action-stack .wide-button { width: 100%; }
+.action-stack .wide-button.danger { color: var(--red, #b4443a); border-color: currentColor; }
+.action-stack .wide-button[disabled] { opacity: .4; cursor: default; }
+
+@media (min-width: 1024px) {
+  /* In the desktop sidebar layout the nav is no longer along the bottom, so
+     the selection bar sits at the bottom of the content column instead. */
+  .app-shell[data-role-shell="parent"] .quest-bulk-toolbar {
+    bottom: 18px;
+    left: auto;
+    right: auto;
+    max-width: 880px;
+    width: calc(100% - 300px);
+  }
+}

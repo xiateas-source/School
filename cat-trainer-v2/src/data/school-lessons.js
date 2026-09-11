@@ -21,6 +21,9 @@
 //                                               Thu project or enrichment
 //                                               Fri Art
 //   3:00  daily copywork ...................... Mon–Fri
+//          Life Skills 1, Fit and Active ....... Sat (weekend enrichment; the
+//                                               weekday schedule has no blocks
+//                                               for these, so they are Anytime)
 //
 // Deliberately NOT modelled: clock times, block lengths, and "the block may end
 // early" rules. The schedule says blocks are maximum containers, not seat-time
@@ -85,6 +88,18 @@ export const SCHOOL_LESSON_QUESTS = [
   {
     id: 's-copywork', title: 'Daily copywork', section: 'Brain', timeWindow: 'school',
     points: 1, brain: 1, energy: 0, coins: 1, recurrence: MON_FRI
+  },
+  // Saturday enrichment. The course plan assigns both on Sat; the weekday
+  // schedule has no blocks for them, so they are 'anytime' rather than
+  // 'school' — Saturday has no school day to sit inside, and the School
+  // filter should stay weekday work.
+  {
+    id: 's-life-skills', title: 'Life Skills 1', section: 'Brain', timeWindow: 'anytime',
+    points: 1, brain: 1, energy: 1, coins: 1, recurrence: days('SA')
+  },
+  {
+    id: 's-fit-active', title: 'Fit and Active', section: 'Brain', timeWindow: 'anytime',
+    points: 1, brain: 0, energy: 2, coins: 1, recurrence: days('SA')
   }
 ];
 

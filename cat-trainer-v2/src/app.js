@@ -1,47 +1,47 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=2744110b';
+import { isConfigured } from './firebase.js?v=a6cb40f2';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=2744110b';
-import * as store from './store.js?v=2744110b';
-import { CAT_DEFS } from './data/cats.js?v=2744110b';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=2744110b';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=2744110b';
-import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=2744110b';
+} from './auth.js?v=a6cb40f2';
+import * as store from './store.js?v=a6cb40f2';
+import { CAT_DEFS } from './data/cats.js?v=a6cb40f2';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=a6cb40f2';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=a6cb40f2';
+import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=a6cb40f2';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=2744110b';
+} from './cafe-interactions.js?v=a6cb40f2';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=2744110b';
+} from './care.js?v=a6cb40f2';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=2744110b';
+} from './shared/rewards.js?v=a6cb40f2';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=2744110b';
+} from './shared/ledger.js?v=a6cb40f2';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=2744110b';
+} from './shared/dates.js?v=a6cb40f2';
 import {
   partitionFeedback, bundleRecognitions, QUEST_RETURN_PRESETS, returnedQuestLine
-} from './shared/feedback.js?v=2744110b';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=2744110b';
+} from './shared/feedback.js?v=a6cb40f2';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=a6cb40f2';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questIsAvailable, questIsArchived,
-  questRecurrence, laterWindowFor,
+  questRecurrence, laterWindowFor, isScheduledOn,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=2744110b';
+} from './shared/routines.js?v=a6cb40f2';
 import {
   questManagementGroups, recurrenceLabel, reorderQuestUpdates
-} from './shared/quest-management.js?v=2744110b';
+} from './shared/quest-management.js?v=a6cb40f2';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -69,6 +69,9 @@ const state = {
   questTab: 'today',              // parent Quest portal sub-tab: today | routines | log
   approveSel: new Set(),          // parent Today: batch-approval selection (completion ids)
   questSelection: new Set(),      // parent Routines: conservative bulk edit selection
+  questFilter: 'all',             // parent Routines list filter: all | today | school | paused
+  questSelectMode: false,         // parent Routines: ticking rows for a bulk change
+  questMenuId: null,              // parent Routines: which row's action sheet is open
   feedbackEvents: [],             // unseen family-feedback events (child only)
   clientId: null                  // stable per-install id for the claim lease
 };
@@ -886,61 +889,73 @@ function renderSirusToday() {
 function parentQuestRow(q, { index = 0, total = 1, archived = false } = {}) {
   const on = q.enabled !== false;
   const selected = state.questSelection.has(q.id);
-  const section = SECTION_META[q.section] || { glyph: '•' };
   const requirement = questIsDailyEssential(q) ? 'Essential' : 'Bonus';
-  const status = archived ? 'Archived' : on ? 'Active' : 'Paused';
   const reward = `+${q.points}m${q.brain ? ' · ★' + q.brain : ''}${q.energy ? ' · ⚡' + q.energy : ''} · ♥${QUEST_BOND}${q.coins ? ' · 🪙' + q.coins : ''}`;
-  // Permanent delete is offered on every routine, not just QA-* ones. It is
-  // safe for history: completions and ledger rows snapshot questTitle and the
-  // rewards at write time, and the approval path falls back to that snapshot,
-  // so a pending completion for a deleted quest still renders and still pays
-  // out. What is lost is the reusable routine itself, which is why the confirm
-  // names it and why Archive stays the softer option beside it.
-  const del = `<button class="quest-action danger" data-del-quest="${esc(q.id)}">Delete</button>`;
-  const actions = archived
-    ? `<button class="quest-action" data-duplicate-quest="${esc(q.id)}">Duplicate</button>
-       <button class="quest-action primary" data-restore-quest="${esc(q.id)}">Restore</button>${del}`
-    : `<button class="quest-action order" data-move-quest="${esc(q.id)}" data-direction="up" ${index === 0 ? 'disabled' : ''} aria-label="Move ${esc(q.title)} up in ${esc(WINDOW_LABEL[questTimeWindow(q)] || questTimeWindow(q))}">↑</button>
-       <button class="quest-action order" data-move-quest="${esc(q.id)}" data-direction="down" ${index === total - 1 ? 'disabled' : ''} aria-label="Move ${esc(q.title)} down in ${esc(WINDOW_LABEL[questTimeWindow(q)] || questTimeWindow(q))}">↓</button>
-       <button class="quest-action" data-edit-quest="${esc(q.id)}">Edit</button>
-       <button class="quest-action" data-duplicate-quest="${esc(q.id)}">Duplicate</button>
-       <button class="quest-action" data-toggle-quest="${esc(q.id)}">${on ? 'Pause' : 'Resume'}</button>
-       <button class="quest-action" data-archive-quest="${esc(q.id)}">Archive</button>${del}`;
-  return `<div class="parent-quest-row ${on ? '' : 'quest-off'} ${archived ? 'quest-archived' : ''}" data-testid="parent-quest-row" data-quest-id="${esc(q.id)}">
-    <label class="quest-select" aria-label="Select ${esc(q.title)}"><input type="checkbox" data-testid="quest-selection" data-select-quest="${esc(q.id)}" ${selected ? 'checked' : ''}></label>
-    <div class="q-body"><strong>${esc(q.title)}</strong>
-      <div class="quest-meta"><span>${esc(section.glyph || '•')} ${esc(q.section || 'General')}</span><span>${esc(requirement)}</span><span>${esc(recurrenceLabel(q))}</span><span>${esc(status)}</span></div>
-      <small>${reward}</small></div>
-    <div class="quest-row-actions">${actions}</div></div>`;
+
+  // Three controls, not seven. Turning a quest on and off is the most common
+  // thing done here, so it stays inline as a switch; tapping the row opens the
+  // full editor; everything else lives behind the row's ⋯ sheet.
+  const tick = state.questSelectMode
+    ? `<label class="quest-select" aria-label="Select ${esc(q.title)}"><input type="checkbox" data-testid="quest-selection" data-select-quest="${esc(q.id)}" ${selected ? 'checked' : ''}></label>`
+    : '';
+
+  const toggle = archived
+    ? `<span class="quest-state-chip archived">Archived</span>`
+    : `<label class="quest-switch" title="${on ? 'Active' : 'Paused'}">
+         <input type="checkbox" data-toggle-quest="${esc(q.id)}" ${on ? 'checked' : ''} aria-label="${on ? 'Pause' : 'Resume'} ${esc(q.title)}">
+         <span class="quest-switch-track" aria-hidden="true"></span>
+       </label>`;
+
+  return `<div class="parent-quest-row ${on ? '' : 'quest-off'} ${archived ? 'quest-archived' : ''}" data-testid="parent-quest-row" data-quest-id="${esc(q.id)}" data-index="${index}" data-total="${total}">
+    ${tick}${toggle}
+    <button class="quest-row-body" data-edit-quest="${esc(q.id)}" type="button">
+      <strong>${esc(q.title)}</strong>
+      <small>${esc(recurrenceLabel(q))} · ${esc(requirement)} · ${reward}</small>
+    </button>
+    <button class="quest-row-menu" data-quest-menu="${esc(q.id)}" type="button" aria-label="More actions for ${esc(q.title)}">⋯</button>
+  </div>`;
 }
 
-// Offer Sirus's real course list as Quests. Additive and idempotent: the card
-// only names what is actually missing, and the whole card hides once every
-// lesson is in, so it never becomes permanent furniture.
-function renderSchoolImport() {
-  const card = el('school-import-card');
-  const note = el('school-import-note');
-  if (!card || !note) return;
-  const missing = missingSchoolLessons(state.quests);
-  card.hidden = missing.length === 0;
-  if (!missing.length) return;
-  const all = missing.length === SCHOOL_LESSON_QUESTS.length;
-  note.textContent = all
-    ? `Add Sirus's ${missing.length} courses as School quests, each on its real days — Math C and Language Arts D every weekday, Language Arts C on Tuesday and Thursday, Art on Friday, and so on. You can edit or pause any of them afterwards.`
-    : `${missing.length} of Sirus's ${SCHOOL_LESSON_QUESTS.length} courses aren't set up yet: ${missing.map(q => q.title).join(', ')}. Adding them won't change the ones you already have.`;
+// Which quests the current filter shows. 'today' uses the same scheduling the
+// child screen uses, so what Mom filters to is what he actually gets.
+function filteredQuests(quests) {
+  const ymd = localDate();
+  switch (state.questFilter) {
+    case 'today': return quests.filter(q => q.enabled !== false && isScheduledOn(q, ymd));
+    case 'school': return quests.filter(q => questTimeWindow(q) === 'school');
+    case 'paused': return quests.filter(q => q.enabled === false);
+    default: return quests;
+  }
 }
 
 function renderQuestBulkToolbar() {
   const live = new Set(state.quests.map(q => q.id));
   for (const id of [...state.questSelection]) if (!live.has(id)) state.questSelection.delete(id);
   const count = state.questSelection.size;
-  el('quest-selection-count').textContent = count ? `${count} selected` : 'Select quests to change together';
+  const bar = el('quest-bulk-bar');
+  // The bar is pinned above the nav and only appears in select mode, so the
+  // count is on screen while rows further down the list are being ticked —
+  // previously it sat at the top of the panel and scrolled away.
+  if (bar) bar.hidden = !state.questSelectMode;
+  el('quest-selection-count').textContent = count ? `${count} selected` : 'Tap quests to select';
   el('quest-bulk-edit').disabled = count === 0;
   el('quest-clear-selection').hidden = count === 0;
+  const mode = el('quest-select-mode');
+  if (mode) mode.textContent = state.questSelectMode ? 'Done' : 'Select';
 }
 
 function renderParentQuests() {
-  const { groups, archived } = questManagementGroups(state.quests);
+  document.querySelectorAll('[data-qfilter]').forEach(b =>
+    b.classList.toggle('active', b.dataset.qfilter === state.questFilter));
+  const shown = filteredQuests(state.quests);
+  const summary = el('quest-list-summary');
+  if (summary) {
+    const total = state.quests.length;
+    summary.textContent = state.questFilter === 'all'
+      ? `${total} quest${total === 1 ? '' : 's'}`
+      : `${shown.length} of ${total}`;
+  }
+  const { groups, archived } = questManagementGroups(shown);
   const activeHtml = groups.map(group => {
     const activeCount = group.quests.filter(q => q.enabled !== false).length;
     const paused = group.quests.length - activeCount;
@@ -958,11 +973,16 @@ function renderParentQuests() {
         ${requirementGroup('Bonus quests', group.bonusQuests, 'bonus')}
       </div></details>`;
   }).join('');
-  const archivedHtml = archived.length
+  const archivedHtml = archived.length && state.questFilter === 'all'
     ? `<details class="quest-section archived-section"><summary><span class="qs-head"><span class="section-glyph">▣</span>Archived</span><span class="qs-count">${archived.length} recoverable</span></summary>
        <div class="qs-body">${archived.map(q => parentQuestRow(q, { archived: true })).join('')}</div></details>`
     : '';
-  el('parent-quests').innerHTML = activeHtml + archivedHtml || '<div class="empty">No quests yet.</div>';
+  const emptyNote = {
+    today: 'Nothing is scheduled for today.',
+    school: 'No School-time quests yet — add his lessons above.',
+    paused: 'Nothing is paused.'
+  }[state.questFilter] || 'No quests yet.';
+  el('parent-quests').innerHTML = (activeHtml + archivedHtml) || `<div class="empty">${emptyNote}</div>`;
   renderQuestBulkToolbar();
 }
 
@@ -973,6 +993,43 @@ function syncQuestBulkDialog() {
   el('quest-bulk-recurrence-row').hidden = action !== 'recurrence';
   el('quest-bulk-days-row').hidden = action !== 'recurrence' || recurrence !== 'selected_days';
   el('quest-bulk-once-row').hidden = action !== 'recurrence' || recurrence !== 'one_time';
+}
+
+function openQuestActions(id) {
+  const q = state.quests.find(x => x.id === id);
+  if (!q) return;
+  state.questMenuId = id;
+  const archived = questIsArchived(q);
+  const row = document.querySelector(`.parent-quest-row[data-quest-id="${CSS.escape(id)}"]`);
+  const index = Number(row?.dataset.index ?? 0);
+  const total = Number(row?.dataset.total ?? 1);
+
+  el('quest-actions-title').textContent = q.title;
+  el('quest-actions-meta').textContent =
+    `${WINDOW_LABEL[questTimeWindow(q)] || 'Anytime'} · ${recurrenceLabel(q)} · ${archived ? 'Archived' : (q.enabled === false ? 'Paused' : 'Active')}`;
+
+  // Stamp the actions onto the sheet's buttons; the document-level handlers
+  // that already implement each one pick them up when the click bubbles.
+  const set = (btnId, attrs) => {
+    const b = el(btnId);
+    if (!b) return;
+    for (const k of ['editQuest', 'duplicateQuest', 'moveQuest', 'direction', 'archiveQuest', 'restoreQuest', 'delQuest']) delete b.dataset[k];
+    Object.assign(b.dataset, attrs);
+  };
+  set('qa-edit', { editQuest: id });
+  set('qa-duplicate', { duplicateQuest: id });
+  set('qa-up', { moveQuest: id, direction: 'up' });
+  set('qa-down', { moveQuest: id, direction: 'down' });
+  set('qa-archive', archived ? { restoreQuest: id } : { archiveQuest: id });
+  set('qa-delete', { delQuest: id });
+
+  el('qa-archive').textContent = archived ? 'Restore' : 'Archive';
+  // Reorder is meaningless for an archived quest, and at the ends of a list.
+  el('qa-up').hidden = archived;
+  el('qa-down').hidden = archived;
+  el('qa-up').disabled = index === 0;
+  el('qa-down').disabled = index >= total - 1;
+  el('quest-actions-dialog').showModal();
 }
 
 function openQuestBulkDialog() {
@@ -2564,7 +2621,7 @@ function bindEvents() {
 
     if (e.target.closest('#quest-bulk-edit')) { openQuestBulkDialog(); return; }
     if (e.target.closest('#quest-select-active')) {
-      state.questSelection = new Set(state.quests.filter(q => !questIsArchived(q)).map(q => q.id));
+      state.questSelection = new Set(filteredQuests(state.quests).filter(q => !questIsArchived(q)).map(q => q.id));
       renderParentQuests();
       return;
     }
@@ -2753,6 +2810,21 @@ function bindEvents() {
         try { await store.deleteTransaction(state.familyId, state.uid, t); toast('Entry deleted.'); }
         catch (err) { toast('Could not delete — try again.'); }
       }
+      return;
+    }
+
+    const questMenu = e.target.closest('[data-quest-menu]');
+    if (questMenu) { openQuestActions(questMenu.dataset.questMenu); return; }
+
+    const qfilter = e.target.closest('[data-qfilter]');
+    if (qfilter) { state.questFilter = qfilter.dataset.qfilter; renderParentQuests(); return; }
+
+    if (e.target.closest('#quest-select-mode')) {
+      state.questSelectMode = !state.questSelectMode;
+      // Leaving select mode drops the selection, so a stale set can never be
+      // applied by a later, unrelated bulk change.
+      if (!state.questSelectMode) state.questSelection.clear();
+      renderParentQuests();
       return;
     }
 
@@ -2997,6 +3069,14 @@ function bindEvents() {
   });
   el('quest-save').addEventListener('click', saveQuestFromDialog);
   el('q-recurrence').addEventListener('change', syncQuestDaysRow);
+
+  // The action sheet's buttons carry the same data-* attributes the row
+  // buttons used to, and the document-level handlers act on them as the click
+  // bubbles. This listener only dismisses the sheet first, so the action runs
+  // against a closed dialog rather than behind one.
+  el('quest-actions-dialog').addEventListener('click', (e) => {
+    if (e.target.closest('button')) el('quest-actions-dialog').close();
+  });
   initCafeInteractions();
 }
 
