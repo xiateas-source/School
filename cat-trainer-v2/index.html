@@ -8,8 +8,8 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=fe73a54f">
-  <link rel="stylesheet" href="styles/polish.css?v=fe73a54f">
+  <link rel="stylesheet" href="styles/base.css?v=fcfec9c5">
+  <link rel="stylesheet" href="styles/polish.css?v=fcfec9c5">
 </head>
 <body>
   <div id="app">
@@ -141,7 +141,7 @@
             <section class="card">
               <div class="card-head"><h3>This week's goal</h3></div>
               <p class="muted">One line, set at Monday's Morning Meeting and revisited the rest of the week. It shows on Sirus's home screen. It earns nothing on its own.</p>
-              <form id="weekly-goal-form" class="inline-form">
+              <form id="weekly-goal-form" class="goal-form">
                 <input id="weekly-goal-input" data-testid="weekly-goal-input" type="text" maxlength="90" placeholder="e.g. Start my work without being asked">
                 <button class="primary-button" type="submit" data-testid="weekly-goal-save">Save</button>
               </form>
@@ -202,8 +202,8 @@
         <section class="screen" data-pscreen="settings">
           <h2 class="page-title">Settings</h2>
           <section class="card">
-            <h3>Pair Sirus's tablet</h3>
-            <p class="muted">Generate a code, then enter it on the tablet. Each code works once and expires after 15 minutes.</p>
+            <h3>Pair Sirus's device</h3>
+            <p class="muted">Generate a code, then enter it on his phone or tablet. Each code works once and expires after 15 minutes.</p>
             <button class="primary-button" id="make-code-btn" data-testid="make-pair-code">Create pairing code</button>
             <div id="pair-code-display" class="code-display" data-testid="pair-code-display" hidden></div>
           </section>
@@ -522,10 +522,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=fe73a54f"></script>
-  <script type="module" src="src/ledger-actions.js?v=fe73a54f"></script>
+  <script type="module" src="src/app.js?v=fcfec9c5"></script>
+  <script type="module" src="src/ledger-actions.js?v=fcfec9c5"></script>
   <!-- Presentation-only device/accessibility layer; no store writes or game state. -->
-  <script type="module" src="src/polish.js?v=fe73a54f"></script>
+  <script type="module" src="src/polish.js?v=fcfec9c5"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.

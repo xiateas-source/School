@@ -2,35 +2,35 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=fe73a54f';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=fe73a54f';
-import { seededQuests } from './data/quests.js?v=fe73a54f';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=fe73a54f';
+import { initFirebase, db, dbSdk } from './firebase.js?v=fcfec9c5';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=fcfec9c5';
+import { seededQuests } from './data/quests.js?v=fcfec9c5';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=fcfec9c5';
 import {
   CARE_NEEDS, areCareNeedsOkay, freshCatNeeds,
   dailyQuestCareAward, needsAt, questCareAwardId, refillNeed
-} from './care.js?v=fe73a54f';
+} from './care.js?v=fcfec9c5';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=fe73a54f';
+} from './shared/rewards.js?v=fcfec9c5';
 import {
   SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
   normalizeTransaction, summarizeDay
-} from './shared/ledger.js?v=fe73a54f';
+} from './shared/ledger.js?v=fcfec9c5';
 import {
   FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable,
   questReturnPreset
-} from './shared/feedback.js?v=fe73a54f';
-import { localDate, localTimeLabel } from './shared/dates.js?v=fe73a54f';
+} from './shared/feedback.js?v=fcfec9c5';
+import { localDate, localTimeLabel } from './shared/dates.js?v=fcfec9c5';
 import {
   generatePairingCode, isPairingCodeShape, isPairingUsable, pairingErrorMessage
-} from './shared/pairing.js?v=fe73a54f';
-import { presetTargets } from './shared/routines.js?v=fe73a54f';
+} from './shared/pairing.js?v=fcfec9c5';
+import { presetTargets } from './shared/routines.js?v=fcfec9c5';
 import {
   bulkQuestPatch, duplicateQuestData
-} from './shared/quest-management.js?v=fe73a54f';
+} from './shared/quest-management.js?v=fcfec9c5';
 
 export const CHILD_ID = 'sirus';
 
