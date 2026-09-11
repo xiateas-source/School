@@ -95,6 +95,24 @@ assert.ok(
   'a parent cafe row must expose the Return control the cafe purchase test needs'
 );
 
+// Every function renderAll() calls must actually exist. An edit once deleted
+// renderSchoolImport while leaving its call site, and the ReferenceError
+// aborted the parent render partway through — so the Cats and Café screens,
+// which render after it, silently went blank. Nothing else here would have
+// caught that: the markup was fine and every testid was present.
+{
+  const renderAll = app.match(/if \(state\.role === 'parent'\) \{([^}]*)\}/);
+  assert.ok(renderAll, "could not find renderAll's parent branch to verify");
+  const called = [...renderAll[1].matchAll(/(\w+)\(\)/g)].map(m => m[1]);
+  assert.ok(called.length > 5, `expected several render calls, found ${called.length}`);
+  for (const fn of called) {
+    assert.ok(
+      new RegExp(`function ${fn}\\s*\\(`).test(app),
+      `renderAll calls ${fn}() but src/app.js defines no such function — the parent render would throw and every screen after it would go blank`
+    );
+  }
+}
+
 // A testid alone isn't enough for the rows an agent has to tell apart: it must be
 // able to say WHICH quest a row is about, and for a quest card, where it stands.
 assert.match(

@@ -2,16 +2,16 @@
 // Ordinary mistakes become immutable linked corrections. Permanent deletion is
 // an intentionally rare parent cleanup path for test/junk/duplicate data only.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=ed6984a4';
-import { QUICK_ACTION_BY_CODE, CAPS, clamp } from './shared/rewards.js?v=ed6984a4';
-import { amountIntegrity, normalizeTransaction } from './shared/ledger.js?v=ed6984a4';
-import { FEEDBACK_TYPE, DELIVERY, recognitionEventId } from './shared/feedback.js?v=ed6984a4';
-import { localDate, localTimeLabel } from './shared/dates.js?v=ed6984a4';
+import { initFirebase, db, dbSdk } from './firebase.js?v=9a674416';
+import { QUICK_ACTION_BY_CODE, CAPS, clamp } from './shared/rewards.js?v=9a674416';
+import { amountIntegrity, normalizeTransaction } from './shared/ledger.js?v=9a674416';
+import { FEEDBACK_TYPE, DELIVERY, recognitionEventId } from './shared/feedback.js?v=9a674416';
+import { localDate, localTimeLabel } from './shared/dates.js?v=9a674416';
 import {
   correctionTransactionId, correctionAmountIntegrity, reversibleRewardEffects,
   permanentDeleteEligibility, permanentDeletePlanEligibility,
   findHeroResetTarget, isCorrectionTransaction
-} from './shared/corrections.js?v=ed6984a4';
+} from './shared/corrections.js?v=9a674416';
 
 const CHILD_ID = 'sirus';
 const ZERO_REWARD = { bond: 0, brain: 0, energy: 0, coins: 0 };
