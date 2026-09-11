@@ -1,47 +1,47 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=40d3a587';
+import { isConfigured } from './firebase.js?v=5a6ad005';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=40d3a587';
-import * as store from './store.js?v=40d3a587';
-import { CAT_DEFS } from './data/cats.js?v=40d3a587';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=40d3a587';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=40d3a587';
-import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=40d3a587';
+} from './auth.js?v=5a6ad005';
+import * as store from './store.js?v=5a6ad005';
+import { CAT_DEFS } from './data/cats.js?v=5a6ad005';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=5a6ad005';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=5a6ad005';
+import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=5a6ad005';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=40d3a587';
+} from './cafe-interactions.js?v=5a6ad005';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=40d3a587';
+} from './care.js?v=5a6ad005';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=40d3a587';
+} from './shared/rewards.js?v=5a6ad005';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=40d3a587';
+} from './shared/ledger.js?v=5a6ad005';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=40d3a587';
+} from './shared/dates.js?v=5a6ad005';
 import {
   partitionFeedback, bundleRecognitions, QUEST_RETURN_PRESETS, returnedQuestLine
-} from './shared/feedback.js?v=40d3a587';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=40d3a587';
+} from './shared/feedback.js?v=5a6ad005';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=5a6ad005';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questIsAvailable, questIsArchived,
   questRecurrence, laterWindowFor, isScheduledOn,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=40d3a587';
+} from './shared/routines.js?v=5a6ad005';
 import {
   questManagementGroups, recurrenceLabel, reorderQuestUpdates
-} from './shared/quest-management.js?v=40d3a587';
+} from './shared/quest-management.js?v=5a6ad005';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -1165,6 +1165,17 @@ function todayNeedsYouHtml() {
 // One quest row on Today: title, an at-a-glance status chip, and (Slice 2c) its
 // today-only actions. `phase` is the current daypart, threaded through so the
 // Later action only appears when there is a genuinely-later slot to move to.
+// One confirm for a run of lessons. Marking a whole block done is the shape of
+// how the day actually goes — a school block finishes and three or four quests
+// are done at once — so the per-quest confirm is kept but need not be answered
+// once per row. Only unfinished quests are included; already-approved ones are
+// left alone rather than re-credited.
+function blockDoneButtonHtml(quests, doneIds) {
+  const pending = quests.filter(q => !doneIds.has(q.id) && completionStatus(q.id) !== 'approved');
+  if (pending.length < 2) return '';
+  return `<button class="text-button block-done" data-block-done="${esc(pending.map(q => q.id).join(','))}">Mark all ${pending.length} done</button>`;
+}
+
 function parentTodayQuestRow(q, phase) {
   const st = completionStatus(q.id); // null | 'pending' | 'approved'
   // Marking work done on Sirus's behalf is the most-used action of the day, so
@@ -1226,7 +1237,7 @@ function renderParentToday() {
     const counts = progressCounts(g.quests, doneIds);
     const mins = minutesAvailable(g.quests, doneIds);
     sections.push(`<section class="card ptoday-now">
-      <p class="phase-eyebrow now-eyebrow">RIGHT NOW · ${esc(WINDOW_LABEL[g.window] || g.window)}</p>
+      <div class="ptoday-head"><p class="phase-eyebrow now-eyebrow">RIGHT NOW · ${esc(WINDOW_LABEL[g.window] || g.window)}</p>${blockDoneButtonHtml(g.quests, doneIds)}</div>
       <p class="ptoday-progress">${counts.complete}/${counts.total} done${mins?` · <strong>${mins}m</strong> still to earn`:' · all done here — great job! 🎉'}</p>
       ${g.quests.map(q => parentTodayQuestRow(q, phase)).join('')}</section>`);
   } else {
@@ -1242,16 +1253,17 @@ function renderParentToday() {
 
   // Anytime is available independently of the day phase.
   if (day.anytime && day.anytime.length) {
-    sections.push(`<section class="card ptoday-anytime"><p class="phase-eyebrow">ANYTIME</p>${day.anytime.map(q => parentTodayQuestRow(q, phase)).join('')}</section>`);
+    sections.push(`<section class="card ptoday-anytime"><div class="ptoday-head"><p class="phase-eyebrow">ANYTIME</p>${blockDoneButtonHtml(day.anytime, doneIds)}</div>${day.anytime.map(q => parentTodayQuestRow(q, phase)).join('')}</section>`);
   }
 
   // Past windows still holding unfinished work — "still needs doing", never a
   // failure (§10.1). Only rows that are actually unfinished are listed.
   if (day.stillNeedsDoing.length) {
-    const rows = day.stillNeedsDoing.map(g =>
-      `<p class="phase-eyebrow">${esc(WINDOW_LABEL[g.window] || g.window)} · STILL NEEDS DOING</p>` +
-      g.quests.filter(q => !doneIds.has(q.id)).map(q => parentTodayQuestRow(q, phase)).join('')
-    ).join('');
+    const rows = day.stillNeedsDoing.map(g => {
+      const unfinished = g.quests.filter(q => !doneIds.has(q.id));
+      return `<div class="ptoday-head"><p class="phase-eyebrow">${esc(WINDOW_LABEL[g.window] || g.window)} · STILL NEEDS DOING</p>${blockDoneButtonHtml(unfinished, doneIds)}</div>` +
+        unfinished.map(q => parentTodayQuestRow(q, phase)).join('');
+    }).join('');
     sections.push(`<section class="card ptoday-still">${rows}</section>`);
   }
 
@@ -2766,6 +2778,34 @@ function bindEvents() {
     if (complete) { await handleComplete(complete.dataset.complete); return; }
 
     // Parent marks a quest done for Sirus from the "On Sirus's screen now" card.
+    const blockDone = e.target.closest('[data-block-done]');
+    if (blockDone) {
+      const ids = blockDone.dataset.blockDone.split(',').filter(Boolean);
+      const quests = ids.map(id => state.quests.find(x => x.id === id)).filter(Boolean);
+      if (!quests.length) return;
+      if (!confirm(`Mark these ${quests.length} done for Sirus?\n\n${quests.map(q => '· ' + q.title).join('\n')}\n\nHe'll get the reward for each now.`)) return;
+      blockDone.disabled = true;
+      let done = 0;
+      try {
+        // Sequential, not parallel: each completion is its own transaction
+        // against the same child document, and racing them would make the
+        // Care Charge and coin writes contend.
+        for (const q of quests) {
+          if (completionStatus(q.id) === 'approved') continue;
+          await store.parentCompleteQuest(state.familyId, state.uid, q.id);
+          done++;
+        }
+        toast(`Marked ${done} done ⭐`);
+      } catch (err) {
+        // Partial success is real: say what actually landed rather than
+        // reporting a clean failure over completed writes.
+        toast(done ? `Marked ${done} done — the rest didn't save.` : 'Could not mark those done.');
+      } finally {
+        blockDone.disabled = false;
+      }
+      return;
+    }
+
     const sirusDone = e.target.closest('[data-sirus-done]');
     if (sirusDone) {
       const q = state.quests.find(x => x.id === sirusDone.dataset.sirusDone);
