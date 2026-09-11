@@ -8,8 +8,8 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=79769391">
-  <link rel="stylesheet" href="styles/polish.css?v=79769391">
+  <link rel="stylesheet" href="styles/base.css?v=03696e99">
+  <link rel="stylesheet" href="styles/polish.css?v=03696e99">
 </head>
 <body>
   <div id="app">
@@ -172,7 +172,7 @@
 
         <!-- Cats -->
         <section class="screen" data-pscreen="cats">
-          <div class="card-head"><h2 class="page-title">Cats</h2><button class="text-button" data-pgo="cafe" data-testid="parent-cafe-link">Cat Café</button></div>
+          <div class="card-head page-head"><h2 class="page-title">Cats</h2><button class="text-button" data-pgo="cafe" data-testid="parent-cafe-link">Cat Café</button></div>
           <div id="parent-cats" class="cat-grid"></div>
         </section>
 
@@ -467,10 +467,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=79769391"></script>
-  <script type="module" src="src/ledger-actions.js?v=79769391"></script>
+  <script type="module" src="src/app.js?v=03696e99"></script>
+  <script type="module" src="src/ledger-actions.js?v=03696e99"></script>
   <!-- Presentation-only device/accessibility layer; no store writes or game state. -->
-  <script type="module" src="src/polish.js?v=79769391"></script>
+  <script type="module" src="src/polish.js?v=03696e99"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.
