@@ -115,49 +115,6 @@ async function createQuest(page, { title, window = 'anytime', recurrence = 'ever
   return id;
 }
 
-// Bounded on purpose. Each delete is a modal open, a click, a Firestore round
-// trip and a re-render, so a large backlog cannot be cleared inside one hook's
-// budget — an unbounded sweep once timed out beforeAll and skipped all 15
-// tests, which is far worse than leaving clutter. Clear a slice per run and
-// let successive runs drain the rest.
-const SWEEP_LIMIT = 6;
-
-async function sweepStaleQaQuests(page) {
-  await openRoutines(page);
-  // Reveal archived rows too — a stale fixture may have been archived by the
-  // test that died.
-  const archived = page.locator('details.archived-section');
-  if (await archived.count()) await archived.locator('summary').click();
-
-  const stale = [];
-  for (const row of await page.locator('[data-testid="parent-quest-row"]').all()) {
-    const title = (await row.locator('strong').first().textContent() || '').trim();
-    if (title.startsWith('QA-') && !title.startsWith(RUN)) {
-      const id = await row.getAttribute('data-quest-id');
-      if (id) stale.push({ id, title });
-    }
-  }
-  if (!stale.length) return;
-
-  const batch = stale.slice(0, SWEEP_LIMIT);
-  let removed = 0;
-  for (const { id } of batch) {
-    try {
-      page.once('dialog', d => d.accept());
-      await questRowAction(page, id, '[data-del-quest]');
-      removed++;
-    } catch {
-      // A leftover we cannot remove is not worth failing the run over; the
-      // count below is the signal that manual cleanup is needed.
-    }
-  }
-  const left = stale.length - removed;
-  console.log(
-    `swept ${removed} stale QA quest(s) from earlier runs` +
-    (left > 0 ? ` — ${left} still queued for the next run` : '')
-  );
-}
-
 async function deleteQuest(page, id) {
   await parentGo(page, 'quests');
   await page.locator('[data-qtab="routines"]').click();
@@ -353,20 +310,21 @@ test.beforeAll(async ({ browser }) => {
     );
   }
 
-  // ---- Sweep quests left behind by earlier runs ---------------------------
-  // AFTER the family gate, never before: this deletes real documents, so it
-  // must not run until the signed-in family has been proven to be the QA one.
+  // NOTE: a stale-QA-quest sweep lived here and was REMOVED. It deleted
+  // leftovers through the row action sheet, and it hung beforeAll twice in a
+  // row — once at 90s, once at 300s — which skipped all 15 tests both times.
+  // Fighting over the archived group's <details> toggle is the likeliest
+  // reason: the sweep opened it, and questRowAction clicked the same summary
+  // again whenever a row read as hidden.
   //
-  // The QA family has no reset, so a run that dies mid-flight leaves its
-  // QA-<runid>-* quests behind. Those are not merely clutter: enough leftover
-  // Anytime quests push the child's Anytime group past its 3-card cap, and
-  // tests that assert "this quest reached his screen" then fail for a reason
-  // that has nothing to do with the behaviour under test. That is exactly what
-  // broke tests 03 and 10.
+  // The lesson is the ordering of costs, not the bug: leftover fixtures make
+  // the occasional test fail for an unreal reason, while a broken hook makes
+  // EVERY test not run. Cleanup must never be able to cost more than the mess
+  // it tidies. If it returns, it belongs in its own test with its own budget,
+  // after the gate, where failing leaves the rest of the suite reporting.
   //
-  // Only titles starting with QA- are touched, and only ones from a DIFFERENT
-  // run than this one, so a concurrent run's fixtures are never deleted.
-  await sweepStaleQaQuests(parent);
+  // Until then: delete leftover QA-* quests by hand from Quests -> Routines
+  // (QA-TESTING.md section 8).
 
   // Child session: paired inside this run, because codes are single-use and
   // expire in 15 minutes. Non-fatal — child-dependent tests skip with a reason
