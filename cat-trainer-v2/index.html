@@ -8,8 +8,8 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=b321308b">
-  <link rel="stylesheet" href="styles/polish.css?v=b321308b">
+  <link rel="stylesheet" href="styles/base.css?v=e33698b7">
+  <link rel="stylesheet" href="styles/polish.css?v=e33698b7">
 </head>
 <body>
   <div id="app">
@@ -390,6 +390,15 @@
       <label>Energy<input id="q-energy" type="number" min="0" value="1"></label>
       <label>Coins<input id="q-coins" type="number" min="0" value="1"></label>
     </div>
+    <label>Timer<select id="q-timer-mode" data-testid="quest-timer-mode">
+      <option value="none">No timer</option>
+      <option value="fixed_duration">Keep going for a set time (e.g. 2:00 brushing)</option>
+      <option value="optional_race">Beat the clock — optional, safe tasks only</option>
+      <option value="count_up">Time how long it takes</option>
+    </select></label>
+    <label id="q-timer-seconds-row" hidden>Seconds<input id="q-timer-seconds" type="number" min="10" max="1800" value="120"></label>
+    <p class="muted" id="q-timer-note" hidden></p>
+    <label class="check-row"><input id="q-unsafe-rush" type="checkbox"> Never race this — speed would hurt quality or safety</label>
     <label class="check-row"><input id="q-essential" type="checkbox"> Daily Essential — expected every scheduled day</label>
     <label class="check-row"><input id="q-enabled" type="checkbox" checked> Active — Sirus can do this task</label>
     <div class="btn-row">
@@ -501,10 +510,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=b321308b"></script>
-  <script type="module" src="src/ledger-actions.js?v=b321308b"></script>
+  <script type="module" src="src/app.js?v=e33698b7"></script>
+  <script type="module" src="src/ledger-actions.js?v=e33698b7"></script>
   <!-- Presentation-only device/accessibility layer; no store writes or game state. -->
-  <script type="module" src="src/polish.js?v=b321308b"></script>
+  <script type="module" src="src/polish.js?v=e33698b7"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.

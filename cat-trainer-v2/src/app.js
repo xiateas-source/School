@@ -1,47 +1,51 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=b321308b';
+import { isConfigured } from './firebase.js?v=e33698b7';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=b321308b';
-import * as store from './store.js?v=b321308b';
-import { CAT_DEFS } from './data/cats.js?v=b321308b';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=b321308b';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=b321308b';
-import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=b321308b';
+} from './auth.js?v=e33698b7';
+import * as store from './store.js?v=e33698b7';
+import { CAT_DEFS } from './data/cats.js?v=e33698b7';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=e33698b7';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=e33698b7';
+import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=e33698b7';
+import {
+  TIMER_MODE_LABEL, effectiveTimerMode, hasTimer, questTimerMode, questTimerSeconds,
+  timerStartLabel, timerState, raceSafetyBlock
+} from './shared/timers.js?v=e33698b7';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=b321308b';
+} from './cafe-interactions.js?v=e33698b7';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=b321308b';
+} from './care.js?v=e33698b7';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=b321308b';
+} from './shared/rewards.js?v=e33698b7';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=b321308b';
+} from './shared/ledger.js?v=e33698b7';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=b321308b';
+} from './shared/dates.js?v=e33698b7';
 import {
   partitionFeedback, bundleRecognitions, QUEST_RETURN_PRESETS, returnedQuestLine
-} from './shared/feedback.js?v=b321308b';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=b321308b';
+} from './shared/feedback.js?v=e33698b7';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=e33698b7';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questIsAvailable, questIsArchived,
   questRecurrence, laterWindowFor, isScheduledOn,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=b321308b';
+} from './shared/routines.js?v=e33698b7';
 import {
   questManagementGroups, recurrenceLabel, reorderQuestUpdates
-} from './shared/quest-management.js?v=b321308b';
+} from './shared/quest-management.js?v=e33698b7';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -72,6 +76,7 @@ const state = {
   questFilter: 'all',             // parent Routines list filter: all | today | school | paused
   questSelectMode: false,         // parent Routines: ticking rows for a bulk change
   questMenuId: null,              // parent Routines: which row's action sheet is open
+  activeTimer: null,              // { questId, startedAt } — one running timer, device-local
   feedbackEvents: [],             // unseen family-feedback events (child only)
   clientId: null                  // stable per-install id for the claim lease
 };
@@ -1209,7 +1214,8 @@ function parentTodayQuestRow(q, phase) {
     : st === 'pending'
       ? `<button class="pill-btn approve" data-sirus-done="${esc(q.id)}" aria-label="Approve ${esc(q.title)}">✓ Approve</button>`
       : `<button class="pill-btn mark-done" data-sirus-done="${esc(q.id)}" aria-label="Mark ${esc(q.title)} done for Sirus">Mark done</button>`;
-  return `<div class="ptoday-row" data-testid="ptoday-row" data-quest-id="${esc(q.id)}"><div class="q-body"><strong>${esc(q.title)}</strong>${todayFlagHtml(q)}</div>${primary}${todayActionsHtml(q, phase)}</div>`;
+  const timer = st ? '' : timerControlHtml(q);
+  return `<div class="ptoday-row" data-testid="ptoday-row" data-quest-id="${esc(q.id)}"><div class="q-body"><strong>${esc(q.title)}</strong>${todayFlagHtml(q)}${timer ? `<div class="q-timer">${timer}</div>` : ''}</div>${primary}${todayActionsHtml(q, phase)}</div>`;
 }
 // Inline marker for a quest carrying a today-only move/next (skips leave the
 // board entirely and are managed from the Today-is-different card instead).
@@ -1459,6 +1465,54 @@ function renderChildHome() {
   const next = planned.filter(q => !completionStatus(q.id)).slice(0, 3);
   el('c-next-quests').innerHTML = next.length ? next.map(childQuestCard).join('') : '<div class="empty">All done — great job!</div>';
 }
+// A Quest timer control. Device-local and deliberately not synced: it is a tool
+// for whoever is standing there, not shared state, so it costs no Firestore
+// writes and works with no signal. One runs at a time.
+//
+// It NEVER gates completion. The Done / Mark done control is unchanged whether
+// a timer was used, ignored, or abandoned half way.
+let timerInterval = null;
+
+function timerControlHtml(q) {
+  if (!hasTimer(q)) return '';
+  const running = state.activeTimer && state.activeTimer.questId === q.id;
+  if (!running) {
+    return `<button class="timer-btn" data-timer-start="${esc(q.id)}" data-testid="timer-start">⏱ ${esc(timerStartLabel(q))}</button>`;
+  }
+  const st = timerState(q, state.activeTimer.startedAt, Date.now());
+  return `<span class="timer-live ${st.finished ? 'done' : ''}" data-timer-display="${esc(q.id)}" data-testid="timer-live">${esc(st.display)}${st.finished ? ' ✓' : ''}</span>
+    <button class="timer-btn stop" data-timer-stop="${esc(q.id)}" aria-label="Stop timer">✕</button>`;
+}
+
+// Repaint only the running clock. The full render runs on Firestore snapshots;
+// a timer must not trigger one every quarter second.
+function tickTimer() {
+  if (!state.activeTimer) return;
+  const q = state.quests.find(x => x.id === state.activeTimer.questId);
+  if (!q) { stopTimer(); return; }
+  const st = timerState(q, state.activeTimer.startedAt, Date.now());
+  for (const node of document.querySelectorAll(`[data-timer-display="${CSS.escape(q.id)}"]`)) {
+    node.textContent = st.display + (st.finished ? ' ✓' : '');
+    node.classList.toggle('done', st.finished);
+  }
+  if (st.finished && !state.activeTimer.announced) {
+    state.activeTimer.announced = true;
+    toast(effectiveTimerMode(q) === 'optional_race' ? 'Time! ⏱' : 'All done — full time! ⭐');
+  }
+}
+
+function startTimer(questId) {
+  state.activeTimer = { questId, startedAt: Date.now(), announced: false };
+  if (!timerInterval) timerInterval = setInterval(tickTimer, 250);
+  renderAll();
+}
+
+function stopTimer() {
+  state.activeTimer = null;
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  renderAll();
+}
+
 function childQuestCard(q) {
   const status = completionStatus(q.id); // null | 'pending' | 'approved'
   const cls = status === 'approved' ? 'done' : status === 'pending' ? 'pending' : '';
@@ -1476,6 +1530,7 @@ function childQuestCard(q) {
   // from which control happens to be rendered.
   return `<div class="quest-card ${cls}" data-testid="quest-card" data-quest-id="${esc(q.id)}" data-quest-status="${status || 'todo'}"><div class="q-body"><div class="q-title">${esc(q.title)}</div>
     <div class="q-reward">${reward}</div>
+    ${status ? '' : `<div class="q-timer">${timerControlHtml(q)}</div>`}
     ${status==='pending'?'<div class="q-status">Done! Waiting for Mom ⭐</div>':''}</div>
     ${btn}</div>`;
 }
@@ -2891,6 +2946,11 @@ function bindEvents() {
       return;
     }
 
+    const tStart = e.target.closest('[data-timer-start]');
+    if (tStart) { startTimer(tStart.dataset.timerStart); return; }
+    const tStop = e.target.closest('[data-timer-stop]');
+    if (tStop) { stopTimer(); return; }
+
     const questMenu = e.target.closest('[data-quest-menu]');
     if (questMenu) { openQuestActions(questMenu.dataset.questMenu); return; }
 
@@ -3147,6 +3207,10 @@ function bindEvents() {
   });
   el('quest-save').addEventListener('click', saveQuestFromDialog);
   el('q-recurrence').addEventListener('change', syncQuestDaysRow);
+  for (const id of ['q-timer-mode', 'q-window', 'q-unsafe-rush']) {
+    el(id).addEventListener('change', syncQuestTimerRow);
+  }
+  el('q-title').addEventListener('input', syncQuestTimerRow);
 
   // The action sheet's buttons carry the same data-* attributes the row
   // buttons used to, and the document-level handlers act on them as the click
@@ -3181,6 +3245,30 @@ function syncQuestDaysRow() {
   el('q-days-row').hidden = type !== 'selected_days';
   el('q-once-row').hidden = type !== 'one_time';
 }
+// Keeps the timer fields honest: the seconds box only appears where a duration
+// means something, and if the chosen mode is a race the app will refuse for
+// safety, say so HERE rather than silently degrading it later (§11.2).
+function syncQuestTimerRow() {
+  const mode = el('q-timer-mode').value;
+  el('q-timer-seconds-row').hidden = mode === 'none' || mode === 'count_up';
+  const note = el('q-timer-note');
+  const probe = {
+    title: el('q-title').value.trim(),
+    timeWindow: el('q-window').value,
+    unsafeToRush: el('q-unsafe-rush').checked
+  };
+  const block = mode === 'optional_race' ? raceSafetyBlock(probe) : null;
+  if (block) {
+    note.textContent = `This will run as a plain timer, not a race. ${block}`;
+    note.hidden = false;
+  } else if (mode === 'fixed_duration') {
+    note.textContent = 'Finishing early is not the goal — the timer just keeps him going for the whole time.';
+    note.hidden = false;
+  } else {
+    note.hidden = true;
+  }
+}
+
 function openQuestDialog(id) {
   editingQuestId = id;
   const q = id ? state.quests.find(x => x.id === id) : null;
@@ -3203,6 +3291,10 @@ function openQuestDialog(id) {
   el('q-energy').value = q ? q.energy : 1;
   el('q-coins').value = q ? q.coins : 1;
   el('q-enabled').checked = q ? q.enabled !== false : true;
+  el('q-timer-mode').value = q ? questTimerMode(q) : 'none';
+  el('q-timer-seconds').value = q ? questTimerSeconds(q) : 120;
+  el('q-unsafe-rush').checked = !!(q && q.unsafeToRush);
+  syncQuestTimerRow();
   el('quest-dialog').showModal();
 }
 function recurrenceFromDialog() {
@@ -3237,7 +3329,10 @@ async function saveQuestFromDialog() {
     timeWindow,
     routineId: timeWindow,
     isDailyEssential: el('q-essential').checked,
-    recurrence: recurrenceFromDialog()
+    recurrence: recurrenceFromDialog(),
+    timerMode: el('q-timer-mode').value,
+    timerSeconds: Math.max(10, Math.min(1800, Number(el('q-timer-seconds').value) || 120)),
+    unsafeToRush: el('q-unsafe-rush').checked
   };
   await store.saveQuest(state.familyId, quest);
   toast(editingQuestId ? 'Quest updated.' : 'Quest added.');
