@@ -1,46 +1,47 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=efa6a9e2';
+import { isConfigured } from './firebase.js?v=7bbfa534';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=efa6a9e2';
-import * as store from './store.js?v=efa6a9e2';
-import { CAT_DEFS } from './data/cats.js?v=efa6a9e2';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=efa6a9e2';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=efa6a9e2';
+} from './auth.js?v=7bbfa534';
+import * as store from './store.js?v=7bbfa534';
+import { CAT_DEFS } from './data/cats.js?v=7bbfa534';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=7bbfa534';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=7bbfa534';
+import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=7bbfa534';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=efa6a9e2';
+} from './cafe-interactions.js?v=7bbfa534';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=efa6a9e2';
+} from './care.js?v=7bbfa534';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=efa6a9e2';
+} from './shared/rewards.js?v=7bbfa534';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=efa6a9e2';
+} from './shared/ledger.js?v=7bbfa534';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=efa6a9e2';
+} from './shared/dates.js?v=7bbfa534';
 import {
   partitionFeedback, bundleRecognitions, QUEST_RETURN_PRESETS, returnedQuestLine
-} from './shared/feedback.js?v=efa6a9e2';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=efa6a9e2';
+} from './shared/feedback.js?v=7bbfa534';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=7bbfa534';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questIsAvailable, questIsArchived,
   questRecurrence, laterWindowFor,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=efa6a9e2';
+} from './shared/routines.js?v=7bbfa534';
 import {
   questManagementGroups, recurrenceLabel, reorderQuestUpdates
-} from './shared/quest-management.js?v=efa6a9e2';
+} from './shared/quest-management.js?v=7bbfa534';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -532,7 +533,7 @@ function celebrateActiveCat() {
 // ---- Rendering --------------------------------------------------------------
 function renderAll() {
   if (!state.child) return;
-  if (state.role === 'parent') { renderApprovals(); renderParentDash(); renderLedger(); renderParentToday(); renderQuestLog(); renderSirusToday(); renderParentQuests(); renderParentCats(); renderParentCafe(); }
+  if (state.role === 'parent') { renderApprovals(); renderParentDash(); renderLedger(); renderParentToday(); renderQuestLog(); renderSirusToday(); renderParentQuests(); renderSchoolImport(); renderParentCats(); renderParentCafe(); }
   else { renderChildHome(); renderChildQuests(); renderChildCats(); renderChildCafe(); renderChildProgress(); }
 }
 
@@ -889,24 +890,44 @@ function parentQuestRow(q, { index = 0, total = 1, archived = false } = {}) {
   const requirement = questIsDailyEssential(q) ? 'Essential' : 'Bonus';
   const status = archived ? 'Archived' : on ? 'Active' : 'Paused';
   const reward = `+${q.points}m${q.brain ? ' · ★' + q.brain : ''}${q.energy ? ' · ⚡' + q.energy : ''} · ♥${QUEST_BOND}${q.coins ? ' · 🪙' + q.coins : ''}`;
-  const qaDelete = /^QA-/i.test(q.title || '')
-    ? `<button class="quest-action danger" data-del-quest="${esc(q.id)}">Delete QA</button>`
-    : '';
+  // Permanent delete is offered on every routine, not just QA-* ones. It is
+  // safe for history: completions and ledger rows snapshot questTitle and the
+  // rewards at write time, and the approval path falls back to that snapshot,
+  // so a pending completion for a deleted quest still renders and still pays
+  // out. What is lost is the reusable routine itself, which is why the confirm
+  // names it and why Archive stays the softer option beside it.
+  const del = `<button class="quest-action danger" data-del-quest="${esc(q.id)}">Delete</button>`;
   const actions = archived
     ? `<button class="quest-action" data-duplicate-quest="${esc(q.id)}">Duplicate</button>
-       <button class="quest-action primary" data-restore-quest="${esc(q.id)}">Restore</button>${qaDelete}`
+       <button class="quest-action primary" data-restore-quest="${esc(q.id)}">Restore</button>${del}`
     : `<button class="quest-action order" data-move-quest="${esc(q.id)}" data-direction="up" ${index === 0 ? 'disabled' : ''} aria-label="Move ${esc(q.title)} up in ${esc(WINDOW_LABEL[questTimeWindow(q)] || questTimeWindow(q))}">↑</button>
        <button class="quest-action order" data-move-quest="${esc(q.id)}" data-direction="down" ${index === total - 1 ? 'disabled' : ''} aria-label="Move ${esc(q.title)} down in ${esc(WINDOW_LABEL[questTimeWindow(q)] || questTimeWindow(q))}">↓</button>
        <button class="quest-action" data-edit-quest="${esc(q.id)}">Edit</button>
        <button class="quest-action" data-duplicate-quest="${esc(q.id)}">Duplicate</button>
        <button class="quest-action" data-toggle-quest="${esc(q.id)}">${on ? 'Pause' : 'Resume'}</button>
-       <button class="quest-action" data-archive-quest="${esc(q.id)}">Archive</button>${qaDelete}`;
+       <button class="quest-action" data-archive-quest="${esc(q.id)}">Archive</button>${del}`;
   return `<div class="parent-quest-row ${on ? '' : 'quest-off'} ${archived ? 'quest-archived' : ''}" data-testid="parent-quest-row" data-quest-id="${esc(q.id)}">
     <label class="quest-select" aria-label="Select ${esc(q.title)}"><input type="checkbox" data-testid="quest-selection" data-select-quest="${esc(q.id)}" ${selected ? 'checked' : ''}></label>
     <div class="q-body"><strong>${esc(q.title)}</strong>
       <div class="quest-meta"><span>${esc(section.glyph || '•')} ${esc(q.section || 'General')}</span><span>${esc(requirement)}</span><span>${esc(recurrenceLabel(q))}</span><span>${esc(status)}</span></div>
       <small>${reward}</small></div>
     <div class="quest-row-actions">${actions}</div></div>`;
+}
+
+// Offer Sirus's real course list as Quests. Additive and idempotent: the card
+// only names what is actually missing, and the whole card hides once every
+// lesson is in, so it never becomes permanent furniture.
+function renderSchoolImport() {
+  const card = el('school-import-card');
+  const note = el('school-import-note');
+  if (!card || !note) return;
+  const missing = missingSchoolLessons(state.quests);
+  card.hidden = missing.length === 0;
+  if (!missing.length) return;
+  const all = missing.length === SCHOOL_LESSON_QUESTS.length;
+  note.textContent = all
+    ? `Add Sirus's ${missing.length} courses as School quests, each on its real days — Math C and Language Arts D every weekday, Language Arts C on Tuesday and Thursday, Art on Friday, and so on. You can edit or pause any of them afterwards.`
+    : `${missing.length} of Sirus's ${SCHOOL_LESSON_QUESTS.length} courses aren't set up yet: ${missing.map(q => q.title).join(', ')}. Adding them won't change the ones you already have.`;
 }
 
 function renderQuestBulkToolbar() {
@@ -2520,6 +2541,27 @@ function bindEvents() {
     const cgo = e.target.closest('[data-cgo]'); if (cgo) return navChild(cgo.dataset.cgo);
     const qtab = e.target.closest('[data-qtab]'); if (qtab) return navQuestTab(qtab.dataset.qtab);
 
+    const schoolImport = e.target.closest('#school-import-btn');
+    if (schoolImport) {
+      const missing = missingSchoolLessons(state.quests);
+      if (!missing.length) return;
+      // Order after the existing quests so an import never reshuffles the
+      // routine Mom has already arranged.
+      const base = state.quests.reduce((max, q) => Math.max(max, q.order ?? 0), 0) + 1;
+      schoolImport.disabled = true;
+      try {
+        for (const [i, lesson] of missing.entries()) {
+          await store.saveQuest(state.familyId, { ...lesson, enabled: true, order: base + i });
+        }
+        toast(missing.length === 1 ? 'Added 1 school quest.' : `Added ${missing.length} school quests.`);
+      } catch (err) {
+        toast('Could not add the school lessons.');
+      } finally {
+        schoolImport.disabled = false;
+      }
+      return;
+    }
+
     if (e.target.closest('#quest-bulk-edit')) { openQuestBulkDialog(); return; }
     if (e.target.closest('#quest-select-active')) {
       state.questSelection = new Set(state.quests.filter(q => !questIsArchived(q)).map(q => q.id));
@@ -2757,7 +2799,17 @@ function bindEvents() {
 
     const edit = e.target.closest('[data-edit-quest]'); if (edit) return openQuestDialog(edit.dataset.editQuest);
     const del = e.target.closest('[data-del-quest]');
-    if (del) { if (confirm('Permanently delete this QA quest?')) { await store.deleteQuest(state.familyId, del.dataset.delQuest); toast('QA quest deleted.'); } return; }
+    if (del) {
+      const q = state.quests.find(x => x.id === del.dataset.delQuest);
+      const name = q ? q.title : 'this quest';
+      // Name the routine and say what survives, so this reads as a decision
+      // rather than a dare. Archive is the reversible option; this is not.
+      if (confirm(`Permanently delete "${name}"?\n\nThis removes the routine for good — Archive it instead if you might want it back. Points already earned from it stay in the ledger.`)) {
+        try { await store.deleteQuest(state.familyId, del.dataset.delQuest); toast('Quest deleted.'); }
+        catch (err) { toast('Could not delete that quest.'); }
+      }
+      return;
+    }
 
     const toggleQ = e.target.closest('[data-toggle-quest]');
     if (toggleQ) {

@@ -30,9 +30,15 @@ const STATIC_IDS = [
   'quest-bulk-toolbar', 'quest-bulk-edit',
   'quest-bulk-dialog', 'quest-bulk-action', 'quest-bulk-apply',
   'quest-return-dialog', 'quest-return-note', 'quest-return-submit',
+  // One-tap import of Sirus's real course list into the School daypart.
+  'school-import-card', 'school-import',
   // Parent settings: pairing handoff + the family this session is in.
   'make-pair-code', 'pair-code-display', 'make-coparent-code', 'coparent-code-display',
   'settings-email', 'settings-family-id', 'signout',
+  // The only route to the parent Cafe screen. Without it that screen is
+  // orphaned: it renders on every update but nothing navigates to it, which is
+  // exactly how the Return control shipped unreachable.
+  'parent-cafe-link',
   // Child shell: which shell, the wallets, the quest lists, the care readouts.
   'child-shell', 'child-available', 'child-coins', 'child-care-charges',
   'child-next-quests', 'child-quest-list',
@@ -70,6 +76,13 @@ for (const id of DYNAMIC_IDS) {
     `src/app.js must render data-testid="${id}"`
   );
 }
+
+// An orphaned screen is a silent failure: it renders, it just can't be reached.
+// Assert the link and the screen it targets actually agree.
+assert.ok(
+  html.includes('data-pgo="cafe"') && html.includes('data-pscreen="cafe"'),
+  'the parent Cafe screen must have both a data-pgo="cafe" trigger and its data-pscreen="cafe" target'
+);
 
 assert.match(
   app, /data-testid="parent-cafe-row" data-item-id=/,

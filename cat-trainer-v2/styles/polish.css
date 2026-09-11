@@ -648,3 +648,109 @@ button[data-polish-busy="true"]::after {
 .preset-choice span { font-size: .95rem; font-weight: 800; color: var(--ink); }
 .preset-choice small { font-size: .78rem; font-weight: 400; color: var(--muted); }
 .preset-choice:active { border-color: var(--purple); background: #fff; }
+
+/* ---------- Desktop / laptop layout (Mac) ----------------------------------
+   Everything above is a phone column: .app-shell is capped at 560px and the
+   nav is a fixed bar pinned to the bottom of the viewport. On a laptop that
+   leaves a narrow strip down the middle of the screen with the nav floating
+   at the bottom, far from the content.
+
+   From 1024px up, the same markup is re-laid-out as a two-column app: the nav
+   becomes a real sidebar and the content gets the remaining width. This is
+   CSS-only and additive — no markup, no JS, no new testids — so the phone and
+   tablet layouts below this breakpoint are untouched, and so is every browser
+   agent that drives the app by testid.
+
+   Scoped to the PARENT shell deliberately. The child shell is a tablet
+   experience whose café room does absolute positioning of décor and the cat
+   in a sized room; re-flowing it at desktop widths risks moving saved décor
+   coordinates around, which is Sirus's data. The tablet keeps its existing
+   680px landscape treatment. */
+@media (min-width: 1024px) {
+  .app-shell[data-role-shell="parent"] {
+    max-width: 1140px;
+    padding-bottom: 0;
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    align-items: start;
+    column-gap: 28px;
+    min-height: 100vh;
+  }
+
+  /* Source order is topbar, main, nav — place them explicitly so the nav can
+     sit in the left column without moving in the DOM. */
+  .app-shell[data-role-shell="parent"] > .topbar {
+    grid-column: 2;
+    grid-row: 1;
+    padding-right: 4px;
+    padding-left: 4px;
+  }
+
+  .app-shell[data-role-shell="parent"] > main {
+    grid-column: 2;
+    grid-row: 2;
+    padding-bottom: 48px;
+  }
+
+  /* The bottom bar becomes a sidebar: static instead of viewport-fixed, and
+     sticky so it stays in view down a long Ledger. */
+  .app-shell[data-role-shell="parent"] > .bottom-nav {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    position: sticky;
+    top: 18px;
+    bottom: auto;
+    left: auto;
+    right: auto;
+    max-width: none;
+    margin: 18px 0 0;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+  }
+
+  /* Sidebar items read as rows: icon beside label, left-aligned, full width. */
+  .app-shell[data-role-shell="parent"] .nav-item {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    text-align: left;
+  }
+
+  .app-shell[data-role-shell="parent"] .nav-item span { font-size: 1.15rem; }
+
+  .app-shell[data-role-shell="parent"] .nav-item small {
+    font-size: .92rem;
+    font-weight: 700;
+  }
+
+  .app-shell[data-role-shell="parent"] .nav-item:hover {
+    background: var(--cream);
+    color: var(--ink);
+  }
+
+  .app-shell[data-role-shell="parent"] .nav-item.active {
+    background: var(--cream);
+    color: var(--purple);
+  }
+
+  /* Long prose and form cards stay readable rather than stretching to 900px,
+     but the wide rows (quest lists, ledger, today board) keep the full width. */
+  .app-shell[data-role-shell="parent"] .page-title { margin-top: 4px; }
+}
+
+/* A page-level header row (title + one inline link), as opposed to .card-head
+   inside a card. On a phone the two sit together naturally; in a wide desktop
+   content column, space-between would fling the link to the far edge, away
+   from the title it belongs to. Keep them adjacent at every width. */
+.page-head {
+  justify-content: flex-start;
+  gap: 16px;
+  align-items: baseline;
+}

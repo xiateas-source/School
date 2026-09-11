@@ -8,8 +8,8 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=efa6a9e2">
-  <link rel="stylesheet" href="styles/polish.css?v=efa6a9e2">
+  <link rel="stylesheet" href="styles/base.css?v=7bbfa534">
+  <link rel="stylesheet" href="styles/polish.css?v=7bbfa534">
 </head>
 <body>
   <div id="app">
@@ -144,6 +144,11 @@
           <!-- Routines — configuration, one level deeper (§17.1) -->
           <div class="qpanel" data-qpanel="routines" hidden>
             <button class="primary-button wide" id="add-quest-btn">+ Add a quest</button>
+            <section class="card" id="school-import-card" data-testid="school-import-card" hidden>
+              <div class="card-head"><h3>School lessons</h3></div>
+              <p class="muted" id="school-import-note"></p>
+              <button class="primary-button wide" id="school-import-btn" data-testid="school-import" type="button">Add school lessons</button>
+            </section>
             <section class="card quest-bulk-toolbar" data-testid="quest-bulk-toolbar">
               <div>
                 <strong id="quest-selection-count">Select quests to change together</strong>
@@ -172,7 +177,7 @@
 
         <!-- Cats -->
         <section class="screen" data-pscreen="cats">
-          <h2 class="page-title">Cats</h2>
+          <div class="card-head page-head"><h2 class="page-title">Cats</h2><button class="text-button" data-pgo="cafe" data-testid="parent-cafe-link">Cat Café</button></div>
           <div id="parent-cats" class="cat-grid"></div>
         </section>
 
@@ -467,10 +472,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=efa6a9e2"></script>
-  <script type="module" src="src/ledger-actions.js?v=efa6a9e2"></script>
+  <script type="module" src="src/app.js?v=7bbfa534"></script>
+  <script type="module" src="src/ledger-actions.js?v=7bbfa534"></script>
   <!-- Presentation-only device/accessibility layer; no store writes or game state. -->
-  <script type="module" src="src/polish.js?v=efa6a9e2"></script>
+  <script type="module" src="src/polish.js?v=7bbfa534"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.
