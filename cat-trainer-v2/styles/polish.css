@@ -936,3 +936,15 @@ button[data-polish-busy="true"]::after {
   white-space: nowrap;
 }
 .pill-btn.mark-done:active { filter: brightness(.94); }
+
+/* Section header for a Today block: the phase label and its "mark all done"
+   shortcut on one line. */
+.ptoday-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.ptoday-head .phase-eyebrow { margin: 0; }
+.text-button.block-done { white-space: nowrap; font-size: .82rem; }
+.text-button.block-done:disabled { opacity: .5; cursor: default; }
