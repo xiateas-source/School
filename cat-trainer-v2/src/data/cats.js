@@ -2,7 +2,7 @@
 // Each cat trains independently. Hero Form requires Brain >= 12, Energy >= 12,
 // and 14 distinct active care days. Progress is cumulative and never spent.
 
-import { freshHeroCareProgress } from '../shared/rewards.js?v=fe73a54f';
+import { freshHeroCareProgress } from '../shared/rewards.js?v=fcfec9c5';
 
 export const CAT_IDS = ['nova', 'ember', 'moss'];
 

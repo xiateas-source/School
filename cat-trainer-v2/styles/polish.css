@@ -1034,3 +1034,40 @@ button[data-polish-busy="true"]::after {
 }
 .weekly-goal strong { font-size: .98rem; line-height: 1.3; color: var(--ink); }
 .weekly-goal[hidden] { display: none; }
+
+/* The week's goal is a sentence, so the text field takes the room and the
+   button stays its natural size. `.inline-form` is a 80px-then-everything
+   grid built for the Quick-points number box, which inverted this: a 78px
+   input beside a 720px Save. */
+.goal-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.goal-form input {
+  flex: 1;
+  min-width: 0;
+}
+.goal-form button { flex: 0 0 auto; }
+
+/* ---------- Desktop readability ------------------------------------------
+   Parent cards span ~850px on a laptop, and everything inside inherited that
+   width: paragraphs ran 110+ characters a line, and single actions like Sign
+   out or Save stretched the full card. Rows (quests, ledger, café) still want
+   the width; prose and lone buttons do not. */
+@media (min-width: 1024px) {
+  .app-shell[data-role-shell="parent"] .card p,
+  .app-shell[data-role-shell="parent"] .card > .muted,
+  .app-shell[data-role-shell="parent"] .page-title + .muted {
+    max-width: 68ch;
+  }
+
+  .app-shell[data-role-shell="parent"] .card > .wide-button,
+  .app-shell[data-role-shell="parent"] .card .primary-button.wide,
+  .app-shell[data-role-shell="parent"] #signout-btn {
+    width: auto;
+    min-width: 220px;
+    max-width: 340px;
+  }
+}
