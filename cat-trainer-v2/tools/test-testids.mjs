@@ -34,6 +34,8 @@ const STATIC_IDS = [
   'school-import-card', 'school-import',
   // Quest manager: select mode, its pinned bar, and the per-row action sheet.
   'quest-select-mode', 'quest-actions-dialog',
+  // Per-Quest timer configuration (§11).
+  'quest-timer-mode',
   // Parent settings: pairing handoff + the family this session is in.
   'make-pair-code', 'pair-code-display', 'make-coparent-code', 'coparent-code-display',
   'settings-email', 'settings-family-id', 'signout',
@@ -64,6 +66,8 @@ const DYNAMIC_IDS = [
   'parent-quest-row',   // a row in the quest management list
   'quest-selection',    // a management-row bulk-selection checkbox
   'returned-feedback',  // gentle child card after a parent return
+  'timer-start',        // start a Quest's timer (child card and parent Today row)
+  'timer-live',         // the running clock
   'parent-cafe-row'     // an owned cafe item in the parent Cafe card; carries
                         // data-item-id and the QA-unblocking Return control
 ];

@@ -990,3 +990,27 @@ button[data-polish-busy="true"]::after {
   /* Prose stays at a readable measure instead of running the card's full width. */
   #parent-cafe .muted { max-width: 62ch; }
 }
+
+/* Quest timer control. Present on both Sirus's card and Mom's Today row, since
+   he uses a phone and she often runs the timer standing next to him. */
+.q-timer { margin-top: 6px; display: flex; align-items: center; gap: 8px; }
+.timer-btn {
+  background: var(--paper);
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-weight: 700;
+  font-size: .8rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+.timer-btn.stop { padding: 6px 10px; color: var(--muted); }
+.timer-live {
+  font-family: var(--font-display, inherit);
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--purple);
+  font-variant-numeric: tabular-nums;
+}
+.timer-live.done { color: var(--green); }
