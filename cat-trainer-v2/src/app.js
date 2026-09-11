@@ -1,47 +1,47 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=a6cb40f2';
+import { isConfigured } from './firebase.js?v=40d3a587';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=a6cb40f2';
-import * as store from './store.js?v=a6cb40f2';
-import { CAT_DEFS } from './data/cats.js?v=a6cb40f2';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=a6cb40f2';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=a6cb40f2';
-import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=a6cb40f2';
+} from './auth.js?v=40d3a587';
+import * as store from './store.js?v=40d3a587';
+import { CAT_DEFS } from './data/cats.js?v=40d3a587';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=40d3a587';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=40d3a587';
+import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=40d3a587';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=a6cb40f2';
+} from './cafe-interactions.js?v=40d3a587';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=a6cb40f2';
+} from './care.js?v=40d3a587';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=a6cb40f2';
+} from './shared/rewards.js?v=40d3a587';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=a6cb40f2';
+} from './shared/ledger.js?v=40d3a587';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=a6cb40f2';
+} from './shared/dates.js?v=40d3a587';
 import {
   partitionFeedback, bundleRecognitions, QUEST_RETURN_PRESETS, returnedQuestLine
-} from './shared/feedback.js?v=a6cb40f2';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=a6cb40f2';
+} from './shared/feedback.js?v=40d3a587';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=40d3a587';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questIsAvailable, questIsArchived,
   questRecurrence, laterWindowFor, isScheduledOn,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=a6cb40f2';
+} from './shared/routines.js?v=40d3a587';
 import {
   questManagementGroups, recurrenceLabel, reorderQuestUpdates
-} from './shared/quest-management.js?v=a6cb40f2';
+} from './shared/quest-management.js?v=40d3a587';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -1167,12 +1167,16 @@ function todayNeedsYouHtml() {
 // Later action only appears when there is a genuinely-later slot to move to.
 function parentTodayQuestRow(q, phase) {
   const st = completionStatus(q.id); // null | 'pending' | 'approved'
-  const chip = st === 'approved'
+  // Marking work done on Sirus's behalf is the most-used action of the day, so
+  // it belongs on the board Mom already has open rather than behind the
+  // Routines tab's mirror of his screen. An approved quest keeps only its chip;
+  // a pending tap is a straight approval; anything else offers Mark done.
+  const primary = st === 'approved'
     ? '<span class="status-chip done">✓ Done</span>'
     : st === 'pending'
-      ? '<span class="status-chip waiting">⏳ Waiting</span>'
-      : '<span class="status-chip todo">To do</span>';
-  return `<div class="ptoday-row" data-testid="ptoday-row" data-quest-id="${esc(q.id)}"><div class="q-body"><strong>${esc(q.title)}</strong>${todayFlagHtml(q)}</div>${chip}${todayActionsHtml(q, phase)}</div>`;
+      ? `<button class="pill-btn approve" data-sirus-done="${esc(q.id)}" aria-label="Approve ${esc(q.title)}">✓ Approve</button>`
+      : `<button class="pill-btn mark-done" data-sirus-done="${esc(q.id)}" aria-label="Mark ${esc(q.title)} done for Sirus">Mark done</button>`;
+  return `<div class="ptoday-row" data-testid="ptoday-row" data-quest-id="${esc(q.id)}"><div class="q-body"><strong>${esc(q.title)}</strong>${todayFlagHtml(q)}</div>${primary}${todayActionsHtml(q, phase)}</div>`;
 }
 // Inline marker for a quest carrying a today-only move/next (skips leave the
 // board entirely and are managed from the Today-is-different card instead).

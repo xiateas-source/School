@@ -927,3 +927,12 @@ button[data-polish-busy="true"]::after {
     width: calc(100% - 300px);
   }
 }
+
+/* Mark done is the day's most-repeated action, so it reads as the row's
+   primary control — filled, not an outline competing with Skip/Later/Next. */
+.pill-btn.mark-done {
+  background: var(--purple);
+  color: #fff;
+  white-space: nowrap;
+}
+.pill-btn.mark-done:active { filter: brightness(.94); }
