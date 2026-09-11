@@ -8,8 +8,8 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles/base.css?v=e33698b7">
-  <link rel="stylesheet" href="styles/polish.css?v=e33698b7">
+  <link rel="stylesheet" href="styles/base.css?v=fe73a54f">
+  <link rel="stylesheet" href="styles/polish.css?v=fe73a54f">
 </head>
 <body>
   <div id="app">
@@ -138,6 +138,15 @@
 
           <!-- Today — the calm operations screen (§17.2) -->
           <div class="qpanel" data-qpanel="today">
+            <section class="card">
+              <div class="card-head"><h3>This week's goal</h3></div>
+              <p class="muted">One line, set at Monday's Morning Meeting and revisited the rest of the week. It shows on Sirus's home screen. It earns nothing on its own.</p>
+              <form id="weekly-goal-form" class="inline-form">
+                <input id="weekly-goal-input" data-testid="weekly-goal-input" type="text" maxlength="90" placeholder="e.g. Start my work without being asked">
+                <button class="primary-button" type="submit" data-testid="weekly-goal-save">Save</button>
+              </form>
+              <p class="muted" id="weekly-goal-meta"></p>
+            </section>
             <div id="p-today"></div>
           </div>
 
@@ -241,6 +250,9 @@
             <div class="time-badge"><img class="time-star" src="assets/game-time-star.png" alt=""><small>SCREEN TIME</small><strong id="c-available" data-testid="child-available">0</strong><span>minutes</span></div>
             <img id="c-cat-art" class="child-cat-art" alt="Your cat">
             <p class="earned-note">Earned today: <strong id="c-earned">0</strong></p>
+          </div>
+          <div class="weekly-goal" id="c-weekly-goal" data-testid="child-weekly-goal" hidden>
+            <small>THIS WEEK</small><strong id="c-weekly-goal-text"></strong>
           </div>
           <div class="pending-tray" id="c-pending-tray" hidden><span id="c-pending"></span></div>
           <section class="card soft">
@@ -510,10 +522,10 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script type="module" src="src/app.js?v=e33698b7"></script>
-  <script type="module" src="src/ledger-actions.js?v=e33698b7"></script>
+  <script type="module" src="src/app.js?v=fe73a54f"></script>
+  <script type="module" src="src/ledger-actions.js?v=fe73a54f"></script>
   <!-- Presentation-only device/accessibility layer; no store writes or game state. -->
-  <script type="module" src="src/polish.js?v=e33698b7"></script>
+  <script type="module" src="src/polish.js?v=fe73a54f"></script>
   <script>
     // Register the service worker for offline resilience + installability.
     // updateViaCache:'none' keeps the SW script itself from being served stale.

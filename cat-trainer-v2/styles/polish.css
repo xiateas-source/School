@@ -1014,3 +1014,23 @@ button[data-polish-busy="true"]::after {
   font-variant-numeric: tabular-nums;
 }
 .timer-live.done { color: var(--green); }
+
+/* The week's goal on Sirus's home screen. Quiet by design: it is a reminder of
+   what he is working on, not a scoreboard, so it carries no number, no meter
+   and nothing to tick. */
+.weekly-goal {
+  background: var(--cream);
+  border-radius: 14px;
+  padding: 10px 14px;
+  margin: 0 0 10px;
+  text-align: center;
+}
+.weekly-goal small {
+  display: block;
+  font-size: .62rem;
+  letter-spacing: .12em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.weekly-goal strong { font-size: .98rem; line-height: 1.3; color: var(--ink); }
+.weekly-goal[hidden] { display: none; }
