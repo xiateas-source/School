@@ -124,7 +124,7 @@ async function deleteQuest(page, id) {
   // group. Open it before using the deliberately QA-only permanent-delete hook.
   if (!(await row.isVisible())) {
     const archived = page.locator('details.archived-section');
-    if (await archived.count()) await archived.locator('summary').click();
+    if (await archived.count()) await archived.evaluate(el => { el.open = true; });
   }
   page.once('dialog', d => d.accept()); // deletion is confirm()-gated
   await questRowAction(page, id, '[data-del-quest]');
@@ -142,8 +142,12 @@ const parentQuestRow = (page, id) =>
 async function questRowAction(page, id, selector) {
   const row = parentQuestRow(page, id);
   if (!(await row.isVisible())) {
+    // Set `open` rather than clicking the summary. A click TOGGLES: if the
+    // group is already open (an earlier action in the same test opened it),
+    // clicking closes it, the row goes invisible, and the next attempt closes
+    // it again — which is exactly how this spun for 171 retries.
     const archived = page.locator('details.archived-section');
-    if (await archived.count()) await archived.locator('summary').click();
+    if (await archived.count()) await archived.evaluate(el => { el.open = true; });
   }
   await row.locator('[data-quest-menu]').click();
   const sheet = page.getByTestId('quest-actions-dialog');
@@ -199,7 +203,7 @@ async function selectQuestRows(page, ids) {
     // Archived is collapsed by default after any realtime rerender.
     if (!(await checkbox.isVisible())) {
       const archived = page.locator('details.archived-section');
-      if (await archived.count()) await archived.locator('summary').click();
+      if (await archived.count()) await archived.evaluate(el => { el.open = true; });
     }
     await checkbox.check();
   }
@@ -707,7 +711,7 @@ test('13 · Routine rows duplicate, pause, reorder, archive, and restore indepen
   await questRowAction(parent, copyId, '[data-archive-quest]');
   const archived = parent.locator('details.archived-section');
   await expect(archived.locator(`[data-quest-id="${copyId}"]`)).toHaveCount(1, { timeout: 30_000 });
-  await archived.locator('summary').click();
+  await archived.evaluate(el => { el.open = true; });
   await questRowAction(parent, copyId, '[data-restore-quest]');
   await expectQuestActive(parent, copyId, false, { timeout: 30_000 }); // restore keeps it paused
 
