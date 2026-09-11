@@ -1,47 +1,47 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=ea6d9ec7';
+import { isConfigured } from './firebase.js?v=b321308b';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=ea6d9ec7';
-import * as store from './store.js?v=ea6d9ec7';
-import { CAT_DEFS } from './data/cats.js?v=ea6d9ec7';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=ea6d9ec7';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=ea6d9ec7';
-import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=ea6d9ec7';
+} from './auth.js?v=b321308b';
+import * as store from './store.js?v=b321308b';
+import { CAT_DEFS } from './data/cats.js?v=b321308b';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=b321308b';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=b321308b';
+import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=b321308b';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=ea6d9ec7';
+} from './cafe-interactions.js?v=b321308b';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=ea6d9ec7';
+} from './care.js?v=b321308b';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=ea6d9ec7';
+} from './shared/rewards.js?v=b321308b';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=ea6d9ec7';
+} from './shared/ledger.js?v=b321308b';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=ea6d9ec7';
+} from './shared/dates.js?v=b321308b';
 import {
   partitionFeedback, bundleRecognitions, QUEST_RETURN_PRESETS, returnedQuestLine
-} from './shared/feedback.js?v=ea6d9ec7';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=ea6d9ec7';
+} from './shared/feedback.js?v=b321308b';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=b321308b';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questIsAvailable, questIsArchived,
   questRecurrence, laterWindowFor, isScheduledOn,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=ea6d9ec7';
+} from './shared/routines.js?v=b321308b';
 import {
   questManagementGroups, recurrenceLabel, reorderQuestUpdates
-} from './shared/quest-management.js?v=ea6d9ec7';
+} from './shared/quest-management.js?v=b321308b';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -1401,7 +1401,7 @@ function renderParentCafe() {
       <div class="card-head"><h3>Sirus's café</h3></div>
       <p class="muted">He buys and arranges these with Cat Coins. Returning an item refunds exactly what he paid and puts it back in the shop.</p>
       ${items.length
-        ? `<p class="ptoday-progress">${items.length} item${items.length === 1 ? '' : 's'} · 🪙${coins} spent</p>${rows}`
+        ? `<p class="ptoday-progress">${items.length} item${items.length === 1 ? '' : 's'} · 🪙${coins} spent</p><div class="pc-list">${rows}</div>`
         : '<div class="empty">Nothing bought yet.</div>'}
     </section>`;
 }

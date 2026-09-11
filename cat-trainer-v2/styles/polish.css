@@ -976,3 +976,17 @@ button[data-polish-busy="true"]::after {
 .parent-cafe-row .q-body { flex: 1; min-width: 0; }
 .parent-cafe-row strong { display: block; }
 .parent-cafe-row small { display: block; color: var(--muted); font-size: .76rem; }
+
+/* On a laptop a single column of full-width rows leaves a long dead gap
+   between each item's name and its Return button. Two columns use the space
+   and keep each row's parts near each other. */
+@media (min-width: 900px) {
+  .pc-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .pc-list .parent-cafe-row { margin-top: 0; }
+  /* Prose stays at a readable measure instead of running the card's full width. */
+  #parent-cafe .muted { max-width: 62ch; }
+}
