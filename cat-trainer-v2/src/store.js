@@ -2,35 +2,35 @@
 // with no refresh; all writes are Firestore transactions/batches so simultaneous
 // actions from phone + tablet can't double-count or lose updates.
 
-import { initFirebase, db, dbSdk } from './firebase.js?v=e33698b7';
-import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=e33698b7';
-import { seededQuests } from './data/quests.js?v=e33698b7';
-import { CAFE_ITEMS } from './data/cafe-items.js?v=e33698b7';
+import { initFirebase, db, dbSdk } from './firebase.js?v=fe73a54f';
+import { CAT_IDS, CAT_DEFS, freshCatProgress } from './data/cats.js?v=fe73a54f';
+import { seededQuests } from './data/quests.js?v=fe73a54f';
+import { CAFE_ITEMS } from './data/cafe-items.js?v=fe73a54f';
 import {
   CARE_NEEDS, areCareNeedsOkay, freshCatNeeds,
   dailyQuestCareAward, needsAt, questCareAwardId, refillNeed
-} from './care.js?v=e33698b7';
+} from './care.js?v=fe73a54f';
 import {
   QUICK_ACTION_BY_CODE, CUSTOM_POSITIVE_BOND, QUEST_BOND, CAPS,
   clamp, isHeroReady, recordHeroCareActivity,
   resumeHeroCareActivity
-} from './shared/rewards.js?v=e33698b7';
+} from './shared/rewards.js?v=fe73a54f';
 import {
   SCHEMA_VERSION, CATEGORY, classifyTransaction, amountIntegrity,
   normalizeTransaction, summarizeDay
-} from './shared/ledger.js?v=e33698b7';
+} from './shared/ledger.js?v=fe73a54f';
 import {
   FEEDBACK_TYPE, DELIVERY, recognitionEventId, questReturnedEventId, isClaimable,
   questReturnPreset
-} from './shared/feedback.js?v=e33698b7';
-import { localDate, localTimeLabel } from './shared/dates.js?v=e33698b7';
+} from './shared/feedback.js?v=fe73a54f';
+import { localDate, localTimeLabel } from './shared/dates.js?v=fe73a54f';
 import {
   generatePairingCode, isPairingCodeShape, isPairingUsable, pairingErrorMessage
-} from './shared/pairing.js?v=e33698b7';
-import { presetTargets } from './shared/routines.js?v=e33698b7';
+} from './shared/pairing.js?v=fe73a54f';
+import { presetTargets } from './shared/routines.js?v=fe73a54f';
 import {
   bulkQuestPatch, duplicateQuestData
-} from './shared/quest-management.js?v=e33698b7';
+} from './shared/quest-management.js?v=fe73a54f';
 
 export const CHILD_ID = 'sirus';
 
@@ -1318,6 +1318,23 @@ export async function setCafeItemPlaced(familyId, itemId, placed) {
   const { updateDoc } = sdk;
   const p = paths(sdk, database, familyId);
   await updateDoc(p.ownedItem(itemId), { placed });
+}
+
+// The week's goal, set by a parent and shown on Sirus's home screen. Lives on
+// the child profile because that is already parent-writable and child-readable,
+// so this needs no security-rules change.
+//
+// It is deliberately inert: no points, no streak, no completion state. The
+// Journal's Morning Meeting owns the goal itself; this is only a place for
+// Sirus to see it. Saving an empty string clears it.
+export async function setWeeklyGoal(familyId, uid, text) {
+  const { database, sdk } = await fs();
+  const { updateDoc, serverTimestamp, deleteField } = sdk;
+  const p = paths(sdk, database, familyId);
+  const clean = String(text || '').trim().slice(0, 90);
+  await updateDoc(p.child(), {
+    weeklyGoal: clean ? { text: clean, setAt: serverTimestamp(), setBy: uid } : deleteField()
+  });
 }
 
 // Save where the café cat is standing in the room (x/y as % of the room). Stored

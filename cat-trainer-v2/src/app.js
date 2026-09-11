@@ -1,51 +1,51 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=e33698b7';
+import { isConfigured } from './firebase.js?v=fe73a54f';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=e33698b7';
-import * as store from './store.js?v=e33698b7';
-import { CAT_DEFS } from './data/cats.js?v=e33698b7';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=e33698b7';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=e33698b7';
-import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=e33698b7';
+} from './auth.js?v=fe73a54f';
+import * as store from './store.js?v=fe73a54f';
+import { CAT_DEFS } from './data/cats.js?v=fe73a54f';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=fe73a54f';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=fe73a54f';
+import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=fe73a54f';
 import {
   TIMER_MODE_LABEL, effectiveTimerMode, hasTimer, questTimerMode, questTimerSeconds,
   timerStartLabel, timerState, raceSafetyBlock
-} from './shared/timers.js?v=e33698b7';
+} from './shared/timers.js?v=fe73a54f';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=e33698b7';
+} from './cafe-interactions.js?v=fe73a54f';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=e33698b7';
+} from './care.js?v=fe73a54f';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=e33698b7';
+} from './shared/rewards.js?v=fe73a54f';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=e33698b7';
+} from './shared/ledger.js?v=fe73a54f';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=e33698b7';
+} from './shared/dates.js?v=fe73a54f';
 import {
   partitionFeedback, bundleRecognitions, QUEST_RETURN_PRESETS, returnedQuestLine
-} from './shared/feedback.js?v=e33698b7';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=e33698b7';
+} from './shared/feedback.js?v=fe73a54f';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=fe73a54f';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questIsAvailable, questIsArchived,
   questRecurrence, laterWindowFor, isScheduledOn,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=e33698b7';
+} from './shared/routines.js?v=fe73a54f';
 import {
   questManagementGroups, recurrenceLabel, reorderQuestUpdates
-} from './shared/quest-management.js?v=e33698b7';
+} from './shared/quest-management.js?v=fe73a54f';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -541,7 +541,7 @@ function celebrateActiveCat() {
 // ---- Rendering --------------------------------------------------------------
 function renderAll() {
   if (!state.child) return;
-  if (state.role === 'parent') { renderApprovals(); renderParentDash(); renderLedger(); renderParentToday(); renderQuestLog(); renderSirusToday(); renderParentQuests(); renderSchoolImport(); renderParentCats(); renderParentCafe(); }
+  if (state.role === 'parent') { renderApprovals(); renderParentDash(); renderLedger(); renderParentToday(); renderQuestLog(); renderSirusToday(); renderParentQuests(); renderSchoolImport(); renderWeeklyGoalEditor(); renderParentCats(); renderParentCafe(); }
   else { renderChildHome(); renderChildQuests(); renderChildCats(); renderChildCafe(); renderChildProgress(); }
 }
 
@@ -1432,10 +1432,43 @@ function heroNeedsText(cat) {
   if (care) needs.push(`${care} more active care ${care === 1 ? 'day' : 'days'}`);
   return needs.length ? `Hero Form needs ${naturalList(needs)}.` : 'Hero Form is ready!';
 }
+// The week's goal. Read-only for Sirus and inert by design — no points, no
+// streak, no tick box. It answers "what am I working on this week?" and
+// nothing else, so it can never turn into another thing to fail.
+function weeklyGoalText() {
+  const g = state.child && state.child.weeklyGoal;
+  return g && typeof g.text === 'string' ? g.text.trim() : '';
+}
+
+function renderWeeklyGoalBanner() {
+  const box = el('c-weekly-goal');
+  const text = el('c-weekly-goal-text');
+  if (!box || !text) return;
+  const goal = weeklyGoalText();
+  box.hidden = !goal;
+  text.textContent = goal;
+}
+
+function renderWeeklyGoalEditor() {
+  const input = el('weekly-goal-input');
+  const meta = el('weekly-goal-meta');
+  if (!input || !meta) return;
+  const goal = weeklyGoalText();
+  // Don't clobber what a parent is part-way through typing.
+  if (document.activeElement !== input) input.value = goal;
+  const g = state.child && state.child.weeklyGoal;
+  const when = g && g.setAt && typeof g.setAt.seconds === 'number'
+    ? new Date(g.setAt.seconds * 1000) : null;
+  meta.textContent = goal
+    ? `On Sirus's home screen${when ? ` · set ${localDate(when) === localDate() ? 'today' : localDate(when)}` : ''}. Clear the box and save to remove it.`
+    : 'Nothing set — his home screen shows no goal line.';
+}
+
 function renderChildHome() {
   const id = state.child.activeCatId; const def = CAT_DEFS[id];
   const cat = state.cats[id] || { brain:0, energy:0, bond:0, evolved:false };
   el('c-available').textContent = state.child.available || 0;
+  renderWeeklyGoalBanner();
   const { earned } = store.todayTotals(state.recentTxns);
   el('c-earned').textContent = earned;
   // "Waiting for Mom" pile: pending rewards stack up visibly so finishing quests
@@ -3206,6 +3239,16 @@ function bindEvents() {
     } catch (err) { toast('Could not save — check connection.'); }
   });
   el('quest-save').addEventListener('click', saveQuestFromDialog);
+  el('weekly-goal-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = el('weekly-goal-input');
+    const text = input.value.trim();
+    try {
+      await store.setWeeklyGoal(state.familyId, state.uid, text);
+      toast(text ? 'Goal set for the week.' : 'Goal cleared.');
+      input.blur();
+    } catch (err) { toast('Could not save the goal.'); }
+  });
   el('q-recurrence').addEventListener('change', syncQuestDaysRow);
   for (const id of ['q-timer-mode', 'q-window', 'q-unsafe-rush']) {
     el(id).addEventListener('change', syncQuestTimerRow);

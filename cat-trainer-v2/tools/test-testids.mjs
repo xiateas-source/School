@@ -36,6 +36,8 @@ const STATIC_IDS = [
   'quest-select-mode', 'quest-actions-dialog',
   // Per-Quest timer configuration (§11).
   'quest-timer-mode',
+  // The week's goal: parent editor on Today, read-only banner on his home.
+  'weekly-goal-input', 'weekly-goal-save', 'child-weekly-goal',
   // Parent settings: pairing handoff + the family this session is in.
   'make-pair-code', 'pair-code-display', 'make-coparent-code', 'coparent-code-display',
   'settings-email', 'settings-family-id', 'signout',
