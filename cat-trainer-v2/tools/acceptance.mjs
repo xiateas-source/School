@@ -115,6 +115,13 @@ async function createQuest(page, { title, window = 'anytime', recurrence = 'ever
   return id;
 }
 
+// Bounded on purpose. Each delete is a modal open, a click, a Firestore round
+// trip and a re-render, so a large backlog cannot be cleared inside one hook's
+// budget — an unbounded sweep once timed out beforeAll and skipped all 15
+// tests, which is far worse than leaving clutter. Clear a slice per run and
+// let successive runs drain the rest.
+const SWEEP_LIMIT = 6;
+
 async function sweepStaleQaQuests(page) {
   await openRoutines(page);
   // Reveal archived rows too — a stale fixture may have been archived by the
@@ -132,8 +139,9 @@ async function sweepStaleQaQuests(page) {
   }
   if (!stale.length) return;
 
+  const batch = stale.slice(0, SWEEP_LIMIT);
   let removed = 0;
-  for (const { id } of stale) {
+  for (const { id } of batch) {
     try {
       page.once('dialog', d => d.accept());
       await questRowAction(page, id, '[data-del-quest]');
@@ -143,7 +151,11 @@ async function sweepStaleQaQuests(page) {
       // count below is the signal that manual cleanup is needed.
     }
   }
-  console.log(`swept ${removed}/${stale.length} stale QA quest(s) from earlier runs`);
+  const left = stale.length - removed;
+  console.log(
+    `swept ${removed} stale QA quest(s) from earlier runs` +
+    (left > 0 ? ` — ${left} still queued for the next run` : '')
+  );
 }
 
 async function deleteQuest(page, id) {
@@ -308,6 +320,11 @@ async function redactedShot(page, name) {
 // ------------------------------------------------------------------ setup ---
 
 test.beforeAll(async ({ browser }) => {
+  // Sign-in, the family gate, child pairing and the stale-quest sweep are all
+  // live Firestore round trips, and they all happen before the first test. The
+  // default 90s covers a single test, not this whole sequence.
+  test.setTimeout(300_000);
+
   // Fail loudly on missing config, without echoing anything about its value.
   const missing = ['QA_PARENT_EMAIL', 'QA_PARENT_PASSWORD', 'QA_FAMILY_ID']
     .filter(k => !process.env[k]);
