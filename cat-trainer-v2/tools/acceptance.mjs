@@ -116,13 +116,38 @@ async function deleteQuest(page, id) {
     if (await archived.count()) await archived.locator('summary').click();
   }
   page.once('dialog', d => d.accept()); // deletion is confirm()-gated
-  await row.locator('[data-del-quest]').click();
+  await questRowAction(page, id, '[data-del-quest]');
   await expect(row).toHaveCount(0);
   createdQuestIds.delete(id);
 }
 
 const parentQuestRow = (page, id) =>
   page.locator(`[data-testid="parent-quest-row"][data-quest-id="${id}"]`);
+
+// Duplicate, Move, Archive/Restore, Edit and Delete moved off the row and into
+// a per-row action sheet, reached from that row's ⋯ button. The data-* hooks
+// are unchanged — only their location is — so each action is still asserted by
+// the same attribute, one level deeper.
+async function questRowAction(page, id, selector) {
+  const row = parentQuestRow(page, id);
+  if (!(await row.isVisible())) {
+    const archived = page.locator('details.archived-section');
+    if (await archived.count()) await archived.locator('summary').click();
+  }
+  await row.locator('[data-quest-menu]').click();
+  const sheet = page.getByTestId('quest-actions-dialog');
+  await expect(sheet).toBeVisible();
+  await sheet.locator(selector).click();
+  await expect(sheet).toBeHidden();
+}
+
+// The on/off control is a switch now, not a button whose label reads
+// Pause/Resume. Assert the checkbox state instead of button text.
+async function expectQuestActive(page, id, active, opts = {}) {
+  const box = parentQuestRow(page, id).locator('[data-toggle-quest]');
+  if (active) await expect(box).toBeChecked(opts);
+  else await expect(box).not.toBeChecked(opts);
+}
 
 async function openRoutines(page) {
   await parentGo(page, 'quests');
@@ -135,13 +160,29 @@ async function openRoutines(page) {
 // deployed default build: new tests honestly SKIP before creating any QA data.
 async function requireSlice3(page) {
   await openRoutines(page);
+  // Probe the SELECT-MODE button, not the bulk bar. Since the Quest manager
+  // rework the bar is always in the DOM and merely hidden until select mode is
+  // on, so its presence no longer distinguishes a deployment that has the
+  // feature from one that does not.
   test.skip(
-    !(await page.getByTestId('quest-bulk-toolbar').count()),
-    'reduced Quest Slice 3 is not deployed at APP_URL yet'
+    !(await page.getByTestId('quest-select-mode').count()),
+    'the Quest manager rework is not deployed at APP_URL yet'
   );
 }
 
+// Row checkboxes only exist while select mode is on. Idempotent: if the mode is
+// already on (an earlier helper in the same test turned it on), pressing again
+// would turn it OFF and clear the selection, so check first.
+async function enterSelectMode(page) {
+  const toggle = page.getByTestId('quest-select-mode');
+  if (await toggle.count() && (await toggle.textContent())?.trim() !== 'Done') {
+    await toggle.click();
+  }
+  await expect(page.getByTestId('quest-bulk-toolbar')).toBeVisible();
+}
+
 async function selectQuestRows(page, ids) {
+  await enterSelectMode(page);
   for (const id of ids) {
     const checkbox = parentQuestRow(page, id).locator('[data-select-quest]');
     // Archived is collapsed by default after any realtime rerender.
@@ -600,25 +641,25 @@ test('13 · Routine rows duplicate, pause, reorder, archive, and restore indepen
 
   // A duplicate is a recoverable draft: distinct id, same reusable config,
   // paused until Mom explicitly reviews and resumes it.
-  await parentQuestRow(parent, firstId).locator('[data-duplicate-quest]').click();
+  await questRowAction(parent, firstId, '[data-duplicate-quest]');
   const copy = parent.locator(`[data-testid="parent-quest-row"]:has(strong:text-is("${firstTitle} copy"))`);
   await expect(copy).toHaveCount(1, { timeout: 30_000 });
   const copyId = await copy.getAttribute('data-quest-id');
   expect(copyId).not.toBe(firstId);
   createdQuestIds.add(copyId);
-  await expect(copy.locator('[data-toggle-quest]')).toHaveText('Resume');
+  await expectQuestActive(parent, copyId, false); // a duplicate arrives paused for review
 
   await copy.locator('[data-toggle-quest]').click();
-  await expect(parentQuestRow(parent, copyId).locator('[data-toggle-quest]')).toHaveText('Pause');
+  await expectQuestActive(parent, copyId, true, { timeout: 30_000 });
   await parentQuestRow(parent, copyId).locator('[data-toggle-quest]').click();
-  await expect(parentQuestRow(parent, copyId).locator('[data-toggle-quest]')).toHaveText('Resume');
+  await expectQuestActive(parent, copyId, false, { timeout: 30_000 });
 
   // Reorder is deliberately one-row-at-a-time and constrained to a daypart.
   const anytimeRows = parent.locator('details[data-window="anytime"] [data-testid="parent-quest-row"]');
   const beforeOrder = await anytimeRows.evaluateAll(rows => rows.map(row => row.dataset.questId));
   const beforeSecond = beforeOrder.indexOf(secondId);
   expect(beforeSecond).toBeGreaterThan(0);
-  await parentQuestRow(parent, secondId).locator('[data-move-quest][data-direction="up"]').click();
+  await questRowAction(parent, secondId, '[data-move-quest][data-direction="up"]');
   await waitFor(async () => {
     const ids = await anytimeRows.evaluateAll(rows => rows.map(row => row.dataset.questId));
     return ids.indexOf(secondId) === beforeSecond - 1;
@@ -626,12 +667,12 @@ test('13 · Routine rows duplicate, pause, reorder, archive, and restore indepen
 
   // Archive never aliases Pause: restore keeps the copy paused.
   parent.once('dialog', dialog => dialog.accept());
-  await parentQuestRow(parent, copyId).locator('[data-archive-quest]').click();
+  await questRowAction(parent, copyId, '[data-archive-quest]');
   const archived = parent.locator('details.archived-section');
-  await expect(archived.locator(`[data-quest-id="${copyId}"] [data-restore-quest]`)).toHaveCount(1, { timeout: 30_000 });
+  await expect(archived.locator(`[data-quest-id="${copyId}"]`)).toHaveCount(1, { timeout: 30_000 });
   await archived.locator('summary').click();
-  await archived.locator(`[data-quest-id="${copyId}"] [data-restore-quest]`).click();
-  await expect(parentQuestRow(parent, copyId).locator('[data-toggle-quest]')).toHaveText('Resume', { timeout: 30_000 });
+  await questRowAction(parent, copyId, '[data-restore-quest]');
+  await expectQuestActive(parent, copyId, false, { timeout: 30_000 }); // restore keeps it paused
 
   await deleteQuest(parent, copyId);
   await deleteQuest(parent, secondId);
@@ -666,19 +707,19 @@ test('14 · Bulk routine edits are conservative and never expose bulk reorder', 
   for (const id of ids) await expect(parentQuestRow(parent, id)).toContainText('Essential', { timeout: 30_000 });
 
   await applyQuestBulk(parent, ids, 'pause');
-  for (const id of ids) await expect(parentQuestRow(parent, id).locator('[data-toggle-quest]')).toHaveText('Resume', { timeout: 30_000 });
+  for (const id of ids) await expectQuestActive(parent, id, false, { timeout: 30_000 });
 
   await applyQuestBulk(parent, ids, 'resume');
-  for (const id of ids) await expect(parentQuestRow(parent, id).locator('[data-toggle-quest]')).toHaveText('Pause', { timeout: 30_000 });
+  for (const id of ids) await expectQuestActive(parent, id, true, { timeout: 30_000 });
 
   await applyQuestBulk(parent, ids, 'archive');
   for (const id of ids) {
-    await expect(parent.locator(`details.archived-section [data-quest-id="${id}"] [data-restore-quest]`)).toHaveCount(1, { timeout: 30_000 });
+    await expect(parent.locator(`details.archived-section [data-quest-id="${id}"]`)).toHaveCount(1, { timeout: 30_000 });
   }
 
   await applyQuestBulk(parent, ids, 'restore');
   for (const id of ids) {
-    await expect(parent.locator(`details[data-window="evening"] [data-quest-id="${id}"] [data-toggle-quest]`)).toHaveText('Pause', { timeout: 30_000 });
+    await expect(parent.locator(`details[data-window="evening"] [data-quest-id="${id}"] [data-toggle-quest]`)).toBeChecked({ timeout: 30_000 });
   }
 
   await deleteQuest(parent, secondId);
