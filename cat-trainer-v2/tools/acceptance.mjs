@@ -115,37 +115,6 @@ async function createQuest(page, { title, window = 'anytime', recurrence = 'ever
   return id;
 }
 
-async function sweepStaleQaQuests(page) {
-  await openRoutines(page);
-  // Reveal archived rows too — a stale fixture may have been archived by the
-  // test that died.
-  const archived = page.locator('details.archived-section');
-  if (await archived.count()) await archived.locator('summary').click();
-
-  const stale = [];
-  for (const row of await page.locator('[data-testid="parent-quest-row"]').all()) {
-    const title = (await row.locator('strong').first().textContent() || '').trim();
-    if (title.startsWith('QA-') && !title.startsWith(RUN)) {
-      const id = await row.getAttribute('data-quest-id');
-      if (id) stale.push({ id, title });
-    }
-  }
-  if (!stale.length) return;
-
-  let removed = 0;
-  for (const { id } of stale) {
-    try {
-      page.once('dialog', d => d.accept());
-      await questRowAction(page, id, '[data-del-quest]');
-      removed++;
-    } catch {
-      // A leftover we cannot remove is not worth failing the run over; the
-      // count below is the signal that manual cleanup is needed.
-    }
-  }
-  console.log(`swept ${removed}/${stale.length} stale QA quest(s) from earlier runs`);
-}
-
 async function deleteQuest(page, id) {
   await parentGo(page, 'quests');
   await page.locator('[data-qtab="routines"]').click();
@@ -155,7 +124,7 @@ async function deleteQuest(page, id) {
   // group. Open it before using the deliberately QA-only permanent-delete hook.
   if (!(await row.isVisible())) {
     const archived = page.locator('details.archived-section');
-    if (await archived.count()) await archived.locator('summary').click();
+    if (await archived.count()) await archived.evaluate(el => { el.open = true; });
   }
   page.once('dialog', d => d.accept()); // deletion is confirm()-gated
   await questRowAction(page, id, '[data-del-quest]');
@@ -173,8 +142,12 @@ const parentQuestRow = (page, id) =>
 async function questRowAction(page, id, selector) {
   const row = parentQuestRow(page, id);
   if (!(await row.isVisible())) {
+    // Set `open` rather than clicking the summary. A click TOGGLES: if the
+    // group is already open (an earlier action in the same test opened it),
+    // clicking closes it, the row goes invisible, and the next attempt closes
+    // it again — which is exactly how this spun for 171 retries.
     const archived = page.locator('details.archived-section');
-    if (await archived.count()) await archived.locator('summary').click();
+    if (await archived.count()) await archived.evaluate(el => { el.open = true; });
   }
   await row.locator('[data-quest-menu]').click();
   const sheet = page.getByTestId('quest-actions-dialog');
@@ -230,7 +203,7 @@ async function selectQuestRows(page, ids) {
     // Archived is collapsed by default after any realtime rerender.
     if (!(await checkbox.isVisible())) {
       const archived = page.locator('details.archived-section');
-      if (await archived.count()) await archived.locator('summary').click();
+      if (await archived.count()) await archived.evaluate(el => { el.open = true; });
     }
     await checkbox.check();
   }
@@ -308,6 +281,11 @@ async function redactedShot(page, name) {
 // ------------------------------------------------------------------ setup ---
 
 test.beforeAll(async ({ browser }) => {
+  // Sign-in, the family gate, child pairing and the stale-quest sweep are all
+  // live Firestore round trips, and they all happen before the first test. The
+  // default 90s covers a single test, not this whole sequence.
+  test.setTimeout(300_000);
+
   // Fail loudly on missing config, without echoing anything about its value.
   const missing = ['QA_PARENT_EMAIL', 'QA_PARENT_PASSWORD', 'QA_FAMILY_ID']
     .filter(k => !process.env[k]);
@@ -336,20 +314,21 @@ test.beforeAll(async ({ browser }) => {
     );
   }
 
-  // ---- Sweep quests left behind by earlier runs ---------------------------
-  // AFTER the family gate, never before: this deletes real documents, so it
-  // must not run until the signed-in family has been proven to be the QA one.
+  // NOTE: a stale-QA-quest sweep lived here and was REMOVED. It deleted
+  // leftovers through the row action sheet, and it hung beforeAll twice in a
+  // row — once at 90s, once at 300s — which skipped all 15 tests both times.
+  // Fighting over the archived group's <details> toggle is the likeliest
+  // reason: the sweep opened it, and questRowAction clicked the same summary
+  // again whenever a row read as hidden.
   //
-  // The QA family has no reset, so a run that dies mid-flight leaves its
-  // QA-<runid>-* quests behind. Those are not merely clutter: enough leftover
-  // Anytime quests push the child's Anytime group past its 3-card cap, and
-  // tests that assert "this quest reached his screen" then fail for a reason
-  // that has nothing to do with the behaviour under test. That is exactly what
-  // broke tests 03 and 10.
+  // The lesson is the ordering of costs, not the bug: leftover fixtures make
+  // the occasional test fail for an unreal reason, while a broken hook makes
+  // EVERY test not run. Cleanup must never be able to cost more than the mess
+  // it tidies. If it returns, it belongs in its own test with its own budget,
+  // after the gate, where failing leaves the rest of the suite reporting.
   //
-  // Only titles starting with QA- are touched, and only ones from a DIFFERENT
-  // run than this one, so a concurrent run's fixtures are never deleted.
-  await sweepStaleQaQuests(parent);
+  // Until then: delete leftover QA-* quests by hand from Quests -> Routines
+  // (QA-TESTING.md section 8).
 
   // Child session: paired inside this run, because codes are single-use and
   // expire in 15 minutes. Non-fatal — child-dependent tests skip with a reason
@@ -732,7 +711,7 @@ test('13 · Routine rows duplicate, pause, reorder, archive, and restore indepen
   await questRowAction(parent, copyId, '[data-archive-quest]');
   const archived = parent.locator('details.archived-section');
   await expect(archived.locator(`[data-quest-id="${copyId}"]`)).toHaveCount(1, { timeout: 30_000 });
-  await archived.locator('summary').click();
+  await archived.evaluate(el => { el.open = true; });
   await questRowAction(parent, copyId, '[data-restore-quest]');
   await expectQuestActive(parent, copyId, false, { timeout: 30_000 }); // restore keeps it paused
 

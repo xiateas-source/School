@@ -1,47 +1,47 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=ed6984a4';
+import { isConfigured } from './firebase.js?v=9a674416';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=ed6984a4';
-import * as store from './store.js?v=ed6984a4';
-import { CAT_DEFS } from './data/cats.js?v=ed6984a4';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=ed6984a4';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=ed6984a4';
-import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=ed6984a4';
+} from './auth.js?v=9a674416';
+import * as store from './store.js?v=9a674416';
+import { CAT_DEFS } from './data/cats.js?v=9a674416';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=9a674416';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=9a674416';
+import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=9a674416';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=ed6984a4';
+} from './cafe-interactions.js?v=9a674416';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=ed6984a4';
+} from './care.js?v=9a674416';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=ed6984a4';
+} from './shared/rewards.js?v=9a674416';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=ed6984a4';
+} from './shared/ledger.js?v=9a674416';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=ed6984a4';
+} from './shared/dates.js?v=9a674416';
 import {
   partitionFeedback, bundleRecognitions, QUEST_RETURN_PRESETS, returnedQuestLine
-} from './shared/feedback.js?v=ed6984a4';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=ed6984a4';
+} from './shared/feedback.js?v=9a674416';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=9a674416';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questIsAvailable, questIsArchived,
   questRecurrence, laterWindowFor, isScheduledOn,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=ed6984a4';
+} from './shared/routines.js?v=9a674416';
 import {
   questManagementGroups, recurrenceLabel, reorderQuestUpdates
-} from './shared/quest-management.js?v=ed6984a4';
+} from './shared/quest-management.js?v=9a674416';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -926,6 +926,28 @@ function filteredQuests(quests) {
     case 'paused': return quests.filter(q => q.enabled === false);
     default: return quests;
   }
+}
+
+// Offer Sirus's real course list as Quests. Additive and idempotent: the card
+// only names what is actually missing, and the whole card hides once every
+// lesson is in, so it never becomes permanent furniture.
+//
+// NOTE: this function was accidentally deleted by an edit that rewrote the
+// block above it, while its call site in renderAll survived. The resulting
+// ReferenceError aborted the parent render partway through, so the Cats and
+// Café screens — which render after it — went blank. Keep the call and the
+// definition together.
+function renderSchoolImport() {
+  const card = el('school-import-card');
+  const note = el('school-import-note');
+  if (!card || !note) return;
+  const missing = missingSchoolLessons(state.quests);
+  card.hidden = missing.length === 0;
+  if (!missing.length) return;
+  const all = missing.length === SCHOOL_LESSON_QUESTS.length;
+  note.textContent = all
+    ? `Add Sirus's ${missing.length} courses as School quests, each on its real days — Math C and Language Arts D every weekday, Language Arts C on Tuesday and Thursday, Art on Friday, and so on. You can edit or pause any of them afterwards.`
+    : `${missing.length} of Sirus's ${SCHOOL_LESSON_QUESTS.length} courses aren't set up yet: ${missing.map(q => q.title).join(', ')}. Adding them won't change the ones you already have.`;
 }
 
 function renderQuestBulkToolbar() {
