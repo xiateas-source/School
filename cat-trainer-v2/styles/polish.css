@@ -1071,3 +1071,73 @@ button[data-polish-busy="true"]::after {
     max-width: 340px;
   }
 }
+
+/* ---------- Dialogs on a laptop -------------------------------------------
+   Every dialog is a 400px column at any screen size. That is right on a phone,
+   but the quest form has grown — routine fields, then rewards, then timers —
+   and at 400px it ran 720px tall, pushing Save below the fold so a parent had
+   to scroll inside the modal to save. Give the forms a second column and the
+   room to use it. */
+@media (min-width: 900px) {
+  .modal { max-width: 640px; }
+
+  #quest-dialog .modal-card,
+  #quest-bulk-dialog .modal-card {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 14px;
+    align-items: start;
+  }
+
+  /* Things that must not be halved: the heading, the day picker, the reward
+     row (already a grid of its own), explanatory notes, checkbox rows, and the
+     buttons. */
+  #quest-dialog .modal-card > h2,
+  #quest-dialog .modal-card > .weekday-row,
+  #quest-dialog .modal-card > .reward-inputs,
+  #quest-dialog .modal-card > .muted,
+  #quest-dialog .modal-card > .check-row,
+  #quest-dialog .modal-card > .btn-row,
+  #quest-bulk-dialog .modal-card > h2,
+  #quest-bulk-dialog .modal-card > .muted,
+  #quest-bulk-dialog .modal-card > .weekday-row,
+  #quest-bulk-dialog .modal-card > .btn-row {
+    grid-column: 1 / -1;
+  }
+
+  /* The quest name is the field you always fill in; give it the full width. */
+  #quest-dialog .modal-card > label:first-of-type { grid-column: 1 / -1; }
+}
+
+/* The dialog's buttons stay reachable however long the form gets.
+   `.modal-card` is a capped scroll area, so before this the Save button lived
+   at the bottom of the scrolled content: adding the timer fields pushed it out
+   of view entirely, and a parent had to scroll inside the modal to save
+   something. A sticky footer fixes that for any form length and any screen
+   height, rather than only until the next field is added. */
+.modal-card > .btn-row {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--paper);
+  margin: 0 -22px -22px;
+  padding: 12px 22px max(12px, env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 14px -10px rgba(74, 63, 53, .35);
+}
+
+/* Raise the cap a little where there is room, so a tall form scrolls less. */
+@media (min-width: 900px) and (min-height: 820px) {
+  .modal { max-height: min(88dvh, 880px); }
+}
+
+/* A checkbox belongs beside its label, not above it. `.modal-card label` sets
+   a column direction for the ordinary field-with-label case, and it outranks
+   `.check-row`'s own row layout — so every checkbox row in every dialog has
+   been stacking the box above centred text. Long-standing; it was simply below
+   the fold until the quest form grew. */
+.modal-card .check-row {
+  flex-direction: row;
+  align-items: center;
+  text-align: left;
+}
+.modal-card .check-row input { flex: 0 0 auto; }

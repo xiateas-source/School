@@ -1,51 +1,51 @@
 // Cat Trainer — app orchestrator. Wires auth + role gate to the synced store and
 // renders Mom's dashboard and Sirus's game screens from live data.
 
-import { isConfigured } from './firebase.js?v=fcfec9c5';
+import { isConfigured } from './firebase.js?v=dcf7bd4a';
 import {
   parentSignIn, friendlyAuthError, signInChildDevice,
   onAuth, signOutUser, rememberDeviceRole, deviceRole, deviceFamilyId, deviceParentName, deviceUid
-} from './auth.js?v=fcfec9c5';
-import * as store from './store.js?v=fcfec9c5';
-import { CAT_DEFS } from './data/cats.js?v=fcfec9c5';
-import { SECTIONS, SECTION_META } from './data/quests.js?v=fcfec9c5';
-import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=fcfec9c5';
-import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=fcfec9c5';
+} from './auth.js?v=dcf7bd4a';
+import * as store from './store.js?v=dcf7bd4a';
+import { CAT_DEFS } from './data/cats.js?v=dcf7bd4a';
+import { SECTIONS, SECTION_META } from './data/quests.js?v=dcf7bd4a';
+import { CAFE_ITEMS, CAFE_ROOM_ART } from './data/cafe-items.js?v=dcf7bd4a';
+import { SCHOOL_LESSON_QUESTS, missingSchoolLessons } from './data/school-lessons.js?v=dcf7bd4a';
 import {
   TIMER_MODE_LABEL, effectiveTimerMode, hasTimer, questTimerMode, questTimerSeconds,
   timerStartLabel, timerState, raceSafetyBlock
-} from './shared/timers.js?v=fcfec9c5';
+} from './shared/timers.js?v=dcf7bd4a';
 import {
   cafeActionFor, catDestinationForObject, catDestinationForTap,
   catWanderDestination, firstCafeDecorElement, catWalkDuration
-} from './cafe-interactions.js?v=fcfec9c5';
+} from './cafe-interactions.js?v=dcf7bd4a';
 import {
   CARE_CONFIG, CARE_NEEDS, careCharges, displayNeedValue, isNeedFull,
   lowestCareNeed, needsAt
-} from './care.js?v=fcfec9c5';
+} from './care.js?v=dcf7bd4a';
 import {
   QUICK_ACTIONS, HERO_THRESHOLD, HERO_CARE_REQUIRED_DAYS, QUEST_BOND, heroCareDays
-} from './shared/rewards.js?v=fcfec9c5';
+} from './shared/rewards.js?v=dcf7bd4a';
 import {
   CATEGORY, normalizeTransaction, summarizeDay, summarizeWeek, correctedOriginalIds
-} from './shared/ledger.js?v=fcfec9c5';
+} from './shared/ledger.js?v=dcf7bd4a';
 import {
   localDate, localTimeLabel, addDays, startOfWeek, weekDates, isAfterDate, sameWeek,
   longDateLabel, shortWeekday, dayOfMonth
-} from './shared/dates.js?v=fcfec9c5';
+} from './shared/dates.js?v=dcf7bd4a';
 import {
   partitionFeedback, bundleRecognitions, QUEST_RETURN_PRESETS, returnedQuestLine
-} from './shared/feedback.js?v=fcfec9c5';
-import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=fcfec9c5';
+} from './shared/feedback.js?v=dcf7bd4a';
+import { PAIRING_TTL_MINUTES } from './shared/pairing.js?v=dcf7bd4a';
 import {
   organizeDay, nextMissions, minutesAvailable, progressCounts, phaseNow, planDay,
   questTimeWindow, questIsDailyEssential, questIsAvailable, questIsArchived,
   questRecurrence, laterWindowFor, isScheduledOn,
   WINDOW_LABEL, WINDOW_GLYPH
-} from './shared/routines.js?v=fcfec9c5';
+} from './shared/routines.js?v=dcf7bd4a';
 import {
   questManagementGroups, recurrenceLabel, reorderQuestUpdates
-} from './shared/quest-management.js?v=fcfec9c5';
+} from './shared/quest-management.js?v=dcf7bd4a';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (id) => document.getElementById(id);
