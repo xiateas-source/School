@@ -23,9 +23,22 @@ export const DEFAULT_TIMER_SECONDS = BRUSH_SECONDS;
 export const MIN_TIMER_SECONDS = 10;
 export const MAX_TIMER_SECONDS = 30 * 60;
 
+// §11.3 asks for a DEDICATED 2:00 brushing timer, not a per-quest option a
+// parent has to discover and switch on. So brushing gets the timer by default,
+// derived at read time from the quest's own title — the same convention the
+// routine fields already use (routines.js: read-time defaults, no backfill
+// write). An explicit timerMode always wins, so turning it off is a normal
+// edit and is never re-applied behind the parent's back.
+const BRUSHING_TITLE = /\b(brush(ing)?|teeth|tooth)\b/i;
+
+export function isBrushingQuest(quest) {
+  return !!quest && BRUSHING_TITLE.test(quest.title || '');
+}
+
 export function questTimerMode(quest) {
   const m = quest && quest.timerMode;
-  return TIMER_MODES.includes(m) ? m : 'none';
+  if (TIMER_MODES.includes(m)) return m;
+  return isBrushingQuest(quest) ? 'fixed_duration' : 'none';
 }
 
 export function questTimerSeconds(quest) {
