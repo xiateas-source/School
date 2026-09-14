@@ -1,13 +1,29 @@
 import assert from 'node:assert/strict';
 import {
   TIMER_MODES, BRUSH_SECONDS, MIN_TIMER_SECONDS, MAX_TIMER_SECONDS,
-  questTimerMode, questTimerSeconds, raceSafetyBlock, canRace,
+  questTimerMode, questTimerSeconds, raceSafetyBlock, canRace, isBrushingQuest,
   effectiveTimerMode, hasTimer, formatDuration, timerStartLabel,
   timerState, fixedDurationSatisfied
 } from '../src/shared/timers.js';
 
 // --- Read-time defaults: a quest with no timer fields has no timer -----------
 assert.equal(questTimerMode({}), 'none');
+
+// --- The brushing timer is a default, not an option to find (§11.3) ---------
+// Both seeded brushing quests get a 2:00 timer without anyone editing them.
+assert.equal(questTimerMode({ id: 'm-teeth', title: 'Brush teeth' }), 'fixed_duration');
+assert.equal(questTimerMode({ id: 'n-teeth', title: 'Night teeth and pajamas' }), 'fixed_duration');
+assert.equal(questTimerSeconds({ id: 'm-teeth', title: 'Brush teeth' }), 120);
+assert.equal(hasTimer({ title: 'Brush teeth' }), true);
+// It does not leak onto unrelated quests.
+assert.equal(questTimerMode({ title: 'Math C', timeWindow: 'school' }), 'none');
+assert.equal(questTimerMode({ title: 'Tidy toys' }), 'none');
+// An explicit choice always wins, so switching it off is an ordinary edit and
+// is never re-applied behind the parent's back.
+assert.equal(questTimerMode({ title: 'Brush teeth', timerMode: 'none' }), 'none');
+assert.equal(questTimerMode({ title: 'Brush teeth', timerMode: 'count_up' }), 'count_up');
+// And the racing ban still applies to the thing it was written for.
+assert.equal(canRace({ title: 'Brush teeth' }), false);
 assert.equal(questTimerMode({ timerMode: 'nonsense' }), 'none', 'unknown mode → none, never throws');
 assert.equal(questTimerMode({ timerMode: 'fixed_duration' }), 'fixed_duration');
 assert.equal(hasTimer({}), false, 'existing quests are untouched by this feature');
